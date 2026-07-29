@@ -7,13 +7,18 @@ class UserRepository {
   final SupabaseClient _client;
 
   Future<AppUser> current() async {
-    final currentUser = _client.auth.currentUser!;
+    final currentUser = _client.auth.currentUser;
+    if (currentUser == null) {
+      throw StateError('Sesi pengguna tidak aktif. Silakan masuk kembali.');
+    }
+
     final data = await _client
         .from('profiles')
         .select()
         .eq('id', currentUser.id)
         .maybeSingle();
     if (data != null) return AppUser.fromMap(data);
+
     final fullName =
         currentUser.userMetadata?['full_name'] as String? ??
         currentUser.email?.split('@').first ??
@@ -23,7 +28,7 @@ class UserRepository {
       'full_name': fullName,
       'role': 'penyuluh',
     };
-    await _client.from('profiles').upsert(profile);
+    await _client.from('profiles').upsert(profile, onConflict: 'id');
     return AppUser.fromMap(profile);
   }
 

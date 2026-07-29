@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sipenyuluh/src/app.dart';
+import 'package:sipenyuluh/main.dart';
 
 void main() {
   testWidgets('shows setup when Supabase is not configured', (tester) async {
