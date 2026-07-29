@@ -10,7 +10,11 @@ import '../../widgets/glashmorp.dart';
 import 'ringkasan.dart';
 import '../kegiatan/halaman_kegiatan.dart';
 import '../kegiatan/widgets/form_kegiatan.dart';
-// import '../admin/halaman_admin.dart'; // Sesuaikan impor jika ada
+
+// PENTING: Buka komentar (uncomment) dan sesuaikan path import ini 
+// agar mengarah ke file tempat class HalamanAdminPengguna dan Katalog berada.
+import '../admin/halaman_admin_pengguna.dart'; 
+import '../admin/halaman_admin.dart' hide HalamanAdminPengguna; 
 
 class HalamanDashboard extends StatefulWidget {
   const HalamanDashboard({super.key});
@@ -37,7 +41,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
           if (snapshot.connectionState != ConnectionState.done) {
             return Scaffold(
               body: LatarBelakangGradien(
-                child: const Center(child: CircularProgressIndicator()),
+                child: const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32))),
               ),
             );
           }
@@ -77,12 +81,14 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
 
   Widget _buildContent(BuildContext context, AppUser user) {
     final isAdmin = user.role == 'admin';
+    
+    // DI SINI PERBAIKANNYA: Mengganti teks dummy dengan Class Halaman asli
     final pages = [
       HalamanRingkasan(repository: _repository),
       HalamanKegiatan(repository: _repository),
       const Center(child: KartuKaca(padding: EdgeInsets.all(24), child: Text('Halaman Arsip', style: TextStyle(fontSize: 20)))),
-      if (isAdmin) const Center(child: KartuKaca(padding: EdgeInsets.all(24), child: Text('Halaman Admin Pengguna'))),
-      if (isAdmin) const Center(child: KartuKaca(padding: EdgeInsets.all(24), child: Text('Halaman Referensi Katalog'))),
+      if (isAdmin) HalamanAdminPengguna(repository: _userRepository), // Memanggil class asli
+      if (isAdmin) const HalamanAdminKatalog(), // Memanggil class asli
     ];
     
     final titles = ['Beranda', 'Kegiatan', 'Arsip', if (isAdmin) 'Pengguna', if (isAdmin) 'Referensi'];
@@ -157,6 +163,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                             child: Text(titles[_index], style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                           ),
                         ),
+                      // Merender halaman sesuai indeks yang dipilih
                       Expanded(child: pages[_index]),
                     ],
                   ),
