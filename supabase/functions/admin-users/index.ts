@@ -12,8 +12,19 @@ Deno.serve(async (request) => {
   if (caller?.role !== 'admin') return Response.json({ error: 'Forbidden' }, { status: 403, headers: corsHeaders })
   const body = await request.json()
   if (body.action === 'create') {
-    const { data, error } = await admin.auth.admin.createUser({ email: body.email, password: body.password, email_confirm: true, user_metadata: { full_name: body.full_name } })
+    const { data, error } = await admin.auth.admin.createUser({
+      email: body.email,
+      password: body.password,
+      email_confirm: true,
+      user_metadata: { full_name: body.full_name, role: 'admin' },
+    })
     if (error) return Response.json({ error: error.message }, { status: 400, headers: corsHeaders })
+
+    await admin.from('profiles').upsert(
+      { id: data.user.id, full_name: body.full_name, role: 'admin' },
+      { onConflict: 'id' }
+    )
+
     return Response.json({ user: data.user }, { headers: corsHeaders })
   }
   if (body.action === 'delete' && body.user_id && body.user_id !== user.id) {

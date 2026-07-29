@@ -19,6 +19,7 @@ class UserRepository {
         .maybeSingle();
     if (data != null) return AppUser.fromMap(data);
 
+    final role = currentUser.userMetadata?['role'] as String? ?? 'penyuluh';
     final fullName =
         currentUser.userMetadata?['full_name'] as String? ??
         currentUser.email?.split('@').first ??
@@ -26,7 +27,7 @@ class UserRepository {
     final profile = {
       'id': currentUser.id,
       'full_name': fullName,
-      'role': 'penyuluh',
+      'role': role,
     };
     await _client.from('profiles').upsert(profile, onConflict: 'id');
     return AppUser.fromMap(profile);
