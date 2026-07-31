@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/date_symbol_data_local.dart'; // TAMBAHKAN IMPORT INI
 
 import 'src/tema/tema_apk.dart';
 import 'src/widgets/glashmorp.dart';
@@ -8,6 +9,9 @@ import 'src/halaman/dashboard/dahsboard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // TAMBAHKAN BARIS INI UNTUK MENGATASI LAYAR MERAH
+  await initializeDateFormatting('id_ID', null);
 
   const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');

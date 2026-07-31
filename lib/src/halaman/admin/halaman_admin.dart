@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Sesuaikan path import ini dengan struktur foldermu
 import '../../models/app_user.dart';
 import '../../models/category.dart';
 import '../../models/report_template.dart';
@@ -8,6 +9,284 @@ import '../../services/category_repository.dart';
 import '../../services/template_repository.dart';
 import '../../services/user_repository.dart';
 import '../../widgets/glashmorp.dart';
+
+// ---------------------------------------------------------
+// HALAMAN DASHBOARD ADMIN (RESPONSIF: WEB & MOBILE)
+// ---------------------------------------------------------
+
+class HalamanAdmin extends StatefulWidget {
+  const HalamanAdmin({super.key, required this.userRepository});
+  final UserRepository userRepository;
+
+  @override
+  State<HalamanAdmin> createState() => _HalamanAdminState();
+}
+
+class _HalamanAdminState extends State<HalamanAdmin> {
+  // Index menu: 0=Beranda, 1=Kegiatan, 2=Arsip, 3=Pengguna, 4=Referensi
+  int _menuAktif = 3; 
+
+  Widget _tampilkanKontenUtama() {
+    switch (_menuAktif) {
+      case 0:
+        return const Center(child: Text('Halaman Beranda', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)));
+      case 1:
+        return const HalamanAdminKegiatan(); 
+      case 2:
+        return const HalamanAdminKegiatan(); 
+      case 3:
+        return HalamanAdminPengguna(repository: widget.userRepository); 
+      case 4:
+        return const HalamanAdminKatalog(); 
+      default:
+        return const Center(child: Text('Halaman tidak ditemukan'));
+    }
+  }
+
+  Widget _buildSidebarItem(int index, IconData icon, String title) {
+    final isActive = _menuAktif == index;
+    return ListTile(
+      leading: Icon(icon, color: isActive ? const Color(0xFF2E7D32) : Colors.grey.shade700),
+      title: Text(
+        title, 
+        style: TextStyle(
+          color: isActive ? const Color(0xFF2E7D32) : Colors.grey.shade800,
+          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      selected: isActive,
+      selectedTileColor: Colors.green.withValues(alpha: 0.1),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      onTap: () => setState(() => _menuAktif = index),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // LAYAR LEBAR (DESKTOP)
+        if (constraints.maxWidth > 800) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF5F5F7),
+            body: Row(
+              children: [
+                Container(
+                  width: 250,
+                  color: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.park, size: 48, color: Color(0xFF2E7D32)),
+                            SizedBox(height: 8),
+                            Text('SIPENYULUH', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 48),
+                      _buildSidebarItem(0, Icons.grid_view, 'Beranda'),
+                      const SizedBox(height: 8),
+                      _buildSidebarItem(1, Icons.event_note, 'Kegiatan'),
+                      const SizedBox(height: 8),
+                      _buildSidebarItem(2, Icons.inventory_2_outlined, 'Arsip'),
+                      const SizedBox(height: 8),
+                      _buildSidebarItem(3, Icons.people_outline, 'Pengguna'),
+                      const SizedBox(height: 8),
+                      _buildSidebarItem(4, Icons.tune, 'Referensi'),
+                      const Spacer(),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: Colors.red),
+                        title: const Text('Keluar', style: TextStyle(color: Colors.red)),
+                        onTap: () async {
+                          await Supabase.instance.client.auth.signOut();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFE8F5E9), Color(0xFFE3F2FD), Color(0xFFF3E5F5)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: _tampilkanKontenUtama(),
+                  ),
+                ),
+              ],
+            ),
+          );
+        } 
+        // LAYAR KECIL (MOBILE)
+        else {
+          return Scaffold(
+            body: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFE8F5E9), Color(0xFFE3F2FD), Color(0xFFF3E5F5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: SafeArea(
+                child: _tampilkanKontenUtama(),
+              ),
+            ),
+            bottomNavigationBar: BottomNavigationBar(
+              currentIndex: _menuAktif,
+              onTap: (index) => setState(() => _menuAktif = index),
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: const Color(0xFF2E7D32),
+              unselectedItemColor: Colors.grey,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: 'Beranda'),
+                BottomNavigationBarItem(icon: Icon(Icons.event_note), label: 'Kegiatan'),
+                BottomNavigationBarItem(icon: Icon(Icons.inventory_2_outlined), label: 'Arsip'),
+                BottomNavigationBarItem(icon: Icon(Icons.people_outline), label: 'Pengguna'),
+                BottomNavigationBarItem(icon: Icon(Icons.tune), label: 'Referensi'),
+              ],
+            ),
+          );
+        }
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// HALAMAN ADMIN: KEGIATAN (Melihat & Menghapus)
+// ---------------------------------------------------------
+
+class HalamanAdminKegiatan extends StatefulWidget {
+  const HalamanAdminKegiatan({super.key});
+  @override
+  State<HalamanAdminKegiatan> createState() => _HalamanAdminKegiatanState();
+}
+
+class _HalamanAdminKegiatanState extends State<HalamanAdminKegiatan> {
+  final _supabase = Supabase.instance.client;
+  late Future<List<Map<String, dynamic>>> _kegiatanFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _muatData();
+  }
+
+  void _muatData() {
+    setState(() {
+      // Pastikan menggunakan nama tabel "activities" sesuai databasemu
+      _kegiatanFuture = _supabase
+          .from('activities') 
+          .select('*, profiles(full_name)') 
+          .order('created_at', ascending: false);
+    });
+  }
+
+  Future<void> _hapusKegiatan(int id) async {
+    final konfirmasi = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Kegiatan?'),
+        content: const Text('Data laporan kegiatan yang dihapus tidak dapat dikembalikan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (konfirmasi == true) {
+      try {
+        await _supabase.from('activities').delete().eq('id', id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kegiatan berhasil dihapus'), backgroundColor: Colors.green));
+          _muatData();
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _kegiatanFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
+        if (snapshot.hasError) return Center(child: Text('Terjadi kesalahan memuat data: ${snapshot.error}'));
+
+        final daftarKegiatan = snapshot.data ?? [];
+
+        return ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          children: [
+            KartuKaca(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Manajemen Kegiatan', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('Pantau seluruh laporan kegiatan yang masuk.', style: TextStyle(color: Colors.grey.shade800)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            if (daftarKegiatan.isEmpty)
+              const Center(child: Padding(padding: EdgeInsets.all(32.0), child: Text('Belum ada kegiatan yang dilaporkan.')))
+            else
+              Wrap(
+                spacing: 16, runSpacing: 16,
+                alignment: WrapAlignment.center,
+                children: daftarKegiatan.map((kegiatan) {
+                  final id = kegiatan['id'];
+                  final judul = kegiatan['judul'] ?? 'Tanpa Judul';
+                  final namaPenyuluh = kegiatan['profiles']?['full_name'] ?? 'Penyuluh';
+                  final tanggal = kegiatan['tanggal'] ?? '-'; 
+
+                  return SizedBox(
+                    width: 450,
+                    child: KartuKaca(
+                      padding: const EdgeInsets.all(8),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                          child: Icon(Icons.event_note, color: Colors.blue.shade700),
+                        ),
+                        title: Text(judul, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        subtitle: Text('Penyuluh: $namaPenyuluh\nTanggal: $tanggal'),
+                        isThreeLine: true,
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          tooltip: 'Hapus Laporan',
+                          onPressed: () => _hapusKegiatan(id),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
 
 // ---------------------------------------------------------
 // HALAMAN ADMIN: PENGGUNA
@@ -35,16 +314,12 @@ class _HalamanAdminPenggunaState extends State<HalamanAdminPengguna> {
   Widget build(BuildContext context) => FutureBuilder<List<AppUser>>(
         future: _users,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Gagal memuat pengguna: ${snapshot.error}'));
-          }
+          if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
+          if (snapshot.hasError) return Center(child: Text('Gagal memuat pengguna: ${snapshot.error}'));
           final users = snapshot.data ?? [];
           
           return ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             children: [
               KartuKaca(
                 padding: const EdgeInsets.all(24),
@@ -53,19 +328,16 @@ class _HalamanAdminPenggunaState extends State<HalamanAdminPengguna> {
                   children: [
                     const Text('Manajemen Pengguna', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    Text(
-                      'Kelola hak akses penyuluh dan administrator. Semua perubahan akan langsung aktif.',
-                      style: TextStyle(color: Colors.grey.shade800),
-                    ),
+                    Text('Kelola hak akses penyuluh dan administrator.', style: TextStyle(color: Colors.grey.shade800)),
                   ],
                 ),
               ),
               const SizedBox(height: 24),
               Wrap(
-                spacing: 16,
-                runSpacing: 16,
+                spacing: 16, runSpacing: 16,
+                alignment: WrapAlignment.center,
                 children: users.map((user) => SizedBox(
-                  width: 450, // Card tetap rapi di grid/wrap
+                  width: 450,
                   child: KartuKaca(
                     padding: const EdgeInsets.all(8),
                     child: ListTile(
@@ -202,12 +474,15 @@ class _HalamanAdminKatalogState extends State<HalamanAdminKatalog> {
   
   @override
   Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         children: [
           KartuKaca(
             padding: const EdgeInsets.all(24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 16,
               children: [
                 const Text('Referensi Sistem', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 SegmentedButton<int>(
@@ -240,6 +515,7 @@ class _HalamanAdminKatalogState extends State<HalamanAdminKatalog> {
             const SizedBox(height: 24),
             Wrap(
               spacing: 16, runSpacing: 16,
+              alignment: WrapAlignment.center,
               children: (snapshot.data ?? []).map((item) => SizedBox(
                 width: 400,
                 child: KartuKaca(
@@ -281,6 +557,7 @@ class _HalamanAdminKatalogState extends State<HalamanAdminKatalog> {
             const SizedBox(height: 24),
             Wrap(
               spacing: 16, runSpacing: 16,
+              alignment: WrapAlignment.center,
               children: (snapshot.data ?? []).map((item) => SizedBox(
                 width: 400,
                 child: KartuKaca(
