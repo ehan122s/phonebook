@@ -20,6 +20,7 @@ import '../kegiatan/halaman_detail_kegiatan.dart';
 import '../admin/halaman_admin.dart' show HalamanAdminKatalog;
 import '../admin/halaman_admin_pengguna.dart';
 import '../profil/halaman_profil.dart';
+import '../materi/halaman_materi.dart';
 
 class HalamanDashboard extends StatefulWidget {
   const HalamanDashboard({super.key});
@@ -207,7 +208,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
             key: const ValueKey('penyuluh_1'),
             repository: _repository,
           ),
-          const _MateriEdukasiFlat(key: ValueKey('penyuluh_2')),
+          const HalamanMateriEdukasi(key: ValueKey('penyuluh_2')),
         ];
         break;
     }
