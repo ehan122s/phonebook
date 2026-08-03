@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/date_symbol_data_local.dart'; // TAMBAHKAN IMPORT INI
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'src/tema/tema_apk.dart';
 import 'src/widgets/glashmorp.dart';

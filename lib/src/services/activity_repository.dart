@@ -10,7 +10,7 @@ class ActivityRepository {
   final SupabaseClient _client;
 
   Future<List<Activity>> list({String? query, int? month, int? year}) async {
-    var request = _client.from('activities').select('*, categories(name)');
+    var request = _client.from('activities').select('*, categories(name), profiles(full_name)');
     if (query != null && query.isNotEmpty) {
       request = request.or(
         'title.ilike.%$query%,village.ilike.%$query%,district.ilike.%$query%,regency.ilike.%$query%',

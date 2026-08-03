@@ -19,6 +19,8 @@ class Activity {
     this.obstacle,
     this.followUp,
     this.notes,
+    this.status,
+    this.creatorName,
   });
 
   final String id;
@@ -40,6 +42,8 @@ class Activity {
   final String? obstacle;
   final String? followUp;
   final String? notes;
+  final String? status;
+  final String? creatorName;
 
   factory Activity.fromMap(Map<String, dynamic> map) => Activity(
     id: map['id'] as String,
@@ -61,6 +65,8 @@ class Activity {
     obstacle: map['obstacle'] as String?,
     followUp: map['follow_up'] as String?,
     notes: map['notes'] as String?,
+    status: map['status'] as String?,
+    creatorName: (map['profiles'] as Map?)?['full_name'] as String?,
   );
 
   Map<String, dynamic> toPayload() => {

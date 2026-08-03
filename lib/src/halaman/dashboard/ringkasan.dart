@@ -1,331 +1,568 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/activity.dart';
 import '../../models/app_user.dart';
 import '../../services/activity_repository.dart';
+import '../../services/user_repository.dart';
+import '../../services/category_repository.dart';
+import '../../services/template_repository.dart';
 import '../../widgets/glashmorp.dart';
+import '../kegiatan/halaman_kegiatan.dart';
+import '../kegiatan/widgets/form_kegiatan.dart';
+import '../profil/halaman_profil.dart';
+import '../materi/halaman_materi.dart';
+import '../admin/halaman_admin.dart' show HalamanAdminKatalog;
+import '../admin/halaman_admin_pengguna.dart';
 
 // ========================================================
 // 1. DASHBOARD KHUSUS ADMIN (SISTEM)
 // Tema: Mewah, Glassmorphism, 100% Mobile Responsive
 // ========================================================
-class HalamanRingkasanAdmin extends StatelessWidget {
-  const HalamanRingkasanAdmin({super.key, required this.repository, required this.user});
+class HalamanRingkasanAdmin extends StatefulWidget {
+  const HalamanRingkasanAdmin({super.key, required this.repository, required this.user, required this.userRepository});
   final ActivityRepository repository;
   final AppUser user;
+  final UserRepository userRepository;
+
+  @override
+  State<HalamanRingkasanAdmin> createState() => _HalamanRingkasanAdminState();
+}
+
+class _HalamanRingkasanAdminState extends State<HalamanRingkasanAdmin> {
+  late final CategoryRepository _categoryRepo;
+  late final TemplateRepository _templateRepo;
+  late Future<_AdminData> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoryRepo = CategoryRepository(Supabase.instance.client);
+    _templateRepo = TemplateRepository(Supabase.instance.client);
+    _future = _load();
+  }
+
+  Future<_AdminData> _load() async {
+    final results = await Future.wait([
+      widget.repository.list(),
+      widget.userRepository.list(),
+      _categoryRepo.list(),
+      _templateRepo.list(),
+    ]);
+    return _AdminData(
+      activities: results[0] as List<Activity>,
+      users: results[1] as List<AppUser>,
+      categoryCount: (results[2] as List).length,
+      templateCount: (results[3] as List).length,
+    );
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _future = _load());
+  }
 
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 800;
 
-    return FutureBuilder<List<Activity>>(
-      future: repository.list(), 
-      builder: (_, snapshot) {
-        final items = snapshot.data ?? [];
-        return ListView(
-          padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 24),
-          children: [
-            // 1. HEADER WELCOME CARD KACA
-            KartuKaca(
-              padding: EdgeInsets.all(isMobile ? 24 : 32),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+    return RefreshIndicator(
+      color: const Color(0xFF1B5E20),
+      onRefresh: _refresh,
+      child: FutureBuilder<_AdminData>(
+        future: _future,
+        builder: (_, snapshot) {
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+          final data = snapshot.data;
+          final items = data?.activities ?? const <Activity>[];
+          final users = data?.users ?? const <AppUser>[];
+          final today = DateTime.now();
+          final giatHariIni = items.where((a) =>
+              a.activityDate.year == today.year &&
+              a.activityDate.month == today.month &&
+              a.activityDate.day == today.day).length;
+          final penyuluhAktif = users.where((u) => u.role == 'penyuluh').length;
+          final terbaru = items.take(5).toList();
+
+          return ListView(
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 24),
+            children: [
+              // 1. HEADER WELCOME CARD KACA
+              KartuKaca(
+                padding: EdgeInsets.all(isMobile ? 24 : 32),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(isMobile ? 12 : 16),
+                      decoration: BoxDecoration(color: const Color(0xFF1B5E20).withOpacity(0.15), shape: BoxShape.circle),
+                      child: Icon(Icons.shield_rounded, color: const Color(0xFF1B5E20), size: isMobile ? 40 : 48),
+                    ),
+                    SizedBox(width: isMobile ? 16 : 24),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Halo, ${widget.user.fullName.split(' ')[0]} 👋', style: TextStyle(fontSize: isMobile ? 24 : 28, fontWeight: FontWeight.w900, color: const Color(0xFF1B5E20))),
+                          const SizedBox(height: 8),
+                          Text('Pusat Administrasi SIMPUL', style: TextStyle(fontSize: isMobile ? 14 : 18, color: Colors.black87, fontWeight: FontWeight.w600, height: 1.4)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: isMobile ? 24 : 40),
+
+              // 2. JALAN PINTAS (navigasi nyata ke halaman admin lain)
+              const SectionTitle('Jalan Pintas Administrasi'),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    QuickActionBtn(
+                      icon: Icons.person_add_alt_1_rounded,
+                      label: 'Tambah\nPengguna',
+                      color: const Color(0xFF047857),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('Pengguna'), backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white),
+                        body: LatarBelakangGradien(child: HalamanAdminPengguna(repository: widget.userRepository)),
+                      ))).then((_) => _refresh()),
+                    ),
+                    QuickActionBtn(
+                      icon: Icons.category_rounded,
+                      label: 'Kelola\nKategori',
+                      color: const Color(0xFF1D4ED8),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('Referensi Sistem'), backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white),
+                        body: LatarBelakangGradien(child: const HalamanAdminKatalog()),
+                      ))).then((_) => _refresh()),
+                    ),
+                    QuickActionBtn(
+                      icon: Icons.menu_book_rounded,
+                      label: 'Materi\nEdukasi',
+                      color: const Color(0xFFD97706),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanMateriEdukasi())),
+                    ),
+                    QuickActionBtn(
+                      icon: Icons.map_rounded,
+                      label: 'Semua\nKegiatan',
+                      color: const Color(0xFF5D4037),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                        appBar: AppBar(title: const Text('Semua Kegiatan'), backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white),
+                        body: LatarBelakangGradien(child: HalamanKegiatan(repository: widget.repository)),
+                      ))).then((_) => _refresh()),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: isMobile ? 24 : 40),
+
+              // 3. STATISTIK UTAMA (data asli dari Supabase)
+              const SectionTitle('Rekapitulasi Data Sistem'),
+              GridView.count(
+                crossAxisCount: isMobile ? 2 : 4,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: isMobile ? 1.0 : 1.4,
                 children: [
-                  Container(
-                    padding: EdgeInsets.all(isMobile ? 12 : 16),
-                    decoration: BoxDecoration(color: const Color(0xFF1B5E20).withOpacity(0.15), shape: BoxShape.circle),
-                    child: Icon(Icons.shield_rounded, color: const Color(0xFF1B5E20), size: isMobile ? 40 : 48),
-                  ),
-                  SizedBox(width: isMobile ? 16 : 24),
-                  Expanded(
+                  StatCard(label: 'Total Pengguna', value: isLoading ? '-' : '${users.length}', icon: Icons.groups_rounded, color: const Color(0xFF2E7D32)),
+                  StatCard(label: 'Penyuluh Aktif', value: isLoading ? '-' : '$penyuluhAktif', icon: Icons.nature_people_rounded, color: const Color(0xFF047857)),
+                  StatCard(label: 'Total Laporan', value: isLoading ? '-' : '${items.length}', icon: Icons.description_rounded, color: const Color(0xFFD97706)),
+                  StatCard(label: 'Giat Hari Ini', value: isLoading ? '-' : '$giatHariIni', icon: Icons.today_rounded, color: const Color(0xFF2563EB)),
+                ],
+              ),
+              SizedBox(height: isMobile ? 24 : 40),
+
+              // 4. CHART & AKTIVITAS TERBARU (data asli)
+              Wrap(
+                spacing: 24,
+                runSpacing: 24,
+                children: [
+                  SizedBox(
+                    width: isMobile ? double.infinity : 500,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Halo, ${user.fullName.split(' ')[0]} 👋', style: TextStyle(fontSize: isMobile ? 24 : 28, fontWeight: FontWeight.w900, color: const Color(0xFF1B5E20))),
-                        const SizedBox(height: 8),
-                        Text('Pusat Administrasi SIMPUL', style: TextStyle(fontSize: isMobile ? 14 : 18, color: Colors.black87, fontWeight: FontWeight.w600, height: 1.4)),
+                        const SectionTitle('Grafik Kegiatan per Bulan (Tahun Berjalan)'),
+                        KartuKaca(
+                          padding: EdgeInsets.all(isMobile ? 16 : 24),
+                          child: SizedBox(
+                            height: isMobile ? 220 : 280,
+                            child: isLoading
+                                ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E20)))
+                                : GrafikKegiatan(items: items, warnaBar: const Color(0xFF1B5E20)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    width: isMobile ? double.infinity : 400,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionTitle('Kegiatan Lapangan Terbaru'),
+                        KartuKaca(
+                          padding: const EdgeInsets.all(20),
+                          child: isLoading
+                              ? const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: Color(0xFF1B5E20))))
+                              : terbaru.isEmpty
+                                  ? const Padding(padding: EdgeInsets.all(12), child: Text('Belum ada kegiatan tercatat.', style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w700)))
+                                  : Column(
+                                      children: [
+                                        for (var i = 0; i < terbaru.length; i++)
+                                          TimelineItem(
+                                            title: '${terbaru[i].creatorName ?? 'Penyuluh'} • ${terbaru[i].title}',
+                                            time: DateFormat('dd MMM yyyy', 'id_ID').format(terbaru[i].activityDate),
+                                            icon: Icons.event_available_rounded,
+                                            color: const Color(0xFF2E7D32),
+                                            isLast: i == terbaru.length - 1,
+                                          ),
+                                      ],
+                                    ),
+                        ),
+                        const SizedBox(height: 24),
+                        const SectionTitle('Status Sistem'),
+                        KartuKaca(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              const SystemInfoRow(label: 'Koneksi Server', value: 'Online', isStatus: true),
+                              const Divider(height: 24, color: Colors.black12),
+                              SystemInfoRow(label: 'Kategori Kegiatan Aktif', value: isLoading ? '-' : '${data?.categoryCount ?? 0}'),
+                              const Divider(height: 24, color: Colors.black12),
+                              SystemInfoRow(label: 'Template Laporan Tersimpan', value: isLoading ? '-' : '${data?.templateCount ?? 0}'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-            ),
-            SizedBox(height: isMobile ? 24 : 40),
-
-            // 2. QUICK SHORTCUTS (Bisa di-scroll nyamping di HP)
-            const SectionTitle('Jalan Pintas Administrasi'),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(
-                children: [
-                  QuickActionBtn(icon: Icons.person_add_alt_1_rounded, label: 'Tambah\nPengguna', color: const Color(0xFF047857), onTap: (){}),
-                  QuickActionBtn(icon: Icons.campaign_rounded, label: 'Buat\nPengumuman', color: const Color(0xFFF59E0B), onTap: (){}),
-                  QuickActionBtn(icon: Icons.topic_rounded, label: 'Kelola\nMateri', color: const Color(0xFF1D4ED8), onTap: (){}),
-                  QuickActionBtn(icon: Icons.backup_rounded, label: 'Backup\nDatabase', color: const Color(0xFF5D4037), onTap: (){}),
-                ],
-              ),
-            ),
-            SizedBox(height: isMobile ? 24 : 40),
-            
-            // 3. STATISTIK UTAMA (Grid Responsif 2 Kolom di HP)
-            const SectionTitle('Rekapitulasi Data Sistem'),
-            GridView.count(
-              crossAxisCount: isMobile ? 2 : 4,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: isMobile ? 1.0 : 1.4, // Di HP dibikin kotak agar teks ga kepotong
-              children: [
-                StatCard(label: 'Total Pengguna', value: '1,248', icon: Icons.groups_rounded, color: const Color(0xFF2E7D32)),
-                StatCard(label: 'Penyuluh Aktif', value: '864', icon: Icons.nature_people_rounded, color: const Color(0xFF047857)),
-                StatCard(label: 'Total Laporan', value: '${items.length}', icon: Icons.description_rounded, color: const Color(0xFFD97706)),
-                StatCard(label: 'Giat Hari Ini', value: '24', icon: Icons.today_rounded, color: const Color(0xFF2563EB)),
-              ],
-            ),
-            SizedBox(height: isMobile ? 24 : 40),
-            
-            // 4. CHART & TIMELINE (Responsive Flex/Wrap)
-            Wrap(
-              spacing: 24, 
-              runSpacing: 24,
-              children: [
-                // GRAFIK
-                SizedBox(
-                  width: isMobile ? double.infinity : 500, // Di HP melebar full
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionTitle('Grafik Aktivitas Semester Ini'),
-                      KartuKaca(
-                        padding: EdgeInsets.all(isMobile ? 16 : 24),
-                        child: SizedBox(
-                          height: isMobile ? 220 : 280, // Lebih pendek dikit di HP
-                          child: GrafikKegiatan(items: items, warnaBar: const Color(0xFF1B5E20))
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // AKTIVITAS TERBARU & INFO SISTEM
-                SizedBox(
-                  width: isMobile ? double.infinity : 400, // Di HP melebar full
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionTitle('Aktivitas Lapangan Terbaru'),
-                      KartuKaca(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: const [
-                            TimelineItem(title: 'Bapak Budi mengunggah laporan', time: 'Hari ini, 10:30', icon: Icons.upload_file_rounded, color: Colors.blue),
-                            TimelineItem(title: 'Ibu Rina membuat kegiatan', time: 'Hari ini, 09:15', icon: Icons.event_available_rounded, color: Colors.green),
-                            TimelineItem(title: 'Anda menambahkan pengguna', time: 'Kemarin', icon: Icons.person_add_rounded, color: Colors.orange, isLast: true),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      const SectionTitle('Status Server & Sistem'),
-                      KartuKaca(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: const [
-                            SystemInfoRow(label: 'Versi Aplikasi', value: 'v2.4.1'),
-                            Divider(height: 24, color: Colors.black12),
-                            SystemInfoRow(label: 'Koneksi Server', value: 'Online', isStatus: true),
-                            Divider(height: 24, color: Colors.black12),
-                            SystemInfoRow(label: 'Backup Terakhir', value: 'Hari ini, 02:00'),
-                          ],
-                        ),
-                      )
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 80), // Jarak aman untuk bottom nav di HP
-          ],
-        );
-      },
+              const SizedBox(height: 80),
+            ],
+          );
+        },
+      ),
     );
   }
+}
+
+class _AdminData {
+  const _AdminData({required this.activities, required this.users, required this.categoryCount, required this.templateCount});
+  final List<Activity> activities;
+  final List<AppUser> users;
+  final int categoryCount;
+  final int templateCount;
 }
 
 // ========================================================
 // 2. DASHBOARD PENYULUH (Tema Hijau Hutan & Personal)
 // ========================================================
-class HalamanRingkasanPenyuluh extends StatelessWidget {
+class HalamanRingkasanPenyuluh extends StatefulWidget {
   const HalamanRingkasanPenyuluh({super.key, required this.repository, required this.user});
   final ActivityRepository repository;
   final AppUser user;
 
   @override
+  State<HalamanRingkasanPenyuluh> createState() => _HalamanRingkasanPenyuluhState();
+}
+
+class _HalamanRingkasanPenyuluhState extends State<HalamanRingkasanPenyuluh> {
+  late Future<List<Activity>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.repository.list();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _future = widget.repository.list());
+  }
+
+  Future<void> _openIsiLaporan(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (_) => ActivityForm(repository: widget.repository),
+    );
+    _refresh();
+  }
+
+  void _openLaporanSaya(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Laporan Saya', style: TextStyle(fontWeight: FontWeight.w900)),
+            backgroundColor: const Color(0xFF2E7D32),
+            foregroundColor: Colors.white,
+          ),
+          body: LatarBelakangGradien(
+            child: HalamanKegiatan(repository: widget.repository),
+          ),
+        ),
+      ),
+    ).then((_) => _refresh());
+  }
+
+  void _openMateri(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const HalamanMateriEdukasi()));
+  }
+
+  void _openProfil(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => HalamanProfil(user: widget.user)),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 800;
 
-    return FutureBuilder<List<Activity>>(
-      future: repository.list(), 
-      builder: (_, snapshot) {
-        final items = snapshot.data ?? [];
-        return ListView(
-          padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 16),
-          children: [
-            // HEADER KACA
-            KartuKaca(
-              padding: EdgeInsets.all(isMobile ? 20 : 32),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Selamat Bertugas, Bapak/Ibu ${user.fullName.split(' ')[0]}!', style: TextStyle(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w900, color: const Color(0xFF1B5E20))),
-                        const SizedBox(height: 8),
-                        Text('Semoga lancar dalam memberikan edukasi dan penyuluhan untuk masyarakat sekitar hutan hari ini.', style: TextStyle(fontSize: isMobile ? 14 : 16, color: Colors.black87, fontWeight: FontWeight.w600, height: 1.4)),
-                      ],
-                    ),
-                  ),
-                  // Cuaca Ringkas (Hanya muncul jika layar agak lebar, di HP sembunyikan agar tidak sumpek)
-                  if (!isMobile)
-                    Container(
-                      margin: const EdgeInsets.only(left: 24),
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.6), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white, width: 2)),
+    return RefreshIndicator(
+      color: const Color(0xFF2E7D32),
+      onRefresh: _refresh,
+      child: FutureBuilder<List<Activity>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+          final hasError = snapshot.hasError;
+          final items = snapshot.data ?? const <Activity>[];
+          final totalLaporan = items.length;
+          final terbaru = items.take(5).toList();
+
+          return ListView(
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 16),
+            children: [
+              // 1. BANNER SAMBUTAN + TOTAL LAPORAN (sesuai referensi desain)
+              KartuKaca(
+                padding: EdgeInsets.all(isMobile ? 20 : 32),
+                child: Flex(
+                  direction: isMobile ? Axis.vertical : Axis.horizontal,
+                  crossAxisAlignment: isMobile ? CrossAxisAlignment.stretch : CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      flex: isMobile ? 0 : 1,
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.wb_sunny_rounded, color: Colors.orange, size: 48),
+                          Text('Halo, ${widget.user.fullName} 👋',
+                              style: TextStyle(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w900, color: const Color(0xFF1B5E20))),
                           const SizedBox(height: 8),
-                          Text('Cerah', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.blue[900])),
-                          Text('28°C', style: TextStyle(color: Colors.blue[800], fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text(
+                            'Selamat bertugas hari ini! Kelola laporan lapangan, cek materi penyuluhan terbaru, dan pantau riwayat kegiatan dengan mudah.',
+                            style: TextStyle(fontSize: isMobile ? 14 : 16, color: Colors.black87, fontWeight: FontWeight.w600, height: 1.4),
+                          ),
                         ],
                       ),
-                    )
+                    ),
+                    SizedBox(height: isMobile ? 20 : 0, width: isMobile ? 0 : 24),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Total Laporan', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.black87)),
+                          const SizedBox(height: 4),
+                          isLoading
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 6),
+                                  child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF2E7D32))),
+                                )
+                              : Text('$totalLaporan', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: Color(0xFF1B5E20))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: isMobile ? 24 : 32),
+
+              // 2. AKSI CEPAT (Isi Laporan, Laporan Saya, Materi, Profil)
+              GridView.count(
+                crossAxisCount: isMobile ? 2 : 4,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                childAspectRatio: isMobile ? 1.05 : 1.15,
+                children: [
+                  _AksiCepatKaca(
+                    icon: Icons.add_rounded,
+                    label: 'Isi Laporan',
+                    sublabel: 'Laporan Kegiatan Baru',
+                    color: const Color(0xFF2E7D32),
+                    onTap: () => _openIsiLaporan(context),
+                  ),
+                  _AksiCepatKaca(
+                    icon: Icons.description_rounded,
+                    label: 'Laporan Saya',
+                    sublabel: 'Riwayat Kegiatan',
+                    color: const Color(0xFF1D4ED8),
+                    onTap: () => _openLaporanSaya(context),
+                  ),
+                  _AksiCepatKaca(
+                    icon: Icons.menu_book_rounded,
+                    label: 'Materi',
+                    sublabel: 'Buku & Modul',
+                    color: const Color(0xFFD97706),
+                    onTap: () => _openMateri(context),
+                  ),
+                  _AksiCepatKaca(
+                    icon: Icons.person_rounded,
+                    label: 'Profil',
+                    sublabel: 'Pengaturan Akun',
+                    color: const Color(0xFF7B1FA2),
+                    onTap: () => _openProfil(context),
+                  ),
                 ],
               ),
-            ),
-            SizedBox(height: isMobile ? 24 : 40),
+              SizedBox(height: isMobile ? 24 : 32),
 
-            // TARGET & METRIK KACA
-            Wrap(
-              spacing: 16, 
-              runSpacing: 16,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 380,
-                  child: KartuKaca(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Target Kegiatan Bulan Ini', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black87)),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('${items.length} Selesai', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF2E7D32))),
-                            const Text('Target: 20', style: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: LinearProgressIndicator(
-                            value: (items.length / 20).clamp(0.0, 1.0),
-                            minHeight: 12, 
-                            backgroundColor: Colors.white.withOpacity(0.5),
-                            color: const Color(0xFF2E7D32),
-                          ),
-                        ),
-                      ],
-                    ),
+              // 3. TABEL KEGIATAN TERAKHIR (data asli dari Supabase)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const SectionTitle('5 Kegiatan Terakhir Anda'),
+                  TextButton(
+                    onPressed: () => _openLaporanSaya(context),
+                    child: const Text('Lihat Semua →', style: TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.w900)),
                   ),
-                ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 400,
-                  child: Row(
+                ],
+              ),
+              if (hasError)
+                KartuKaca(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
                     children: [
-                      Expanded(child: StatCard(label: 'Total\nDokumen', value: '12', icon: Icons.folder_open_rounded, color: const Color(0xFF047857))),
-                      const SizedBox(width: 16),
-                      Expanded(child: StatCard(label: 'Pengumuman\nBaru', value: '1', icon: Icons.notifications_active_rounded, color: Colors.orange[800]!)),
+                      const Icon(Icons.cloud_off, color: Colors.orange, size: 40),
+                      const SizedBox(height: 12),
+                      const Text('Gagal memuat kegiatan. Tarik ke bawah untuk mencoba lagi.', textAlign: TextAlign.center),
                     ],
                   ),
                 )
-              ],
-            ),
-            SizedBox(height: isMobile ? 24 : 40),
-            
-            // AGENDA & RIWAYAT KACA
-            Wrap(
-              spacing: 16, 
-              runSpacing: 24,
-              children: [
-                SizedBox(
-                  width: isMobile ? double.infinity : 380,
+              else if (isLoading)
+                const KartuKaca(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32))),
+                )
+              else if (terbaru.isEmpty)
+                const KartuKaca(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text('Belum ada kegiatan tercatat. Ketuk "Isi Laporan" untuk membuat yang pertama.',
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black54)),
+                  ),
+                )
+              else
+                KartuKaca(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SectionTitle('Jadwal Agenda Hari Ini'),
-                      KartuKaca(
-                        padding: EdgeInsets.all(isMobile ? 12 : 16),
-                        child: Column(
-                          children: [
-                            ListTile(
-                              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.schedule_rounded, color: Colors.green, size: 24)),
-                              title: const Text('Kunjungan Desa Mekarsari', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                              subtitle: const Padding(padding: EdgeInsets.only(top: 4), child: Text('13:00 WIB • Evaluasi Tanam', style: TextStyle(fontSize: 14, color: Colors.black87))),
-                            ),
-                            const Divider(height: 16, color: Colors.black12),
-                            ListTile(
-                              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.edit_document, color: Colors.orange, size: 24)),
-                              title: const Text('Menyusun Laporan Kuartal', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                              subtitle: const Padding(padding: EdgeInsets.only(top: 4), child: Text('15:30 WIB • Di Kantor', style: TextStyle(fontSize: 14, color: Colors.black87))),
-                            ),
-                          ],
-                        ),
-                      ),
+                      for (var i = 0; i < terbaru.length; i++) ...[
+                        _BarisKegiatan(activity: terbaru[i]),
+                        if (i != terbaru.length - 1) const Divider(height: 1, color: Colors.black12, indent: 16, endIndent: 16),
+                      ],
                     ],
                   ),
                 ),
-                SizedBox(
-                  width: isMobile ? double.infinity : 500,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SectionTitle('Riwayat Kegiatan Terakhir Anda'),
-                      if (items.isEmpty)
-                        const KartuKaca(padding: EdgeInsets.all(32), child: Center(child: Text('Belum ada riwayat kegiatan yang tercatat.', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54))))
-                      else
-                        ...items.take(3).map((item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: KartuKaca(
-                            padding: const EdgeInsets.all(8),
-                            child: ListTile(
-                              leading: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(color: const Color(0xFF2E7D32).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
-                                child: const Icon(Icons.nature_rounded, color: Color(0xFF2E7D32), size: 28)
-                              ),
-                              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF1B5E20))),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 4.0),
-                                child: Text('${item.village} • ${item.categoryName}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
-                              ),
-                              trailing: const Icon(Icons.chevron_right_rounded, color: Colors.black54, size: 28),
-                            ),
-                          ),
-                        )),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 80), // Biar gak nabrak tombol Nav bar bawah
-          ],
-        );
-      },
+              const SizedBox(height: 80), // Biar gak nabrak tombol Nav bar bawah
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AksiCepatKaca extends StatelessWidget {
+  const _AksiCepatKaca({required this.icon, required this.label, required this.sublabel, required this.color, required this.onTap});
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: KartuKaca(
+        padding: EdgeInsets.symmetric(vertical: isMobile ? 16 : 20, horizontal: 8),
+        // FITTEDBOX DITAMBAHKAN DI SINI
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: isMobile ? 26 : 30),
+              ),
+              const SizedBox(height: 12),
+              Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 14 : 15, fontWeight: FontWeight.w900, color: Colors.black87)),
+              const SizedBox(height: 2),
+              Text(sublabel, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarisKegiatan extends StatelessWidget {
+  const _BarisKegiatan({required this.activity});
+  final Activity activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+    final isSelesai = (activity.status ?? 'draft') != 'draft';
+    return ListTile(
+      contentPadding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: 4),
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: const Color(0xFF2E7D32).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+        child: const Icon(Icons.event_note_rounded, color: Color(0xFF2E7D32), size: 22),
+      ),
+      title: Text(activity.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black87)),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          '${DateFormat('dd MMM yyyy', 'id_ID').format(activity.activityDate)} • ${activity.categoryName}',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+        ),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: (isSelesai ? Colors.green : Colors.orange).withOpacity(0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          isSelesai ? 'Selesai' : 'Draft',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: isSelesai ? Colors.green.shade800 : Colors.orange.shade800),
+        ),
+      ),
     );
   }
 }
@@ -360,20 +597,25 @@ class StatCard extends StatelessWidget {
 
     return KartuKaca(
       padding: EdgeInsets.all(isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isMobile ? 10 : 14),
-            decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(isMobile ? 12 : 16)),
-            child: Icon(icon, color: color, size: isMobile ? 28 : 36),
-          ),
-          const Spacer(),
-          Text(value, style: TextStyle(fontSize: isMobile ? 28 : 38, fontWeight: FontWeight.w900, color: Colors.black87, height: 1.2)),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: isMobile ? 13 : 16, color: Colors.grey.shade800, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-        ],
+      // FITTEDBOX DITAMBAHKAN DI SINI
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(isMobile ? 10 : 14),
+              decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(isMobile ? 12 : 16)),
+              child: Icon(icon, color: color, size: isMobile ? 28 : 36),
+            ),
+            const SizedBox(height: 24),
+            Text(value, style: TextStyle(fontSize: isMobile ? 28 : 38, fontWeight: FontWeight.w900, color: Colors.black87, height: 1.2)),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: isMobile ? 13 : 16, color: Colors.grey.shade800, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
       ),
     );
   }

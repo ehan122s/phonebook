@@ -1,5 +1,9 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart' hide Category; // Mengabaikan Category bawaan Flutter
+import 'dart:typed_data'; // Untuk Uint8List
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart'; 
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,7 +12,7 @@ import '../../../services/activity_repository.dart';
 import '../../../services/category_repository.dart';
 import '../../../services/garut_geojson_service.dart';
 import '../../../widgets/glashmorp.dart';
-import '../../../widgets/leaflet_map.dart'; // Sesuaikan lokasi LeafletMap
+import '../../../widgets/leaflet_map.dart'; 
 
 class ActivityForm extends StatefulWidget {
   const ActivityForm({super.key, required this.repository});
@@ -38,6 +42,10 @@ class _ActivityFormState extends State<ActivityForm> {
   String? _categoryId;
   double? _latitude;
   double? _longitude;
+  
+  XFile? _photo; 
+  Uint8List? _photoBytes; 
+  
   late final Future<List<String>> _garutDistricts;
   bool _saving = false;
   
@@ -45,6 +53,23 @@ class _ActivityFormState extends State<ActivityForm> {
   void initState() {
     super.initState();
     _garutDistricts = GarutGeoJsonService().districts();
+  }
+
+  // --- FUNGSI PILIH FOTO ---
+  Future<void> _pilihFoto() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery, 
+      imageQuality: 70, 
+    );
+    
+    if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
+      setState(() {
+        _photo = pickedFile;
+        _photoBytes = bytes;
+      });
+    }
   }
 
   Future<void> _gunakanLokasiSaya() async {
@@ -76,11 +101,33 @@ class _ActivityFormState extends State<ActivityForm> {
   Future<void> _simpan() async {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
+    
     try {
+      String? photoUrl;
+
+      // --- LOGIKA UPLOAD FOTO KE SUPABASE STORAGE ---
+      if (_photo != null && _photoBytes != null) {
+        final fileExtension = _photo!.name.split('.').last;
+        final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+        
+        await Supabase.instance.client.storage
+            .from('activity_photos') 
+            .uploadBinary(
+              fileName, 
+              _photoBytes!,
+              fileOptions: const FileOptions(upsert: true),
+            );
+            
+        photoUrl = Supabase.instance.client.storage
+            .from('activity_photos')
+            .getPublicUrl(fileName);
+      }
+
       await widget.repository.create({
         'title': _title.text,
         'category_id': _categoryId,
-        'activity_date': DateFormat('yyyy-MM-dd').format(_date),
+        // DIPERBARUI: Menyimpan Tanggal + Jam & Menit ke Database
+        'activity_date': DateFormat('yyyy-MM-dd HH:mm:ss').format(_date),
         'location': _location.text,
         'latitude': _latitude,
         'longitude': _longitude,
@@ -95,7 +142,9 @@ class _ActivityFormState extends State<ActivityForm> {
         'obstacle': _obstacle.text,
         'follow_up': _followUp.text,
         'notes': _notes.text,
+        if (photoUrl != null) 'photo_url': photoUrl, 
       });
+      
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data kegiatan berhasil disimpan')));
@@ -103,6 +152,14 @@ class _ActivityFormState extends State<ActivityForm> {
     } on PostgrestException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } on StorageException catch (error) { 
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal upload gambar: ${error.message}')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -153,30 +210,92 @@ class _ActivityFormState extends State<ActivityForm> {
                             ),
                           ),
 
+                          // --- SEKSI TANGGAL & JAM PELAKSANAAN ---
                           Container(
                             margin: const EdgeInsets.only(bottom: 24),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.5),
+                              color: Colors.white.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: ListTile(
-                              title: const Text('Tanggal Pelaksanaan'),
+                              title: const Text('Tanggal & Waktu Pelaksanaan'),
                               subtitle: Text(
-                                DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(_date),
+                                DateFormat('EEEE, dd MMMM yyyy - HH:mm', 'id_ID').format(_date) + ' WIB',
                                 style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
                               ),
-                              trailing: const Icon(Icons.calendar_today, color: Color(0xFF2E7D32)),
+                              trailing: const Icon(Icons.access_time_filled_rounded, color: Color(0xFF2E7D32)),
                               onTap: () async {
-                                final picked = await showDatePicker(
+                                // 1. Pilih Tanggal
+                                final pickedDate = await showDatePicker(
                                   context: context,
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2100),
                                   initialDate: _date,
                                 );
-                                if (picked != null) setState(() => _date = picked);
+
+                                if (pickedDate != null && context.mounted) {
+                                  // 2. Pilih Jam
+                                  final pickedTime = await showTimePicker(
+                                    context: context,
+                                    initialTime: TimeOfDay.fromDateTime(_date),
+                                  );
+
+                                  if (pickedTime != null) {
+                                    setState(() {
+                                      _date = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        pickedTime.hour,
+                                        pickedTime.minute,
+                                      );
+                                    });
+                                  }
+                                }
                               },
                             ),
                           ),
+
+                          // --- SEKSI DOKUMENTASI FOTO ---
+                          const Divider(color: Colors.black12),
+                          const SizedBox(height: 16),
+                          const Text('Dokumentasi', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+                          const SizedBox(height: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_photoBytes != null)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.memory(
+                                    _photoBytes!,
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+                                )
+                              else
+                                Container(
+                                  height: 200,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black12,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.black26),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(Icons.image_not_supported_outlined, size: 48, color: Colors.black38),
+                                  ),
+                                ),
+                              const SizedBox(height: 12),
+                              FilledButton.tonalIcon(
+                                onPressed: _pilihFoto,
+                                icon: const Icon(Icons.add_a_photo),
+                                label: Text(_photo == null ? 'Tambah Foto' : 'Ganti Foto'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
 
                           const Divider(color: Colors.black12),
                           const SizedBox(height: 16),
@@ -202,7 +321,7 @@ class _ActivityFormState extends State<ActivityForm> {
                               height: 200,
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
-                                child: LeafletMap(latitude: _latitude, longitude: _longitude),
+                                child: LeafletMap(latitude: _latitude!, longitude: _longitude!),
                               ),
                             ),
                             const SizedBox(height: 24),

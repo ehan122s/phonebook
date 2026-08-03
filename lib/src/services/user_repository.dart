@@ -48,10 +48,13 @@ class UserRepository {
     required String fullName,
     String? nip,
     required String role,
-  }) => _client
-      .from('profiles')
-      .update({'full_name': fullName, 'nip': nip, 'role': role})
-      .eq('id', user.id);
+  }) => _invokeAdminUsers({
+        'action': 'update',
+        'user_id': user.id,
+        'full_name': fullName,
+        'nip': nip,
+        'role': role,
+      });
 
   // DELETE: Menghapus profil dari tabel public saja
   Future<void> deleteProfile(String id) =>
@@ -64,21 +67,24 @@ class UserRepository {
     required String fullName,
     String? nip, // Ditambahkan agar support form
     required String role, // Ditambahkan agar support form
-  }) => _client.functions.invoke(
-    'admin-users',
-    body: {
-      'action': 'create',
-      'email': email,
-      'password': password,
-      'full_name': fullName,
-      'nip': nip, // Dikirim ke body (sesuaikan di script Edge Function kamu)
-      'role': role, // Dikirim ke body (sesuaikan di script Edge Function kamu)
-    },
-  );
+  }) => _invokeAdminUsers({
+        'action': 'create',
+        'email': email,
+        'password': password,
+        'full_name': fullName,
+        'nip': nip,
+        'role': role,
+      });
 
   // DELETE (EDGE FUNCTION): Menghapus Auth User secara permanen (Cascade)
-  Future<void> deleteUser(String id) => _client.functions.invoke(
-    'admin-users',
-    body: {'action': 'delete', 'user_id': id},
-  );
+  Future<void> deleteUser(String id) =>
+      _invokeAdminUsers({'action': 'delete', 'user_id': id});
+
+  Future<void> _invokeAdminUsers(Map<String, dynamic> body) async {
+    final response = await _client.functions.invoke('admin-users', body: body);
+    final data = response.data;
+    if (data is Map && data['error'] != null) {
+      throw StateError(data['error'].toString());
+    }
+  }
 }

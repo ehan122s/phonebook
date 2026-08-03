@@ -43,26 +43,39 @@ class _FormPenggunaState extends State<FormPengguna> {
   }
 
   Future<void> _simpan() async {
+    final fullName = _name.text.trim();
+    final email = _email.text.trim();
+    final password = _password.text.trim();
+    final nip = _nip.text.trim();
+
+    if (fullName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nama lengkap wajib diisi.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    if (!_isEdit && (email.isEmpty || password.length < 6)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email dan kata sandi minimal 6 karakter wajib diisi.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       if (_isEdit) {
-        // Panggil method 'update'
         await widget.repository.update(
           widget.user!,
-          fullName: _name.text.trim(),
-          nip: _nip.text.trim().isEmpty ? null : _nip.text.trim(),
+          fullName: fullName,
+          nip: nip.isEmpty ? null : nip,
           role: _role,
         );
       } else {
-        // Panggil method 'createUser' yang menggunakan Edge Function
-        if (_email.text.trim().isEmpty || _password.text.trim().isEmpty) {
-          throw 'Email dan Kata Sandi wajib diisi!';
-        }
         await widget.repository.createUser(
-          email: _email.text.trim(),
-          password: _password.text.trim(),
-          fullName: _name.text.trim(),
-          nip: _nip.text.trim().isEmpty ? null : _nip.text.trim(),
+          email: email,
+          password: password,
+          fullName: fullName,
+          nip: nip.isEmpty ? null : nip,
           role: _role,
         );
       }
@@ -116,7 +129,7 @@ class _FormPenggunaState extends State<FormPengguna> {
                 TextField(controller: _nip, decoration: const InputDecoration(labelText: 'NIP (Opsional)')),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _role,
+                  initialValue: _role,
                   decoration: const InputDecoration(labelText: 'Peran Akses'),
                   items: const [
                     DropdownMenuItem(value: 'penyuluh', child: Text('Penyuluh (Standar)')),
