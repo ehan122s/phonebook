@@ -72,7 +72,11 @@ class Activity {
   Map<String, dynamic> toPayload() => {
     'category_id': categoryId,
     'title': title,
+<<<<<<< HEAD
     'activity_date': activityDate.toIso8601String(),
+=======
+    'activity_date': activityDate.toIso8601String().substring(0, 10),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
     'location': location,
     'latitude': latitude,
     'longitude': longitude,

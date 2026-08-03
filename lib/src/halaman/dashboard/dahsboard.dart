@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+<<<<<<< HEAD
 import 'package:intl/intl.dart';
 import 'dart:math';
 
@@ -20,6 +21,19 @@ import '../kegiatan/halaman_detail_kegiatan.dart';
 import '../admin/halaman_admin.dart' show HalamanAdminKatalog;
 import '../admin/halaman_admin_pengguna.dart';
 import '../profil/halaman_profil.dart';
+=======
+import 'dart:math';
+
+import '../../models/app_user.dart';
+import '../../services/activity_repository.dart';
+import '../../services/user_repository.dart';
+
+// Import halaman lain sesuaikan dengan struktur folder
+import 'ringkasan.dart';
+import '../kegiatan/halaman_kegiatan.dart';
+import '../kegiatan/widgets/form_kegiatan.dart';
+import '../admin/halaman_admin.dart';
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
 
 class HalamanDashboard extends StatefulWidget {
   const HalamanDashboard({super.key});
@@ -105,12 +119,17 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
         titles = ['Beranda Admin', 'Semua Laporan', 'Pengguna', 'Pengaturan'];
         icons = [Icons.dashboard_outlined, Icons.map_outlined, Icons.people_outline, Icons.settings_outlined];
         pages = [
+<<<<<<< HEAD
           HalamanRingkasanAdmin(key: const ValueKey('admin_0'), repository: _repository, user: user, userRepository: _userRepository),
+=======
+          const Center(key: ValueKey('admin_0'), child: Text('Dashboard Admin', style: TextStyle(fontSize: 24))),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
           HalamanKegiatan(key: const ValueKey('admin_1'), repository: _repository),
           HalamanAdminPengguna(key: const ValueKey('admin_2'), repository: _userRepository),
           const HalamanAdminKatalog(key: ValueKey('admin_3')),
         ];
         break;
+<<<<<<< HEAD
       case 'pengelola':
         warnaTema = const Color(0xFF00695C);
         titles = ['Ekosistem', 'Peta Hutan', 'Laporan'];
@@ -131,6 +150,8 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
           HalamanStatistikKebijakan(key: const ValueKey('penelaah_2'), repository: _repository),
         ];
         break;
+=======
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
       case 'penyuluh':
       default:
         // MENU DIGABUNG JADI 3: Beranda, Laporan Kegiatan, Materi Edukasi
@@ -144,7 +165,11 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
             onNavigate: _pindahTab, 
           ),
           HalamanKegiatan(key: const ValueKey('penyuluh_1'), repository: _repository),
+<<<<<<< HEAD
           const _MateriEdukasiFlat(key: ValueKey('penyuluh_2')), 
+=======
+          const HalamanMateriEdukasi(key: ValueKey('penyuluh_2')), 
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
         ];
         break;
     }
@@ -371,13 +396,18 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
 // WIDGET KONTEN DASHBOARD PENYULUH (INDEX 0)
 // ============================================================================
 
+<<<<<<< HEAD
 class DashboardPenyuluhContent extends StatefulWidget {
+=======
+class DashboardPenyuluhContent extends StatelessWidget {
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
   final AppUser user;
   final ActivityRepository repository;
   final Function(int) onNavigate;
 
   const DashboardPenyuluhContent({super.key, required this.user, required this.repository, required this.onNavigate});
 
+<<<<<<< HEAD
   @override
   State<DashboardPenyuluhContent> createState() => _DashboardPenyuluhContentState();
 }
@@ -403,6 +433,13 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
 
   void _bukaDetail(BuildContext context, Activity a) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => HalamanDetailKegiatan(activity: a, repository: widget.repository))).then((_) => _refresh());
+=======
+  void _tampilFormKegiatan(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => ActivityForm(repository: repository),
+    );
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
   }
 
   @override
@@ -411,6 +448,7 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 650;
 
+<<<<<<< HEAD
         return RefreshIndicator(
           color: const Color(0xFF1B5E20),
           onRefresh: _refresh,
@@ -561,6 +599,146 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
       width: double.infinity,
       padding: EdgeInsets.all(isMobile ? 20 : 28),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 4))]),
+=======
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.all(isMobile ? 16 : 32), 
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // BANNER
+              TweenAnimationBuilder(
+                tween: Tween<double>(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) => Transform.scale(
+                  scale: 0.95 + (0.05 * value),
+                  child: Opacity(opacity: value, child: child),
+                ),
+                child: Container(
+                  padding: EdgeInsets.all(isMobile ? 24 : 32),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: const Color(0xFF1B5E20).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
+                  ),
+                  child: isMobile ? _buildBannerMobile() : _buildBannerDesktop(),
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // QUICK ACTION MENUS 
+              if (isMobile)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _MobileIconMenu(title: 'Isi\nLaporan', icon: Icons.add, iconColor: Colors.green.shade700, iconBg: Colors.green.shade50, onTap: () => _tampilFormKegiatan(context)),
+                    _MobileIconMenu(title: 'Laporan\nSaya', icon: Icons.description_rounded, iconColor: Colors.blue.shade700, iconBg: Colors.blue.shade50, onTap: () => onNavigate(1)), // Index navigasi diupdate jadi 1
+                    _MobileIconMenu(title: 'Materi\nEdukasi', icon: Icons.menu_book_rounded, iconColor: Colors.orange.shade700, iconBg: Colors.orange.shade50, onTap: () => onNavigate(2)), // Index navigasi diupdate jadi 2
+                    _MobileIconMenu(title: 'Profil\nAkun', icon: Icons.person_rounded, iconColor: Colors.purple.shade700, iconBg: Colors.purple.shade50, onTap: () {}),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(child: _QuickActionCard(title: 'Isi Laporan', subtitle: 'Catat Laporan Baru', icon: Icons.add, iconColor: Colors.green.shade700, iconBg: const Color(0xFFE8F5E9), onTap: () => _tampilFormKegiatan(context))),
+                    const SizedBox(width: 16),
+                    Expanded(child: _QuickActionCard(title: 'Laporan Saya', subtitle: 'Riwayat Anda', icon: Icons.description_rounded, iconColor: Colors.blue.shade700, iconBg: const Color(0xFFE3F2FD), onTap: () => onNavigate(1))), // Index navigasi diupdate
+                    const SizedBox(width: 16),
+                    Expanded(child: _QuickActionCard(title: 'Materi', subtitle: 'Buku & Modul', icon: Icons.menu_book_rounded, iconColor: Colors.orange.shade700, iconBg: const Color(0xFFFFF3E0), onTap: () => onNavigate(2))), // Index navigasi diupdate
+                    const SizedBox(width: 16),
+                    Expanded(child: _QuickActionCard(title: 'Profil', subtitle: 'Pengaturan', icon: Icons.person_rounded, iconColor: Colors.purple.shade700, iconBg: const Color(0xFFF3E5F5), onTap: () {})),
+                  ],
+                ),
+
+              const SizedBox(height: 32),
+
+              _buildGrafikStatistik(isMobile),
+
+              const SizedBox(height: 32),
+
+              // TABEL KEGIATAN TERAKHIR
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 4))],
+                ),
+                child: LayoutBuilder( 
+                  builder: (context, tableConstraints) {
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Laporan Terakhir', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
+                              TextButton(
+                                onPressed: () => onNavigate(1), // Navigasi ke index 1 (Laporan Kegiatan)
+                                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(50, 30)),
+                                child: const Text('Semua →', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                              )
+                            ],
+                          ),
+                        ),
+                        const Divider(height: 1),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: SizedBox(
+                            width: max(650.0, tableConstraints.maxWidth), 
+                            child: Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  child: Row(
+                                    children: [
+                                      Expanded(flex: 2, child: Text('Tanggal', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 13))),
+                                      Expanded(flex: 3, child: Text('Judul Kegiatan', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 13))),
+                                      Expanded(flex: 2, child: Text('Kategori', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 13))),
+                                      Expanded(flex: 2, child: Text('Status', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 13))),
+                                      Expanded(flex: 1, child: Text('Unduh', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.bold, fontSize: 13))),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                const _TableRow(tanggal: '23 Jul 2026', judul: 'Pendampingan KTH Mekar Sari', kategori: 'KTH', status: 'Selesai'),
+                                const Divider(height: 1),
+                                const _TableRow(tanggal: '20 Jul 2026', judul: 'Sosialisasi Pencegahan Karhutla', kategori: 'Perlindungan Hutan', status: 'Selesai'),
+                                const SizedBox(height: 16),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                ),
+              )
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Widget _buildGrafikStatistik(bool isMobile) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 20 : 28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 4))],
+      ),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -571,12 +749,17 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(20)),
+<<<<<<< HEAD
                 child: const Text('4 Minggu Terakhir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+=======
+                child: const Text('Bulan Ini', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
               )
             ],
           ),
           const SizedBox(height: 32),
           SizedBox(
+<<<<<<< HEAD
             height: 200,
             child: isLoading
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E20)))
@@ -592,13 +775,30 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
                         ),
                     ],
                   ),
+=======
+            height: 200, 
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _ChartBar(label: 'Mg 1', height: 40, color: Colors.green.shade200),
+                _ChartBar(label: 'Mg 2', height: 90, color: Colors.green.shade400),
+                _ChartBar(label: 'Mg 3', height: 60, color: Colors.green.shade300),
+                _ChartBar(label: 'Mg 4', height: 130, color: const Color(0xFF1B5E20)),
+              ],
+            ),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
           )
         ],
       ),
     );
   }
 
+<<<<<<< HEAD
   Widget _buildBannerDesktop(bool isLoading, int total) {
+=======
+  Widget _buildBannerDesktop() {
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -606,7 +806,11 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+<<<<<<< HEAD
               Text('Halo, ${widget.user.fullName} 👋', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+=======
+              Text('Halo, ${user.fullName} 👋', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
               const SizedBox(height: 12),
               Text(
                 'Selamat bertugas hari ini! Kelola laporan lapangan, cek\nmateri penyuluhan terbaru, dan pantau riwayat kegiatan.',
@@ -618,6 +822,7 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
         const SizedBox(width: 24),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+<<<<<<< HEAD
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.3))),
           child: Column(
             children: [
@@ -626,6 +831,18 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
               isLoading
                   ? const SizedBox(height: 30, width: 30, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
                   : Text('$total', style: const TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+=======
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+          ),
+          child: const Column(
+            children: [
+              Text('Total Laporan Selesai', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+              SizedBox(height: 8),
+              Text('3', style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
             ],
           ),
         ),
@@ -633,11 +850,19 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
     );
   }
 
+<<<<<<< HEAD
   Widget _buildBannerMobile(bool isLoading, int total) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Halo, ${widget.user.fullName} 👋', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+=======
+  Widget _buildBannerMobile() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Halo, ${user.fullName} 👋', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
         const SizedBox(height: 12),
         Text(
           'Selamat bertugas hari ini! Kelola laporan dan pantau riwayat kegiatan Anda.',
@@ -646,6 +871,7 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
         const SizedBox(height: 24),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+<<<<<<< HEAD
           decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.2))),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -654,6 +880,18 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
               isLoading
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                   : Text('$total', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+=======
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total Laporan Selesai', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+              Text('3', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
             ],
           ),
         ),
@@ -665,6 +903,7 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
 // ============================================================================
 // HALAMAN MATERI EDUKASI (INDEX 3 -> SEKARANG INDEX 2)
 // ============================================================================
+<<<<<<< HEAD
 class _MateriEdukasiFlat extends StatefulWidget {
   const _MateriEdukasiFlat({super.key});
 
@@ -709,10 +948,42 @@ class _MateriEdukasiFlatState extends State<_MateriEdukasiFlat> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengunduh: $error')));
       }
     }
+=======
+class HalamanMateriEdukasi extends StatelessWidget {
+  const HalamanMateriEdukasi({super.key});
+
+  void _showFormUpload(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Upload Materi Baru', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const TextField(decoration: InputDecoration(labelText: 'Judul Materi', border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            const TextField(decoration: InputDecoration(labelText: 'Kategori (cth: Panduan, Jurnal)', border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () {}, 
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Pilih File PDF/Word'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(context), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1B5E20)), child: const Text('Upload')),
+        ],
+      ),
+    );
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
   }
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     return RefreshIndicator(
       color: const Color(0xFF1B5E20),
       onRefresh: _refresh,
@@ -812,10 +1083,77 @@ class _MateriEdukasiFlatState extends State<_MateriEdukasiFlat> {
             ],
           );
         },
+=======
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.orange.shade200)),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange.shade800),
+                const SizedBox(width: 16),
+                Expanded(child: Text('Temukan panduan, modul, dan jurnal kehutanan di sini. Anda juga dapat membagikan materi untuk pengguna lain.', style: TextStyle(color: Colors.orange.shade900))),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          const _MateriCard(judul: 'Panduan Budidaya Kopi Di Bawah Tegakan', penulis: 'Dinas Kehutanan', tipe: 'PDF', warna: Colors.red),
+          const _MateriCard(judul: 'Modul Pencegahan Kebakaran Hutan 2026', penulis: 'KLHK Pusat', tipe: 'DOCX', warna: Colors.blue),
+          const _MateriCard(judul: 'Teknik Pemetaan Partisipatif KTH', penulis: 'Budi Santoso', tipe: 'PDF', warna: Colors.red),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showFormUpload(context),
+        backgroundColor: const Color(0xFF1B5E20),
+        icon: const Icon(Icons.cloud_upload, color: Colors.white),
+        label: const Text('Upload Materi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
       ),
     );
   }
 }
+<<<<<<< HEAD
+=======
+
+class _MateriCard extends StatelessWidget {
+  final String judul;
+  final String penulis;
+  final String tipe;
+  final Color warna;
+
+  const _MateriCard({required this.judul, required this.penulis, required this.tipe, required this.warna});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: warna.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+          child: Text(tipe, style: TextStyle(color: warna, fontWeight: FontWeight.bold, fontSize: 12)),
+        ),
+        title: Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text('Oleh: $penulis', style: const TextStyle(fontSize: 13)),
+        trailing: IconButton(
+          icon: const Icon(Icons.download_rounded, color: Colors.grey),
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mengunduh $judul...')));
+          },
+        ),
+      ),
+    );
+  }
+}
+
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
 // ============================================================================
 // ANIMATED WIDGETS
 // ============================================================================
@@ -971,6 +1309,7 @@ class _MobileIconMenuState extends State<_MobileIconMenu> {
 }
 
 class _TableRow extends StatelessWidget {
+<<<<<<< HEAD
   final Activity activity;
   final VoidCallback onTap;
 
@@ -983,34 +1322,71 @@ class _TableRow extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+=======
+  final String tanggal;
+  final String judul;
+  final String kategori;
+  final String status;
+
+  const _TableRow({required this.tanggal, required this.judul, required this.kategori, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {}, 
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Row(
             children: [
+<<<<<<< HEAD
               Expanded(flex: 2, child: Text(DateFormat('dd MMM yyyy', 'id_ID').format(activity.activityDate), style: const TextStyle(color: Colors.black87, fontSize: 14))),
               Expanded(flex: 3, child: Text(activity.title, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87, fontSize: 14))),
+=======
+              Expanded(flex: 2, child: Text(tanggal, style: const TextStyle(color: Colors.black87, fontSize: 14))),
+              Expanded(flex: 3, child: Text(judul, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87, fontSize: 14))),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
               Expanded(flex: 2, child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
+<<<<<<< HEAD
                   child: Text(activity.categoryName, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey.shade800, fontSize: 12, fontWeight: FontWeight.bold)),
+=======
+                  child: Text(kategori, style: TextStyle(color: Colors.grey.shade800, fontSize: 12, fontWeight: FontWeight.bold)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
                 ),
               )),
               Expanded(flex: 2, child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+<<<<<<< HEAD
                   decoration: BoxDecoration(color: (isSelesai ? Colors.green : Colors.orange).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
                   child: Text(isSelesai ? 'Selesai' : 'Draft', style: TextStyle(color: isSelesai ? Colors.green.shade700 : Colors.orange.shade800, fontSize: 12, fontWeight: FontWeight.bold)),
+=======
+                  decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                  child: Text(status, style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
                 ),
               )),
               Expanded(flex: 1, child: Align(
                 alignment: Alignment.center,
                 child: IconButton(
+<<<<<<< HEAD
                   icon: const Icon(Icons.visibility_outlined, color: Colors.grey, size: 22),
                   tooltip: 'Lihat Detail',
                   onPressed: onTap,
+=======
+                  icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 22),
+                  tooltip: 'Unduh Laporan PDF',
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sedang menyiapkan PDF: $judul...')));
+                  },
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
                 ),
               )),
             ],
@@ -1019,4 +1395,8 @@ class _TableRow extends StatelessWidget {
       ),
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 09f3f7672af38f1586915ec910e76884d1a96584
