@@ -506,19 +506,23 @@ class _AksiCepatKaca extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: KartuKaca(
         padding: EdgeInsets.symmetric(vertical: isMobile ? 16 : 20, horizontal: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: isMobile ? 26 : 30),
-            ),
-            const SizedBox(height: 12),
-            Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 14 : 15, fontWeight: FontWeight.w900, color: Colors.black87)),
-            const SizedBox(height: 2),
-            Text(sublabel, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: Colors.black54)),
-          ],
+        // FITTEDBOX DITAMBAHKAN DI SINI
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: isMobile ? 26 : 30),
+              ),
+              const SizedBox(height: 12),
+              Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 14 : 15, fontWeight: FontWeight.w900, color: Colors.black87)),
+              const SizedBox(height: 2),
+              Text(sublabel, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+            ],
+          ),
         ),
       ),
     );
@@ -563,7 +567,6 @@ class _BarisKegiatan extends StatelessWidget {
   }
 }
 
-
 // ========================================================
 // WIDGET UI KACA (MOBILE OPTIMIZED)
 // ========================================================
@@ -594,20 +597,25 @@ class StatCard extends StatelessWidget {
 
     return KartuKaca(
       padding: EdgeInsets.all(isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isMobile ? 10 : 14),
-            decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(isMobile ? 12 : 16)),
-            child: Icon(icon, color: color, size: isMobile ? 28 : 36),
-          ),
-          const SizedBox(height: 24),
-          Text(value, style: TextStyle(fontSize: isMobile ? 28 : 38, fontWeight: FontWeight.w900, color: Colors.black87, height: 1.2)),
-          const SizedBox(height: 4),
-          Text(label, style: TextStyle(fontSize: isMobile ? 13 : 16, color: Colors.grey.shade800, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-        ],
+      // FITTEDBOX DITAMBAHKAN DI SINI
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(isMobile ? 10 : 14),
+              decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(isMobile ? 12 : 16)),
+              child: Icon(icon, color: color, size: isMobile ? 28 : 36),
+            ),
+            const SizedBox(height: 24),
+            Text(value, style: TextStyle(fontSize: isMobile ? 28 : 38, fontWeight: FontWeight.w900, color: Colors.black87, height: 1.2)),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(fontSize: isMobile ? 13 : 16, color: Colors.grey.shade800, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        ),
       ),
     );
   }

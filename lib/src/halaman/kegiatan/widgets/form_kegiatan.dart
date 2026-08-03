@@ -1,7 +1,9 @@
-import 'dart:io'; // Tambahkan ini untuk tipe File
+import 'dart:io';
+import 'package:flutter/foundation.dart' hide Category; // Mengabaikan Category bawaan Flutter
+import 'dart:typed_data'; // Untuk Uint8List
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image_picker/image_picker.dart'; // Tambahkan ini
+import 'package:image_picker/image_picker.dart'; 
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -41,7 +43,8 @@ class _ActivityFormState extends State<ActivityForm> {
   double? _latitude;
   double? _longitude;
   
-  File? _photo; // Variabel penyimpan file foto
+  XFile? _photo; 
+  Uint8List? _photoBytes; 
   
   late final Future<List<String>> _garutDistricts;
   bool _saving = false;
@@ -57,12 +60,14 @@ class _ActivityFormState extends State<ActivityForm> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery, 
-      imageQuality: 70, // Kompres ukuran agar tidak terlalu besar
+      imageQuality: 70, 
     );
     
     if (pickedFile != null) {
+      final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _photo = File(pickedFile.path);
+        _photo = pickedFile;
+        _photoBytes = bytes;
       });
     }
   }
@@ -101,16 +106,18 @@ class _ActivityFormState extends State<ActivityForm> {
       String? photoUrl;
 
       // --- LOGIKA UPLOAD FOTO KE SUPABASE STORAGE ---
-      if (_photo != null) {
-        final fileExtension = _photo!.path.split('.').last;
+      if (_photo != null && _photoBytes != null) {
+        final fileExtension = _photo!.name.split('.').last;
         final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
         
-        // Sesuaikan 'activity_photos' dengan nama bucket di Supabase kamu
         await Supabase.instance.client.storage
             .from('activity_photos') 
-            .upload(fileName, _photo!);
+            .uploadBinary(
+              fileName, 
+              _photoBytes!,
+              fileOptions: const FileOptions(upsert: true),
+            );
             
-        // Ambil Public URL setelah berhasil diupload
         photoUrl = Supabase.instance.client.storage
             .from('activity_photos')
             .getPublicUrl(fileName);
@@ -119,7 +126,8 @@ class _ActivityFormState extends State<ActivityForm> {
       await widget.repository.create({
         'title': _title.text,
         'category_id': _categoryId,
-        'activity_date': DateFormat('yyyy-MM-dd').format(_date),
+        // DIPERBARUI: Menyimpan Tanggal + Jam & Menit ke Database
+        'activity_date': DateFormat('yyyy-MM-dd HH:mm:ss').format(_date),
         'location': _location.text,
         'latitude': _latitude,
         'longitude': _longitude,
@@ -134,7 +142,6 @@ class _ActivityFormState extends State<ActivityForm> {
         'obstacle': _obstacle.text,
         'follow_up': _followUp.text,
         'notes': _notes.text,
-        // Pastikan kolom ini ada di database Supabase kamu:
         if (photoUrl != null) 'photo_url': photoUrl, 
       });
       
@@ -146,7 +153,7 @@ class _ActivityFormState extends State<ActivityForm> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
       }
-    } on StorageException catch (error) { // Tangkap error upload gambar
+    } on StorageException catch (error) { 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal upload gambar: ${error.message}')));
       }
@@ -203,6 +210,7 @@ class _ActivityFormState extends State<ActivityForm> {
                             ),
                           ),
 
+                          // --- SEKSI TANGGAL & JAM PELAKSANAAN ---
                           Container(
                             margin: const EdgeInsets.only(bottom: 24),
                             decoration: BoxDecoration(
@@ -210,20 +218,40 @@ class _ActivityFormState extends State<ActivityForm> {
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: ListTile(
-                              title: const Text('Tanggal Pelaksanaan'),
+                              title: const Text('Tanggal & Waktu Pelaksanaan'),
                               subtitle: Text(
-                                DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(_date),
+                                DateFormat('EEEE, dd MMMM yyyy - HH:mm', 'id_ID').format(_date) + ' WIB',
                                 style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
                               ),
-                              trailing: const Icon(Icons.calendar_today, color: Color(0xFF2E7D32)),
+                              trailing: const Icon(Icons.access_time_filled_rounded, color: Color(0xFF2E7D32)),
                               onTap: () async {
-                                final picked = await showDatePicker(
+                                // 1. Pilih Tanggal
+                                final pickedDate = await showDatePicker(
                                   context: context,
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2100),
                                   initialDate: _date,
                                 );
-                                if (picked != null) setState(() => _date = picked);
+
+                                if (pickedDate != null && context.mounted) {
+                                  // 2. Pilih Jam
+                                  final pickedTime = await showTimePicker(
+                                    context: context,
+                                    initialTime: TimeOfDay.fromDateTime(_date),
+                                  );
+
+                                  if (pickedTime != null) {
+                                    setState(() {
+                                      _date = DateTime(
+                                        pickedDate.year,
+                                        pickedDate.month,
+                                        pickedDate.day,
+                                        pickedTime.hour,
+                                        pickedTime.minute,
+                                      );
+                                    });
+                                  }
+                                }
                               },
                             ),
                           ),
@@ -236,11 +264,11 @@ class _ActivityFormState extends State<ActivityForm> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (_photo != null)
+                              if (_photoBytes != null)
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(
-                                    _photo!,
+                                  child: Image.memory(
+                                    _photoBytes!,
                                     height: 200,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
@@ -268,7 +296,6 @@ class _ActivityFormState extends State<ActivityForm> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          // ------------------------------------
 
                           const Divider(color: Colors.black12),
                           const SizedBox(height: 16),
@@ -294,7 +321,7 @@ class _ActivityFormState extends State<ActivityForm> {
                               height: 200,
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
-                                child: LeafletMap(latitude: _latitude, longitude: _longitude),
+                                child: LeafletMap(latitude: _latitude!, longitude: _longitude!),
                               ),
                             ),
                             const SizedBox(height: 24),
