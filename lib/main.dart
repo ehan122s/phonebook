@@ -90,12 +90,26 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<AuthState>(
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
-        final hasSession = Supabase.instance.client.auth.currentSession != null;
+        // Ambil data state dan event saat ini
+        final authState = snapshot.data;
+        final hasSession = authState?.session != null;
+        final authEvent = authState?.event;
+
         if (snapshot.connectionState == ConnectionState.waiting && !hasSession) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
+
+        // --- TAMBAHAN LOGIKA PENCEGAHAN ---
+        // Jika user sedang mereset password (kode OTP berhasil),
+        // Supabase mengirimkan event passwordRecovery.
+        // Kita TAHAN agar tetap di HalamanLogin() supaya bisa memasukkan password baru.
+        if (authEvent == AuthChangeEvent.passwordRecovery) {
+          return const HalamanLogin();
+        }
+
+        // Jika event bukan pemulihan password, jalan seperti biasa:
         return hasSession ? const HalamanDashboard() : const HalamanLogin();
       },
     );
