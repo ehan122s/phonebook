@@ -48,20 +48,20 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
 
   @override
   Widget build(BuildContext context) => FutureBuilder<AppUser>(
-    future: _userRepository.current(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
-        return const Scaffold(
-          backgroundColor: Color(0xFFF4F7F6),
-          body: Center(
-            child: CircularProgressIndicator(color: Color(0xFF1B5E20)),
-          ),
-        );
-      }
-      if (snapshot.hasError) return _buildErrorState();
-      return _buildContent(context, snapshot.data!);
-    },
-  );
+        future: _userRepository.current(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Scaffold(
+              backgroundColor: Color(0xFFF4F7F6),
+              body: Center(
+                child: CircularProgressIndicator(color: Color(0xFF1B5E20)),
+              ),
+            );
+          }
+          if (snapshot.hasError) return _buildErrorState();
+          return _buildContent(context, snapshot.data!);
+        },
+      );
 
   Widget _buildErrorState() {
     return Scaffold(
@@ -304,8 +304,8 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                                           : Colors.transparent,
                                       borderRadius:
                                           const BorderRadius.horizontal(
-                                            right: Radius.circular(12),
-                                          ),
+                                        right: Radius.circular(12),
+                                      ),
                                       border: isSelected
                                           ? Border(
                                               right: BorderSide(
@@ -695,8 +695,9 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
                 final selisihHari = now.difference(a.activityDate).inDays;
                 if (selisihHari < 0 || selisihHari > 27) continue;
                 final indeksMinggu = 3 - (selisihHari ~/ 7);
-                if (indeksMinggu >= 0 && indeksMinggu < 4)
+                if (indeksMinggu >= 0 && indeksMinggu < 4) {
                   mingguCounts[indeksMinggu]++;
+                }
               }
               final maxMinggu = mingguCounts.reduce(max) == 0
                   ? 1
@@ -736,89 +737,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
                     const SizedBox(height: 24),
 
                     // QUICK ACTION MENUS
-                    if (isMobile)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _MobileIconMenu(
-                            title: 'Isi\nLaporan',
-                            icon: Icons.add,
-                            iconColor: Colors.green.shade700,
-                            iconBg: Colors.green.shade50,
-                            onTap: () => _tampilFormKegiatan(context),
-                          ),
-                          _MobileIconMenu(
-                            title: 'Laporan\nSaya',
-                            icon: Icons.description_rounded,
-                            iconColor: Colors.blue.shade700,
-                            iconBg: Colors.blue.shade50,
-                            onTap: () => widget.onNavigate(1),
-                          ),
-                          _MobileIconMenu(
-                            title: 'Materi\nEdukasi',
-                            icon: Icons.menu_book_rounded,
-                            iconColor: Colors.orange.shade700,
-                            iconBg: Colors.orange.shade50,
-                            onTap: () => widget.onNavigate(2),
-                          ),
-                          _MobileIconMenu(
-                            title: 'Profil\nAkun',
-                            icon: Icons.person_rounded,
-                            iconColor: Colors.purple.shade700,
-                            iconBg: Colors.purple.shade50,
-                            onTap: () => _bukaProfil(context),
-                          ),
-                        ],
-                      )
-                    else
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _QuickActionCard(
-                              title: 'Isi Laporan',
-                              subtitle: 'Catat Laporan Baru',
-                              icon: Icons.add,
-                              iconColor: Colors.green.shade700,
-                              iconBg: const Color(0xFFE8F5E9),
-                              onTap: () => _tampilFormKegiatan(context),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _QuickActionCard(
-                              title: 'Laporan Saya',
-                              subtitle: 'Riwayat Anda',
-                              icon: Icons.description_rounded,
-                              iconColor: Colors.blue.shade700,
-                              iconBg: const Color(0xFFE3F2FD),
-                              onTap: () => widget.onNavigate(1),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _QuickActionCard(
-                              title: 'Materi',
-                              subtitle: 'Buku & Modul',
-                              icon: Icons.menu_book_rounded,
-                              iconColor: Colors.orange.shade700,
-                              iconBg: const Color(0xFFFFF3E0),
-                              onTap: () => widget.onNavigate(2),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _QuickActionCard(
-                              title: 'Profil',
-                              subtitle: 'Pengaturan',
-                              icon: Icons.person_rounded,
-                              iconColor: Colors.purple.shade700,
-                              iconBg: const Color(0xFFF3E5F5),
-                              onTap: () => _bukaProfil(context),
-                            ),
-                          ),
-                        ],
-                      ),
                     if (isMobile)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1167,8 +1085,8 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
                           height: mingguCounts[i] == 0
                               ? 4.0
                               : (mingguCounts[i] / maxMinggu * 150)
-                                    .clamp(4.0, 150.0)
-                                    .toDouble(),
+                                  .clamp(4.0, 150.0)
+                                  .toDouble(),
                           color: i == 3
                               ? const Color(0xFF1B5E20)
                               : const Color(
