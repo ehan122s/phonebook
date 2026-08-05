@@ -36,6 +36,19 @@ class ActivityRepository {
         .toList();
   }
 
+  /// Ambil satu kegiatan berdasarkan id. Dipakai oleh route
+  /// `/kegiatan/:id` supaya halaman detail bisa dimuat ulang langsung
+  /// dari URL (mis. saat browser di-refresh), bukan cuma lewat objek
+  /// [Activity] yang dioper dari halaman daftar.
+  Future<Activity> getById(String id) async {
+    final row = await _client
+        .from('activities')
+        .select('*, categories(name), profiles(full_name)')
+        .eq('id', id)
+        .single();
+    return Activity.fromMap(row);
+  }
+
   Future<void> create(Map<String, dynamic> values) =>
       _client.from('activities').insert(values);
 
@@ -72,11 +85,38 @@ class ActivityRepository {
         .eq('id', file.id);
   }
 
-  Future<void> createReport(String activityId, String format) =>
-      _client.functions.invoke(
+  /// Memanggil Edge Function `generate-report` dan mengembalikan datanya
+  /// (biasanya berisi URL/path file hasil generate).
+  ///
+  /// Melempar [Exception] dengan pesan yang jelas kalau function gagal,
+  /// supaya UI bisa menampilkan alasan sebenarnya (bukan cuma "Exception").
+  Future<Map<String, dynamic>?> createReport(String activityId, String format) async {
+    final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
         'generate-report',
         body: {'activity_id': activityId, 'format': format},
       );
+    } on FunctionException catch (error) {
+      // Function mengembalikan status non-2xx
+      throw Exception(
+        'Edge Function generate-report gagal (status ${error.status}): ${error.details ?? error.reasonPhrase}',
+      );
+    }
+
+    if (response.status != 200) {
+      throw Exception(
+        'Edge Function generate-report mengembalikan status ${response.status}: ${response.data}',
+      );
+    }
+
+    final data = response.data;
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    // Kalau response bukan Map (mis. null atau string), kembalikan null
+    // supaya UI tetap bisa menampilkan pesan sukses generik.
+    return null;
+  }
 
   Future<void> delete(String activityId) =>
       _client.from('activities').delete().eq('id', activityId);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
@@ -16,7 +17,6 @@ import 'ringkasan.dart';
 import 'ringkasan_oversight.dart';
 import '../kegiatan/halaman_kegiatan.dart';
 import '../kegiatan/widgets/form_kegiatan.dart';
-import '../kegiatan/halaman_detail_kegiatan.dart';
 import '../admin/halaman_admin.dart' show HalamanAdminKatalog;
 import '../admin/halaman_admin_pengguna.dart';
 import '../profil/halaman_profil.dart';
@@ -660,14 +660,18 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
     );
   }
 
+  // Sebelumnya: Navigator.push(MaterialPageRoute(builder: (_) => HalamanDetailKegiatan(...)))
+  // Masalahnya, route seperti itu tidak tercermin di URL browser, jadi begitu
+  // user menekan refresh (F5), Flutter Web memuat ulang app dari nol dan
+  // Navigator kembali ke halaman awal (Dashboard) -- kesannya "data hilang",
+  // padahal datanya tetap ada di database.
+  //
+  // Sekarang kita pakai go_router: push ke '/kegiatan/<id>' supaya URL-nya
+  // ikut berubah. Kalau user refresh di halaman detail, browser akan
+  // membuka ulang persis '/kegiatan/<id>' tsb, dan HalamanDetailKegiatanLoader
+  // akan fetch ulang datanya dari Supabase berdasarkan id itu.
   void _bukaDetail(BuildContext context, Activity a) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            HalamanDetailKegiatan(activity: a, repository: widget.repository),
-      ),
-    ).then((_) => _refresh());
+    context.push('/kegiatan/${a.id}').then((_) => _refresh());
   }
 
   @override
