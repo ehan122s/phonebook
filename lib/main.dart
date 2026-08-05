@@ -3,6 +3,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
 
 import 'src/tema/tema_apk.dart';
 import 'src/widgets/glashmorp.dart';
@@ -20,11 +21,20 @@ Future<void> main() async {
   // refresh di URL selain '/' tidak menghasilkan 404 dari server.
   usePathUrlStrategy();
 
-  // TAMBAHKAN BARIS INI UNTUK MENGATASI LAYAR MERAH
+  // Mengatasi layar merah untuk format tanggal
   await initializeDateFormatting('id_ID', null);
 
-  const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  // Memuat file .env dengan try-catch agar tidak crash jika file belum ada/gagal dimuat
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint('File .env tidak ditemukan atau belum terdaftar di pubspec.yaml: $e');
+  }
+
+  // Mengambil nilai dari .env menggunakan dotenv.env
+  // Jika gagal dimuat, nilainya akan menjadi string kosong ('')
+  final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
   final isSupabaseConfigured = supabaseUrl.isNotEmpty &&
       supabaseAnonKey.isNotEmpty &&
@@ -147,7 +157,7 @@ class HalamanSetup extends StatelessWidget {
                     ),
                     SizedBox(height: 12),
                     Text(
-                      'Tambahkan SUPABASE_URL dan SUPABASE_ANON_KEY\nuntuk mengaktifkan aplikasi.',
+                      'Tambahkan SUPABASE_URL dan SUPABASE_ANON_KEY di file .env\nuntuk mengaktifkan aplikasi.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 16, color: Colors.black54, height: 1.5),
                     ),
