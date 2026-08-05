@@ -46,6 +46,55 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
     });
   }
 
+  // FUNGSI BARU: Menampilkan Dialog Konfirmasi Logout
+  void _tampilKonfirmasiLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.logout_rounded, color: Colors.red.shade400),
+              const SizedBox(width: 10),
+              const Text(
+                'Keluar Akun',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: const Text('Apakah Anda yakin ingin keluar dari aplikasi SIPENYULUH?'),
+          actionsPadding: const EdgeInsets.only(right: 20, bottom: 20),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext), // Tutup dialog
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey.shade700,
+              ),
+              child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext); // Tutup dialog dulu
+                Supabase.instance.client.auth.signOut(); // Lakukan proses logout
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text('Ya, Keluar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<AppUser>(
         future: _userRepository.current(),
@@ -349,8 +398,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         child: OutlinedButton.icon(
-                          onPressed: () =>
-                              Supabase.instance.client.auth.signOut(),
+                          onPressed: () => _tampilKonfirmasiLogout(context),
                           icon: const Icon(
                             Icons.logout_rounded,
                             size: 20,
@@ -475,8 +523,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                                 Material(
                                   color: Colors.transparent,
                                   child: InkWell(
-                                    onTap: () =>
-                                        Supabase.instance.client.auth.signOut(),
+                                    onTap: () => _tampilKonfirmasiLogout(context),
                                     borderRadius: BorderRadius.circular(50),
                                     child: Container(
                                       padding: const EdgeInsets.all(10),
@@ -539,26 +586,42 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                       ),
                     ),
 
-                    // ANIMASI GANTI TAB
+                    // ANIMASI GANTI TAB YANG BENAR-BENAR SMOOTH
                     Expanded(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 300),
+                        duration: const Duration(milliseconds: 350),
+                        reverseDuration: const Duration(milliseconds: 350),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder:
-                            (Widget child, Animation<double> animation) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0, 0.03),
-                                    end: Offset.zero,
-                                  ).animate(animation),
-                                  child: child,
-                                ),
-                              );
-                            },
-                        child: pages[_index],
+                        // Menumpuk halaman lama & baru sesaat agar transisi tidak kedap-kedip
+                        layoutBuilder: (currentChild, previousChildren) {
+                          return Stack(
+                            alignment: Alignment.topCenter,
+                            children: <Widget>[
+                              ...previousChildren,
+                              if (currentChild != null) currentChild,
+                            ],
+                          );
+                        },
+                        transitionBuilder: (child, animation) {
+                          // Efek Slide kentara dari bawah (8%) + Fade In
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.0, 0.08), 
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        // KEYEDSUBTREE: Trik ajaib agar Flutter PASTI selalu trigger animasinya 
+                        // walaupun tipe halaman yang dibuka mirip.
+                        child: KeyedSubtree(
+                          key: ValueKey<int>(_index),
+                          child: pages[_index],
+                        ),
                       ),
                     ),
                   ],
@@ -586,7 +649,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                     backgroundColor: Colors.white,
                     elevation: 0,
                     indicatorColor: const Color(0xFFE8F5E9),
-                    animationDuration: const Duration(milliseconds: 400),
+                    animationDuration: const Duration(milliseconds: 500),
                     destinations: [
                       for (int i = 0; i < titles.length; i++)
                         NavigationDestination(
