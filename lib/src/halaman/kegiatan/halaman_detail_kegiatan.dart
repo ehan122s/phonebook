@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/activity.dart';
 import '../../models/stored_file.dart';
@@ -16,7 +17,7 @@ class HalamanDetailKegiatan extends StatefulWidget {
   });
   final Activity activity;
   final ActivityRepository repository;
-  
+
   @override
   State<HalamanDetailKegiatan> createState() => _HalamanDetailKegiatanState();
 }
@@ -24,7 +25,7 @@ class HalamanDetailKegiatan extends StatefulWidget {
 class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
   late Future<List<StoredFile>> _documents;
   late Future<List<StoredFile>> _photos;
-  
+
   @override
   void initState() {
     super.initState();
@@ -92,7 +93,7 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Gunakan Grid/Wrap untuk responsivitas kolom Detail & Catatan
                   Wrap(
                     spacing: 24,
@@ -122,7 +123,7 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 32),
                   const Text('Peta Lokasi', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
@@ -136,7 +137,7 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
                   Row(
                     children: [
@@ -163,12 +164,12 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 48),
                   const Text('Dokumen Pendukung', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   _daftarMedia(_documents, false),
-                  
+
                   const SizedBox(height: 40),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -238,18 +239,37 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
     );
   }
 
+  // ---------------------------------------------------------------------
+  // DAFTAR MEDIA (dokumen & foto)
+  // ---------------------------------------------------------------------
+
   Widget _daftarMedia(Future<List<StoredFile>> future, bool isPhoto) =>
       FutureBuilder<List<StoredFile>>(
         future: future,
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return KartuKaca(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Gagal memuat ${isPhoto ? 'foto' : 'dokumen'}: ${snapshot.error}',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            );
+          }
           final items = snapshot.data ?? [];
           if (items.isEmpty) {
             return KartuKaca(
               padding: const EdgeInsets.all(32),
               child: Center(
                 child: Text(
-                  'Belum ada ${isPhoto ? 'foto' : 'dokumen'} yang diunggah.', 
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 16)
+                  'Belum ada ${isPhoto ? 'foto' : 'dokumen'} yang diunggah.',
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 16),
                 ),
               ),
             );
@@ -257,52 +277,161 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
           return Wrap(
             spacing: 16,
             runSpacing: 16,
-            children: items
-                .map(
-                  (file) => SizedBox(
-                    width: 350, // Agar sejajar di mode desktop
-                    child: KartuKaca(
-                      padding: const EdgeInsets.all(8),
-                      child: ListTile(
-                        leading: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            isPhoto ? Icons.image : Icons.description,
-                            color: isPhoto ? Colors.orange.shade700 : Colors.blue.shade700,
-                          ),
-                        ),
-                        title: Text(file.name, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () async {
-                            await widget.repository.deleteMedia(file, photo: isPhoto);
-                            setState(_muatUlang);
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
+            children: items.map((file) => _kartuMedia(file, isPhoto)).toList(),
           );
         },
       );
 
+  /// Kartu untuk satu file (dokumen atau foto).
+  /// Untuk foto, thumbnail asli diambil lewat signed URL dari Supabase Storage.
+  Widget _kartuMedia(StoredFile file, bool isPhoto) {
+    return FutureBuilder<String>(
+      future: widget.repository.signedUrl(file, photo: isPhoto),
+      builder: (context, urlSnapshot) {
+        final url = urlSnapshot.data;
+
+        Widget leading;
+        if (isPhoto && url != null) {
+          leading = ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              url,
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) => progress == null
+                  ? child
+                  : const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+              errorBuilder: (context, error, stack) => Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.broken_image, color: Colors.redAccent),
+              ),
+            ),
+          );
+        } else if (isPhoto) {
+          // Signed URL belum siap / masih loading
+          leading = Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        } else {
+          leading = Container(
+            width: 48,
+            height: 48,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.description, color: Colors.blue.shade700),
+          );
+        }
+
+        return SizedBox(
+          width: 350, // Agar sejajar di mode desktop
+          child: KartuKaca(
+            padding: const EdgeInsets.all(8),
+            child: ListTile(
+              leading: leading,
+              title: Text(
+                file.name,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: file.caption != null && file.caption!.isNotEmpty
+                  ? Text(file.caption!, maxLines: 1, overflow: TextOverflow.ellipsis)
+                  : null,
+              onTap: url == null ? null : () => _bukaFile(url),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                onPressed: () async {
+                  await widget.repository.deleteMedia(file, photo: isPhoto);
+                  if (mounted) setState(_muatUlang);
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _bukaFile(String url) async {
+    final uri = Uri.parse(url);
+    final berhasil = await canLaunchUrl(uri);
+    if (berhasil) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tidak bisa membuka file ini')),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // LAPORAN PDF / DOCX
+  // ---------------------------------------------------------------------
+
   Future<void> _buatLaporan(String format) async {
+    // Tampilkan indikator sedang proses supaya user tahu ini butuh waktu
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Membuat laporan $format...'), duration: const Duration(seconds: 2)),
+    );
     try {
-      await widget.repository.createReport(widget.activity.id, format);
+      final data = await widget.repository.createReport(widget.activity.id, format);
+
+      // Edge Function `generate-report` mengembalikan { report, download_url, file_name }
+      final url = data?['download_url'] as String?;
+
+      if (!mounted) return;
+
+      if (url == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Laporan berhasil dibuat, tapi URL unduhan tidak ditemukan')),
+        );
+        return;
+      }
+
+      // download_url sudah disertai parameter `download` dari server
+      // (Content-Disposition: attachment), jadi begitu dibuka browser akan
+      // langsung mengunduh filenya, bukan menampilkannya di tab baru.
+      await _bukaFile(url);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Laporan berhasil diunduh'),
+          action: SnackBarAction(label: 'Unduh lagi', onPressed: () => _bukaFile(url)),
+        ),
+      );
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Laporan $format berhasil dibuat')),
+          SnackBar(content: Text('Gagal membuat laporan: $error')),
         );
-      }
-    } on Exception catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
   }
