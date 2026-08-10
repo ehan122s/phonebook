@@ -45,10 +45,12 @@ dependencies:
   dio: ^5.5.0
   path_provider: ^2.1.4
   open_filex: ^4.4.0
-  syncfusion_flutter_pdfviewer: ^26.2.14
+  syncfusion_flutter_pdfviewer: ^31.1.17
   share_plus: ^10.0.0
   go_router: ^14.0.0
   flutter_dotenv: ^6.0.1
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:
