@@ -1,18 +1,29 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
+import 'package:flutter_file_downloader/flutter_file_downloader.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 /// Implementasi untuk platform native: Android, iOS, Windows, macOS, Linux.
 ///
-/// - Desktop (Windows/macOS/Linux): file langsung ditulis ke folder
-///   Downloads perangkat.
-/// - Android/iOS: menulis langsung ke folder Downloads publik butuh
-///   permission khusus (scoped storage). Supaya tetap simpel dan tidak
-///   perlu minta permission storage, file disimpan sementara lalu
-///   ditampilkan lewat share-sheet bawaan OS ("Simpan ke File" / Download),
-///   yang tetap membuat file berakhir di penyimpanan HP.
+/// PENTING — perubahan dari versi sebelumnya:
+/// Sebelumnya file diunduh dulu ke folder sementara lalu ditawarkan lewat
+/// share-sheet ("Bagikan ke...") supaya user pilih sendiri mau disimpan ke
+/// mana. Ternyata itu bukan yang diinginkan — maunya file LANGSUNG masuk ke
+/// folder Download tanpa dialog tambahan.
+///
+/// Untuk Android/iOS sekarang dipakai `flutter_file_downloader`, yang di
+/// balik layar memakai:
+/// - Android: `DownloadManager` bawaan OS (servis sistem yang sama dipakai
+///   browser untuk mengunduh file) — otomatis muncul di folder Download
+///   publik DAN di notification tray, tanpa perlu izin storage tambahan di
+///   Android 10+, dan jauh lebih tahan terhadap koneksi putus-nyambung
+///   dibanding http/Dio karena ditangani di level native OS.
+/// - iOS: tersimpan ke folder yang terlihat di app Files.
+///
+/// Desktop (Windows/macOS/Linux) tetap pakai Dio, karena di sana memang
+/// bisa langsung tulis ke folder Downloads tanpa kendala scoped storage.
 Future<void> downloadReport({
   required String url,
   required String fileName,
@@ -20,33 +31,83 @@ Future<void> downloadReport({
 }) async {
   onStatus('Mengunduh $fileName...');
 
-  final response = await http.get(Uri.parse(url));
-  if (response.statusCode != 200) {
-    throw Exception('Gagal mengunduh file (status ${response.statusCode})');
-  }
-
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    Directory? dir;
-    try {
-      dir = await getDownloadsDirectory();
-    } catch (_) {
-      dir = null;
-    }
-    dir ??= await getApplicationDocumentsDirectory();
-
-    final path = '${dir.path}${Platform.pathSeparator}$fileName';
-    final file = File(path);
-    await file.writeAsBytes(response.bodyBytes);
-    onStatus('Tersimpan di $path');
+    await _downloadDesktop(url: url, fileName: fileName, onStatus: onStatus);
     return;
   }
 
-  // Android / iOS
-  final tempDir = await getTemporaryDirectory();
-  final tempPath = '${tempDir.path}${Platform.pathSeparator}$fileName';
-  final tempFile = File(tempPath);
-  await tempFile.writeAsBytes(response.bodyBytes);
+  // Android / iOS — download langsung ke folder publik, tanpa share-sheet.
+  final completer = Completer<void>();
 
-  await Share.shareXFiles([XFile(tempPath)], text: fileName);
-  onStatus('Pilih "Simpan ke File" / folder Download pada menu berbagi untuk menyimpan laporan');
+  await FileDownloader.downloadFile(
+    url: url,
+    name: fileName,
+    onDownloadCompleted: (path) {
+      onStatus('Laporan tersimpan di folder Download!');
+      if (!completer.isCompleted) completer.complete();
+    },
+    onDownloadError: (errorMessage) {
+      if (!completer.isCompleted) {
+        completer.completeError(Exception(errorMessage));
+      }
+    },
+    // Notifikasi progres bawaan Android muncul otomatis di status bar,
+    // jadi tidak wajib pantau onProgress di sini — tapi tetap diteruskan
+    // ke onStatus untuk ditampilkan di dalam app juga.
+    onProgress: (fName, progress) {
+      onStatus('Mengunduh $fileName... ${progress.toStringAsFixed(0)}%');
+    },
+  );
+
+  return completer.future;
+}
+
+Future<void> _downloadDesktop({
+  required String url,
+  required String fileName,
+  required void Function(String message) onStatus,
+}) async {
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(minutes: 2),
+    ),
+  );
+
+  Directory? downloadsDir;
+  try {
+    downloadsDir = await getDownloadsDirectory();
+  } catch (_) {
+    downloadsDir = null;
+  }
+  downloadsDir ??= await getApplicationDocumentsDirectory();
+
+  final path = '${downloadsDir.path}${Platform.pathSeparator}$fileName';
+
+  Object? lastError;
+  for (var percobaan = 1; percobaan <= 3; percobaan++) {
+    try {
+      await dio.download(
+        url,
+        path,
+        options: Options(followRedirects: true, receiveDataWhenStatusError: true),
+      );
+      lastError = null;
+      break;
+    } catch (e) {
+      lastError = e;
+      final gagalFile = File(path);
+      if (await gagalFile.exists()) await gagalFile.delete();
+      if (percobaan < 3) {
+        onStatus('Koneksi terputus, mencoba lagi... ($percobaan/3)');
+        await Future.delayed(Duration(seconds: percobaan));
+      }
+    }
+  }
+
+  if (lastError != null) {
+    throw Exception('Gagal mengunduh file setelah beberapa percobaan: $lastError');
+  }
+
+  onStatus('Tersimpan di $path');
 }

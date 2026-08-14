@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/material_item.dart';
 import '../../services/material_repository.dart';
 import '../../services/report_downloader.dart'; // download file fisik -> benar2 masuk ke HP
-import '../../widgets/file_downloader.dart'; // openExternalUrl & downloadTextFile (sudah ada di project)
+import '../../widgets/file_downloader.dart' hide downloadReport;
 
 class HalamanMateriEdukasi extends StatefulWidget {
   const HalamanMateriEdukasi({super.key});
