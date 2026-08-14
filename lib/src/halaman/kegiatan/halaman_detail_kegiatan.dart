@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/activity.dart';
 import '../../models/stored_file.dart';
 import '../../services/activity_repository.dart';
+import '../../services/report_downloader.dart'; // BARU — pakai downloader native yang sudah ada
 import '../../widgets/glashmorp.dart';
 import '../../widgets/leaflet_map.dart'; // Sesuaikan lokasi file leaflet_map
 
@@ -25,6 +26,10 @@ class HalamanDetailKegiatan extends StatefulWidget {
 class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
   late Future<List<StoredFile>> _documents;
   late Future<List<StoredFile>> _photos;
+
+  // Supaya tombol "Buat Laporan PDF/Docx" tidak bisa ditekan dobel selagi
+  // proses generate + download masih berjalan.
+  bool _sedangBuatLaporan = false;
 
   @override
   void initState() {
@@ -143,8 +148,14 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                     children: [
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () => _buatLaporan('pdf'),
-                          icon: const Icon(Icons.picture_as_pdf),
+                          onPressed: _sedangBuatLaporan ? null : () => _buatLaporan('pdf'),
+                          icon: _sedangBuatLaporan
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.picture_as_pdf),
                           label: const Text('Buat Laporan PDF'),
                         ),
                       ),
@@ -153,7 +164,7 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
                         child: KartuKaca(
                           padding: EdgeInsets.zero,
                           child: OutlinedButton.icon(
-                            onPressed: () => _buatLaporan('docx'),
+                            onPressed: _sedangBuatLaporan ? null : () => _buatLaporan('docx'),
                             icon: const Icon(Icons.description),
                             label: const Text('Buat Word (Docx)'),
                             style: OutlinedButton.styleFrom(
@@ -379,6 +390,9 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
     );
   }
 
+  /// Dipakai untuk MEMBUKA (preview) dokumen/foto yang sudah diupload,
+  /// bukan untuk mengunduh laporan — itu sudah pindah ke [_buatLaporan]
+  /// yang memakai `report_downloader.dart`.
   Future<void> _bukaFile(String url) async {
     final uri = Uri.parse(url);
     final berhasil = await canLaunchUrl(uri);
@@ -396,15 +410,19 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
   // ---------------------------------------------------------------------
 
   Future<void> _buatLaporan(String format) async {
-    // Tampilkan indikator sedang proses supaya user tahu ini butuh waktu
+    setState(() => _sedangBuatLaporan = true);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Membuat laporan $format...'), duration: const Duration(seconds: 2)),
+      SnackBar(content: Text('Membuat laporan $format...'), duration: const Duration(seconds: 3)),
     );
+
     try {
+      // 1) Panggil Edge Function generate-report (lewat ActivityRepository,
+      //    yang sudah menangani error dengan pesan yang jelas).
       final data = await widget.repository.createReport(widget.activity.id, format);
 
-      // Edge Function `generate-report` mengembalikan { report, download_url, file_name }
       final url = data?['download_url'] as String?;
+      final fileName = (data?['file_name'] as String?) ??
+          'Laporan_${widget.activity.title}.$format';
 
       if (!mounted) return;
 
@@ -415,24 +433,28 @@ class _HalamanDetailKegiatanState extends State<HalamanDetailKegiatan> {
         return;
       }
 
-      // download_url sudah disertai parameter `download` dari server
-      // (Content-Disposition: attachment), jadi begitu dibuka browser akan
-      // langsung mengunduh filenya, bukan menampilkannya di tab baru.
-      await _bukaFile(url);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Laporan berhasil diunduh'),
-          action: SnackBarAction(label: 'Unduh lagi', onPressed: () => _bukaFile(url)),
-        ),
+      // 2) Simpan file ke perangkat lewat downloader native:
+      //    - Web    -> anchor-click download (report_downloader_web.dart)
+      //    - Mobile -> unduh lalu buka share-sheet "Simpan ke..." (report_downloader_io.dart)
+      //    - Desktop-> langsung ditulis ke folder Downloads
+      await downloadReport(
+        url: url,
+        fileName: fileName,
+        onStatus: (message) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: const Color(0xFF2E7D32)),
+          );
+        },
       );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuat laporan: $error')),
+          SnackBar(content: Text('Gagal membuat laporan: $error'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _sedangBuatLaporan = false);
     }
   }
 }
