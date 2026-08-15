@@ -69,7 +69,7 @@ class TemaAplikasi {
           TargetPlatform.android: SmoothPageTransitionsBuilder(),
           TargetPlatform.iOS: SmoothPageTransitionsBuilder(),
           TargetPlatform.linux: SmoothPageTransitionsBuilder(),
-          TargetPlatform.macOS: SmoothPageTransitionsBuilder(),
+          TargetPlatform.macOS: SmoothPageTransitionsBuilder(), 
           TargetPlatform.windows: SmoothPageTransitionsBuilder(),
         },
       ),

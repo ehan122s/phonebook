@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/material_item.dart';
 import '../../services/material_repository.dart';
-import '../../services/report_downloader.dart'; // download file fisik -> benar2 masuk ke HP
+import '../../services/report_downloader.dart'; 
 import '../../widgets/file_downloader.dart' hide downloadReport;
 
 class HalamanMateriEdukasi extends StatefulWidget {
@@ -20,18 +20,23 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
 
   String _query = '';
   String _kategori = 'Semua Kategori';
-  bool _isAdmin = false;
 
-  // -- state form upload --
+  String? _currentUserId;
+
+  // -- state form upload/edit --
   final TextEditingController _judulController = TextEditingController();
-  final TextEditingController _kategoriController = TextEditingController();
+  
+  // Variabel untuk menyimpan pilihan dropdown kategori, default 'KTH'
+  String _kategoriForm = 'KTH';
+  
   PlatformFile? _filePicked;
-  bool _sedangUpload = false;
+  bool _sedangProses = false;
 
   static const _badge = {
     'pdf': (label: 'PDF', color: Color(0xFFDC2626)),
     'word': (label: 'Word', color: Color(0xFF2563EB)),
     'excel': (label: 'Excel', color: Color(0xFF16A34A)),
+    'ppt': (label: 'PPT', color: Color(0xFFD97706)),
     'video': (label: 'Video', color: Color(0xFF7C3AED)),
     'image': (label: 'Gambar', color: Color(0xFF0891B2)),
     'other': (label: 'File', color: Color(0xFF6B7280)),
@@ -42,32 +47,31 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
     super.initState();
     _repository = MaterialRepository(Supabase.instance.client);
     _future = _repository.list();
-    _cekPeranAdmin();
+    _getCurrentUser();
   }
 
   @override
   void dispose() {
     _judulController.dispose();
-    _kategoriController.dispose();
     super.dispose();
   }
 
-  Future<void> _cekPeranAdmin() async {
+  Future<void> _getCurrentUser() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-    try {
-      final profil = await Supabase.instance.client
-          .from('profiles')
-          .select('role')
-          .eq('id', userId)
-          .single();
-      if (mounted) setState(() => _isAdmin = profil['role'] == 'admin');
-    } catch (_) {
-      // Default aman: tetap dianggap bukan admin kalau gagal cek
+    if (mounted) {
+      setState(() {
+        _currentUserId = userId;
+      });
     }
   }
 
-  Future<void> _refresh() async => setState(() => _future = _repository.list());
+  // FIX ERROR SETSTATE RETURNED FUTURE: 
+  // Mengubah cara penulisan setState agar tidak return nilai Future
+  Future<void> _refresh() async {
+    setState(() {
+      _future = _repository.list();
+    });
+  }
 
   // ---------------------------------------------------------------------
   // DOWNLOAD
@@ -81,10 +85,6 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
         final namaFile =
             '${item.title.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(RegExp(r'\s+'), '_')}.$ekstensi';
 
-        // Pakai downloader yang sama dengan Laporan Kegiatan supaya file
-        // benar-benar tersimpan ke perangkat (share-sheet native di mobile,
-        // folder Downloads di desktop, anchor-click di web) — bukan cuma
-        // dibuka via browser seperti openExternalUrl.
         await downloadReport(
           url: url,
           fileName: namaFile,
@@ -112,21 +112,20 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
   }
 
   // ---------------------------------------------------------------------
-  // UPLOAD (ADMIN ONLY — mengikuti RLS tabel materials & bucket materi-edukasi)
+  // UPLOAD & EDIT 
   // ---------------------------------------------------------------------
 
   Future<void> _pilihFile(StateSetter setDialogState) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: [
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-        'jpg', 'jpeg', 'png', 'mp4',
-      ],
+      allowedExtensions: ['doc', 'docx', 'ppt', 'pdf', 'xlx', 'xls', 'xlsx'],
       withData: true,
     );
 
     if (result != null && result.files.isNotEmpty) {
-      setDialogState(() => _filePicked = result.files.first);
+      setDialogState(() {
+        _filePicked = result.files.first;
+      });
       if (_judulController.text.trim().isEmpty) {
         final namaTanpaEkstensi = _filePicked!.name.replaceAll(
           RegExp(r'\.[^.]+$'),
@@ -146,15 +145,11 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
         return 'word';
       case 'xls':
       case 'xlsx':
-      case 'csv':
+      case 'xlx':
         return 'excel';
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-        return 'image';
-      case 'mp4':
-      case 'mov':
-        return 'video';
+      case 'ppt':
+      case 'pptx':
+        return 'ppt';
       default:
         return 'other';
     }
@@ -162,8 +157,7 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
 
   Future<void> _simpanMateriBaru() async {
     final String judul = _judulController.text.trim();
-    final String kategoriInput = _kategoriController.text.trim();
-    final String kategori = kategoriInput.isEmpty ? 'Umum' : kategoriInput;
+    final String kategori = _kategoriForm; // Dari Dropdown
 
     if (judul.isEmpty) {
       _tampilkanSnackbar('Judul materi tidak boleh kosong!', Colors.red);
@@ -174,7 +168,9 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
       return;
     }
 
-    setState(() => _sedangUpload = true);
+    setState(() {
+      _sedangProses = true;
+    });
 
     try {
       final ekstensi = _filePicked!.extension?.toLowerCase() ?? 'pdf';
@@ -185,38 +181,65 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
         fileType: _mapEkstensiKeFileType(ekstensi),
         fileName: _filePicked!.name,
         bytes: _filePicked!.bytes!,
+        uploadedBy: _currentUserId,
       );
 
-      _judulController.clear();
-      _kategoriController.clear();
-      _filePicked = null;
-      setState(() => _sedangUpload = false);
-
+      _resetForm();
       if (mounted) Navigator.pop(context);
       await _refresh();
-
-      if (mounted) {
-        _tampilkanSnackbar('Materi berhasil diupload!', const Color(0xFF1B5E20));
-      }
-    } on StorageException catch (e) {
-      setState(() => _sedangUpload = false);
-      _tampilkanSnackbar(
-        e.statusCode == '403'
-            ? 'Hanya admin yang dapat mengunggah materi.'
-            : 'Gagal upload file: ${e.message}',
-        Colors.red,
-      );
-    } on PostgrestException catch (e) {
-      setState(() => _sedangUpload = false);
-      _tampilkanSnackbar(
-        e.code == '42501'
-            ? 'Hanya admin yang dapat mengunggah materi.'
-            : 'Gagal menyimpan data materi: ${e.message}',
-        Colors.red,
-      );
+      _tampilkanSnackbar('Materi berhasil diupload!', const Color(0xFF1B5E20));
+      
     } catch (e) {
-      setState(() => _sedangUpload = false);
+      setState(() {
+        _sedangProses = false;
+      });
       _tampilkanSnackbar('Gagal menyimpan file: $e', Colors.red);
+    }
+  }
+
+  Future<void> _updateMateri(MaterialItem item) async {
+    final String judul = _judulController.text.trim();
+    final String kategori = _kategoriForm; // Dari Dropdown
+
+    if (judul.isEmpty) {
+      _tampilkanSnackbar('Judul materi tidak boleh kosong!', Colors.red);
+      return;
+    }
+
+    setState(() {
+      _sedangProses = true;
+    });
+
+    try {
+      await _repository.update(
+        id: item.id,
+        title: judul,
+        category: kategori,
+        newFileBytes: _filePicked?.bytes, 
+        newFileName: _filePicked?.name,
+        newFileType: _filePicked != null ? _mapEkstensiKeFileType(_filePicked!.extension ?? 'pdf') : null,
+      );
+
+      _resetForm();
+      if (mounted) Navigator.pop(context);
+      await _refresh();
+      _tampilkanSnackbar('Materi berhasil diperbarui!', const Color(0xFF1B5E20));
+
+    } catch (e) {
+      setState(() {
+        _sedangProses = false;
+      });
+      _tampilkanSnackbar('Gagal memperbarui file: $e', Colors.red);
+    }
+  }
+
+  Future<void> _hapusMateri(MaterialItem item) async {
+    try {
+      await _repository.delete(id: item.id, storagePath: item.storagePath);
+      await _refresh();
+      _tampilkanSnackbar('Materi berhasil dihapus!', const Color(0xFF1B5E20));
+    } catch (e) {
+      _tampilkanSnackbar('Gagal menghapus materi: $e', Colors.red);
     }
   }
 
@@ -227,15 +250,70 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
     );
   }
 
-  void _showFormUpload(BuildContext context) {
+  void _resetForm() {
+    _judulController.clear();
+    _kategoriForm = 'KTH';
+    _filePicked = null;
+    setState(() {
+      _sedangProses = false;
+    });
+  }
+
+  void _tampilkanDialogHapus(BuildContext context, MaterialItem item) {
     showDialog(
       context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Hapus Materi?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Materi ini akan dihapus secara permanen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Batal', style: TextStyle(color: Colors.grey.shade700)),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _hapusMateri(item);
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- FORM DIALOG DENGAN DROPDOWN ---
+  void _showFormDialog(BuildContext context, {MaterialItem? itemToEdit}) {
+    final bool isEdit = itemToEdit != null;
+    
+    // Daftar kategori yang tersedia di dropdown
+    final List<String> listKategori = [
+      'KTH',
+      'Pemberdayaan Masyarakat',
+      'Konservasi Hutan',
+      'RHL',
+      'Perlindungan Hutan',
+      'Umum'
+    ];
+    
+    if (isEdit) {
+      _judulController.text = itemToEdit.title;
+      _kategoriForm = listKategori.contains(itemToEdit.category) ? itemToEdit.category : 'KTH';
+    } else {
+      _resetForm();
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: !_sedangProses,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Upload Materi Baru',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            title: Text(isEdit ? 'Edit Materi' : 'Upload Materi Baru',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -244,6 +322,8 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                   Text('Bagikan modul, buku, atau panduan untuk penyuluh lain.',
                       style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
                   const SizedBox(height: 20),
+                  
+                  // 1. Text Field Judul
                   TextField(
                     controller: _judulController,
                     decoration: InputDecoration(
@@ -261,10 +341,12 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _kategoriController,
+                  
+                  // 2. DROPDOWN KATEGORI (Tinggal Pencet)
+                  DropdownButtonFormField<String>(
+                    value: _kategoriForm,
                     decoration: InputDecoration(
-                      labelText: 'Kategori (cth: KTH, Panduan, Jurnal)',
+                      labelText: 'Kategori',
                       filled: true,
                       fillColor: Colors.grey.shade50,
                       border: OutlineInputBorder(
@@ -276,12 +358,29 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                         borderSide: const BorderSide(color: Color(0xFF1B5E20), width: 2),
                       ),
                     ),
+                    items: listKategori
+                        .map((k) => DropdownMenuItem(
+                              value: k,
+                              child: Text(k),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() {
+                          _kategoriForm = val;
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 20),
+                  
+                  // 3. Tombol Pilih File
                   OutlinedButton.icon(
                     onPressed: () => _pilihFile(setDialogState),
                     icon: const Icon(Icons.upload_file_rounded),
-                    label: Text(_filePicked == null ? 'Pilih File' : 'Ganti File'),
+                    label: Text(_filePicked == null 
+                        ? (isEdit ? 'Ganti File (Opsional)' : 'Pilih File') 
+                        : 'Ganti File'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF1B5E20),
                       minimumSize: const Size.fromHeight(54),
@@ -289,7 +388,7 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                       side: const BorderSide(color: Color(0xFF1B5E20)),
                     ),
                   ),
-                  if (_filePicked != null) ...[
+                  if (_filePicked != null || (isEdit && itemToEdit.fileName.isNotEmpty)) ...[
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -304,7 +403,7 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _filePicked!.name,
+                              _filePicked?.name ?? itemToEdit!.fileName,
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -319,22 +418,24 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
             actionsPadding: const EdgeInsets.only(right: 20, bottom: 20),
             actions: [
               TextButton(
-                onPressed: _sedangUpload
+                onPressed: _sedangProses
                     ? null
                     : () {
-                        _judulController.clear();
-                        _kategoriController.clear();
-                        _filePicked = null;
+                        _resetForm();
                         Navigator.pop(context);
                       },
                 style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
                 child: const Text('Batal', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               FilledButton(
-                onPressed: _sedangUpload
+                onPressed: _sedangProses
                     ? null
                     : () async {
-                        await _simpanMateriBaru();
+                        if (isEdit) {
+                          await _updateMateri(itemToEdit);
+                        } else {
+                          await _simpanMateriBaru();
+                        }
                         setDialogState(() {});
                       },
                 style: FilledButton.styleFrom(
@@ -342,13 +443,13 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
-                child: _sedangUpload
+                child: _sedangProses
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Upload', style: TextStyle(fontWeight: FontWeight.bold)),
+                    : Text(isEdit ? 'Simpan' : 'Upload', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           );
@@ -358,22 +459,20 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
   }
 
   // ---------------------------------------------------------------------
-  // UI
+  // UI - LIST MATERI
   // ---------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: _isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: () => _showFormUpload(context),
-              backgroundColor: const Color(0xFF1B5E20),
-              icon: const Icon(Icons.cloud_upload_rounded, color: Colors.white),
-              label: const Text('Upload Materi',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showFormDialog(context),
+        backgroundColor: const Color(0xFF1B5E20),
+        icon: const Icon(Icons.cloud_upload_rounded, color: Colors.white),
+        label: const Text('Upload Materi',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
       body: RefreshIndicator(
         color: const Color(0xFF1B5E20),
         onRefresh: _refresh,
@@ -386,6 +485,7 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
               'Semua Kategori',
               ...semua.map((m) => m.category),
             }.toList();
+            
             final hasil = semua.where((m) {
               final cocokQuery =
                   _query.isEmpty || m.title.toLowerCase().contains(_query.toLowerCase());
@@ -394,8 +494,9 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
             }).toList();
 
             return ListView(
-              padding: EdgeInsets.fromLTRB(24, 24, 24, _isAdmin ? 96 : 24),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 96), 
               children: [
+                // Container Pencarian & Filter
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
@@ -413,7 +514,9 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                     builder: (context, constraints) {
                       final isMobileFilter = constraints.maxWidth < 560;
                       final search = TextField(
-                        onChanged: (v) => setState(() => _query = v),
+                        onChanged: (v) => setState(() {
+                          _query = v;
+                        }),
                         decoration: const InputDecoration(
                           icon: Icon(Icons.search, color: Colors.black45),
                           hintText: 'Cari nama modul / buku...',
@@ -430,7 +533,9 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                                     child: Text(k, style: const TextStyle(fontWeight: FontWeight.w600)),
                                   ))
                               .toList(),
-                          onChanged: (v) => setState(() => _kategori = v ?? 'Semua Kategori'),
+                          onChanged: (v) => setState(() {
+                            _kategori = v ?? 'Semua Kategori';
+                          }),
                         ),
                       );
                       if (isMobileFilter) {
@@ -465,6 +570,8 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                
+                // Loading atau List Kosong
                 if (isLoading)
                   const Padding(
                     padding: EdgeInsets.all(48),
@@ -479,6 +586,7 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                     ),
                   )
                 else
+                  // Grid Item Materi
                   LayoutBuilder(
                     builder: (context, constraints) {
                       final kolom =
@@ -491,11 +599,15 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                           crossAxisCount: kolom,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
-                          childAspectRatio: kolom == 1 ? 2.6 : 1.3,
+                          childAspectRatio: kolom == 1 ? 1.6 : 1.0, 
                         ),
                         itemBuilder: (context, i) {
                           final item = hasil[i];
                           final b = _badge[item.fileType] ?? _badge['other']!;
+                          
+                          final bool isOwnedByCurrentUser = item.uploadedBy != null && 
+                                                            item.uploadedBy == _currentUserId;
+
                           return Container(
                             padding: const EdgeInsets.all(18),
                             decoration: BoxDecoration(
@@ -558,6 +670,40 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                                         ],
                                       ),
                                     ),
+                                    if (isOwnedByCurrentUser)
+                                      PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        icon: const Icon(Icons.more_vert, color: Colors.grey),
+                                        onSelected: (value) {
+                                          if (value == 'edit') {
+                                            _showFormDialog(context, itemToEdit: item);
+                                          } else if (value == 'delete') {
+                                            _tampilkanDialogHapus(context, item);
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit_rounded, size: 18, color: Color(0xFF1B5E20)),
+                                                SizedBox(width: 8),
+                                                Text('Edit Materi'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.delete_rounded, size: 18, color: Colors.red),
+                                                SizedBox(width: 8),
+                                                Text('Hapus Materi', style: TextStyle(color: Colors.red)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                   ],
                                 ),
                                 const Spacer(),
@@ -567,6 +713,23 @@ class _HalamanMateriEdukasiState extends State<HalamanMateriEdukasi> {
                                   style: TextStyle(
                                       fontSize: 12.5, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
                                 ),
+                                const SizedBox(height: 2),
+                                // Menampilkan Nama Pengunggah (Uploader)
+                                Row(
+                                  children: [
+                                    Icon(Icons.person_outline_rounded, size: 14, color: Colors.grey.shade500),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        // PENTING: Memastikan uploaderName terisi
+                                        'Diunggah oleh: ${item.uploaderName != null && item.uploaderName!.isNotEmpty ? item.uploaderName : 'Tidak diketahui'}',
+                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                
                                 const SizedBox(height: 10),
                                 SizedBox(
                                   width: double.infinity,

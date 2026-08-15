@@ -9,13 +9,15 @@ class MaterialItem {
     this.storagePath,
     this.contentText,
     this.createdAt,
+    this.uploadedBy,
+    this.uploaderName,
   });
 
   final String id;
   final String title;
   final String category;
 
-  /// Salah satu dari: pdf | word | excel | video | image | other
+  /// Salah satu dari: pdf | word | excel | ppt | video | image | other
   /// (sesuai CHECK constraint kolom file_type di tabel materials).
   final String fileType;
   final String fileName;
@@ -26,9 +28,13 @@ class MaterialItem {
   final String? storagePath;
   final String? contentText;
   final DateTime? createdAt;
+  
+  // -- FIELD BARU UNTUK KEPEMILIKAN --
+  final String? uploadedBy;
+  final String? uploaderName;
 
   factory MaterialItem.fromMap(Map<String, dynamic> map) => MaterialItem(
-        id: map['id'] as String,
+        id: map['id'].toString(), // Pastikan id berupa string
         title: map['title'] as String,
         category: map['category'] as String? ?? 'Umum',
         fileType: map['file_type'] as String? ?? 'other',
@@ -38,6 +44,12 @@ class MaterialItem {
         contentText: map['content_text'] as String?,
         createdAt: map['created_at'] != null
             ? DateTime.tryParse(map['created_at'] as String)
+            : null,
+        // Mapping kolom user pengunggah
+        uploadedBy: map['uploaded_by'] as String?,
+        // Supabase mengembalikan relasi join sebagai nested map
+        uploaderName: map['profiles'] != null 
+            ? map['profiles']['name'] as String? 
             : null,
       );
 
@@ -50,6 +62,8 @@ class MaterialItem {
         return 'DOCX';
       case 'excel':
         return 'XLSX';
+      case 'ppt':
+        return 'PPTX';
       case 'video':
         return 'VIDEO';
       case 'image':
