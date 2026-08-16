@@ -14,7 +14,7 @@ class MaterialRepository {
       // Pastikan foreign key di tabel 'materials' kolom 'uploaded_by' merujuk ke tabel 'profiles'
       final rows = await _client
           .from('materials')
-          .select('*, profiles(name)')
+          .select('*, profiles(full_name)')
           .order('created_at', ascending: false);
           
       return (rows as List)

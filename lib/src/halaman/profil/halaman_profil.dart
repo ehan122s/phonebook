@@ -4,17 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/app_user.dart';
 import '../../widgets/glashmorp.dart';
 
-/// Halaman Profil — menampilkan data akun penyuluh yang sedang login.
-///
-/// Catatan penting (agar tidak ada fitur "palsu"):
-/// Kebijakan RLS pada tabel `profiles` (lihat supabase/schema.sql, policy
-/// "profiles admin write") hanya mengizinkan role `admin` melakukan
-/// insert/update/delete pada tabel profiles. Artinya seorang penyuluh
-/// TIDAK BISA mengubah nama/NIP/role dirinya sendiri langsung dari client,
-/// dan permintaan tersebut akan ditolak oleh database (403/RLS violation).
-/// Karena itu halaman ini menampilkan data secara read-only dan mengarahkan
-/// perubahan data ke admin, alih-alih membuat tombol "Simpan" yang akan
-/// selalu gagal diam-diam.
 class HalamanProfil extends StatelessWidget {
   const HalamanProfil({super.key, required this.user});
   final AppUser user;

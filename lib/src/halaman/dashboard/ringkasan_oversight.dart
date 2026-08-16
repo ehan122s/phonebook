@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/activity.dart';
 import '../../models/app_user.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart';
 import '../../widgets/glashmorp.dart';
 import '../../widgets/file_downloader.dart';
 import 'ringkasan.dart' show SectionTitle, StatCard, GrafikKegiatan;
@@ -53,7 +53,7 @@ class _KartuKegiatanReadOnly extends StatelessWidget {
 /// mengedit data milik orang lain.
 class HalamanArsipLaporan extends StatefulWidget {
   const HalamanArsipLaporan({super.key, required this.repository});
-  final ActivityRepository repository;
+final OfflineActivityRepository repository;
 
   @override
   State<HalamanArsipLaporan> createState() => _HalamanArsipLaporanState();
@@ -124,7 +124,7 @@ class _HalamanArsipLaporanState extends State<HalamanArsipLaporan> {
 /// ========================================================
 class HalamanRingkasanPengelola extends StatefulWidget {
   const HalamanRingkasanPengelola({super.key, required this.repository, required this.user});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   final AppUser user;
 
   @override
@@ -240,7 +240,7 @@ class _HalamanRingkasanPengelolaState extends State<HalamanRingkasanPengelola> {
 /// ========================================================
 class HalamanPetaKegiatan extends StatefulWidget {
   const HalamanPetaKegiatan({super.key, required this.repository});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
 
   @override
   State<HalamanPetaKegiatan> createState() => _HalamanPetaKegiatanState();
@@ -353,7 +353,7 @@ class _HalamanPetaKegiatanState extends State<HalamanPetaKegiatan> {
 /// ========================================================
 class HalamanRingkasanPenelaah extends StatefulWidget {
   const HalamanRingkasanPenelaah({super.key, required this.repository, required this.user});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   final AppUser user;
 
   @override
@@ -449,7 +449,7 @@ class _HalamanRingkasanPenelaahState extends State<HalamanRingkasanPenelaah> {
 /// ========================================================
 class HalamanStatistikKebijakan extends StatefulWidget {
   const HalamanStatistikKebijakan({super.key, required this.repository});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
 
   @override
   State<HalamanStatistikKebijakan> createState() => _HalamanStatistikKebijakanState();
@@ -545,7 +545,7 @@ class _HalamanStatistikKebijakanState extends State<HalamanStatistikKebijakan> {
 /// ========================================================
 class HalamanArsipPenyuluh extends StatefulWidget {
   const HalamanArsipPenyuluh({super.key, required this.repository});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
 
   @override
   State<HalamanArsipPenyuluh> createState() => _HalamanArsipPenyuluhState();

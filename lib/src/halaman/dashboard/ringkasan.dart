@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/activity.dart';
 import '../../models/app_user.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart';
 import '../../services/user_repository.dart';
 import '../../services/category_repository.dart';
 import '../../services/template_repository.dart';
@@ -23,7 +23,7 @@ import '../admin/halaman_admin_pengguna.dart';
 // ========================================================
 class HalamanRingkasanAdmin extends StatefulWidget {
   const HalamanRingkasanAdmin({super.key, required this.repository, required this.user, required this.userRepository});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   final AppUser user;
   final UserRepository userRepository;
 
@@ -267,7 +267,7 @@ class _AdminData {
 // ========================================================
 class HalamanRingkasanPenyuluh extends StatefulWidget {
   const HalamanRingkasanPenyuluh({super.key, required this.repository, required this.user});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   final AppUser user;
 
   @override

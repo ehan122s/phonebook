@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/category.dart';
-import '../../../services/activity_repository.dart';
+import '../../../services/offline_activity_repository.dart';
 import '../../../services/category_repository.dart';
 import '../../../services/garut_geojson_service.dart';
 import '../../../widgets/glashmorp.dart';
@@ -16,7 +16,7 @@ import '../../../widgets/leaflet_map.dart';
 
 class ActivityForm extends StatefulWidget {
   const ActivityForm({super.key, required this.repository});
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   
   @override
   State<ActivityForm> createState() => _ActivityFormState();

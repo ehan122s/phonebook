@@ -3,7 +3,8 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // <-- Pastikan ini ada
 
 import 'src/tema/tema_apk.dart';
 import 'src/widgets/glashmorp.dart';
@@ -12,27 +13,28 @@ import 'src/halaman/dashboard/dahsboard.dart';
 import 'src/halaman/kegiatan/halaman_detail_kegiatan.dart';
 import 'src/halaman/kegiatan/halaman_detail_kegiatan_loader.dart';
 
+// Import ini buat manggil repository lu
+import 'src/services/app_services.dart'; 
+import 'src/services/offline_queue_service.dart';
+import 'src/services/offline_activity_repository.dart';
+import 'src/services/connectivity_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Hilangkan '#' dari URL (pakai path murni: /kegiatan/id, bukan /#/kegiatan/id).
-  // Catatan: kalau di-deploy ke hosting statis, pastikan server dikonfigurasi
-  // untuk selalu mengarahkan semua path ke index.html (rewrite rule), supaya
-  // refresh di URL selain '/' tidak menghasilkan 404 dari server.
+  // Hilangkan '#' dari URL
   usePathUrlStrategy();
 
   // Mengatasi layar merah untuk format tanggal
   await initializeDateFormatting('id_ID', null);
 
-  // Memuat file .env dengan try-catch agar tidak crash jika file belum ada/gagal dimuat
+  // Memuat file .env
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     debugPrint('File .env tidak ditemukan atau belum terdaftar di pubspec.yaml: $e');
   }
 
-  // Mengambil nilai dari .env menggunakan dotenv.env
-  // Jika gagal dimuat, nilainya akan menjadi string kosong ('')
   final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
@@ -47,12 +49,20 @@ Future<void> main() async {
     );
   }
 
+  // =========================================================================
+  // KODE TAMBAHAN UNTUK FIX LAYAR MERAH (LATE INITIALIZATION ERROR)
+  // =========================================================================
+  // 1. Inisialisasi engine Hive buat nyimpen data di memori HP
+  await Hive.initFlutter();
+  
+  // 2. Buka "kotak" database lu sebelum UI-nya digambar ke layar
+  await AppServices.offlineQueueService.init();
+  // =========================================================================
+
   runApp(SipenyuluhApp(isSupabaseConfigured: isSupabaseConfigured));
 }
 
-/// Bungkus konten yang butuh login. Dipakai oleh setiap route yang
-/// memerlukan session aktif, supaya semua route (bukan cuma '/') konsisten
-/// menampilkan HalamanLogin kalau belum login / session hilang.
+/// Bungkus konten yang butuh login.
 class AuthGuard extends StatelessWidget {
   const AuthGuard({super.key, required this.builder});
   final WidgetBuilder builder;
@@ -73,9 +83,6 @@ class AuthGuard extends StatelessWidget {
           );
         }
 
-        // Jika user sedang mereset password (kode OTP berhasil),
-        // Supabase mengirimkan event passwordRecovery.
-        // Kita TAHAN agar tetap di HalamanLogin() supaya bisa memasukkan password baru.
         if (authEvent == AuthChangeEvent.passwordRecovery) {
           return const HalamanLogin();
         }

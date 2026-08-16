@@ -21,6 +21,7 @@ class Activity {
     this.notes,
     this.status,
     this.creatorName,
+    this.isPendingSync = false, // BARU — true kalau ini masih di antrian offline
   });
 
   final String id;
@@ -45,6 +46,11 @@ class Activity {
   final String? status;
   final String? creatorName;
 
+  /// BARU — true kalau kegiatan ini masih tersimpan lokal (belum berhasil
+  /// dikirim ke Supabase). ID-nya akan berupa "local_<timestamp>", bukan
+  /// UUID asli dari database.
+  final bool isPendingSync;
+
   factory Activity.fromMap(Map<String, dynamic> map) => Activity(
         id: map['id'] as String,
         title: map['title'] as String,
@@ -52,7 +58,8 @@ class Activity {
         village: map['village'] as String? ?? '',
         district: map['district'] as String? ?? '',
         regency: map['regency'] as String? ?? '',
-        categoryName: (map['categories'] as Map?)?['name'] as String? ?? '-',
+        categoryName: (map['categories'] as Map?)?['name'] as String? ??
+            (map['isPendingSync'] == true ? 'Menunggu sinkronisasi' : '-'),
         participantCount: map['participant_count'] as int? ?? 0,
         categoryId: map['category_id'] as String?,
         location: map['location'] as String?,
@@ -67,6 +74,7 @@ class Activity {
         notes: map['notes'] as String?,
         status: map['status'] as String?,
         creatorName: (map['profiles'] as Map?)?['full_name'] as String?,
+        isPendingSync: map['isPendingSync'] as bool? ?? false,
       );
 
   Map<String, dynamic> toMap() => {
@@ -133,6 +141,7 @@ class Activity {
     String? notes,
     String? status,
     String? creatorName,
+    bool? isPendingSync,
   }) {
     return Activity(
       id: id ?? this.id,
@@ -156,6 +165,7 @@ class Activity {
       notes: notes ?? this.notes,
       status: status ?? this.status,
       creatorName: creatorName ?? this.creatorName,
+      isPendingSync: isPendingSync ?? this.isPendingSync,
     );
   }
 }

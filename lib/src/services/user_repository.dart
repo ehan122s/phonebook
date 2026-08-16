@@ -1,36 +1,69 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../models/app_user.dart'; // Pastikan path ini sesuai
+import 'package:hive_flutter/hive_flutter.dart'; // <-- Tambahan untuk mode offline
+import '../models/app_user.dart';
 
 class UserRepository {
   UserRepository(this._client);
   final SupabaseClient _client;
 
-  // READ: Mengambil profil pengguna saat ini
+  // READ: Mengambil profil pengguna saat ini (Mendukung Mode Offline)
   Future<AppUser> current() async {
     final currentUser = _client.auth.currentUser;
     if (currentUser == null) {
       throw StateError('Sesi pengguna tidak aktif. Silakan masuk kembali.');
     }
 
-    final data = await _client
-        .from('profiles')
-        .select()
-        .eq('id', currentUser.id)
-        .maybeSingle();
-    if (data != null) return AppUser.fromMap(data);
+    // Buka kotak penyimpanan profil di memori HP
+    final box = await Hive.openBox<Map>('user_profile_cache');
 
-    final role = currentUser.userMetadata?['role'] as String? ?? 'penyuluh';
-    final fullName =
-        currentUser.userMetadata?['full_name'] as String? ??
-        currentUser.email?.split('@').first ??
-        'Penyuluh';
-    final profile = {
-      'id': currentUser.id,
-      'full_name': fullName,
-      'role': role,
-    };
-    await _client.from('profiles').upsert(profile, onConflict: 'id');
-    return AppUser.fromMap(profile);
+    try {
+      // 1. Coba ambil data terbaru dari server (Supabase)
+      final data = await _client
+          .from('profiles')
+          .select()
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+      if (data != null) {
+        // Kalau berhasil dapet dari internet, simpan/update ke HP (Cache)
+        await box.put(currentUser.id, data);
+        return AppUser.fromMap(data);
+      }
+
+      // 2. Jika profil di database kosong, buat dari metadata
+      final role = currentUser.userMetadata?['role'] as String? ?? 'penyuluh';
+      final fullName =
+          currentUser.userMetadata?['full_name'] as String? ??
+          currentUser.email?.split('@').first ??
+          'Penyuluh';
+      final profile = {
+        'id': currentUser.id,
+        'full_name': fullName,
+        'role': role,
+      };
+      
+      await _client.from('profiles').upsert(profile, onConflict: 'id');
+      
+      // Simpan juga ke HP
+      await box.put(currentUser.id, profile);
+      return AppUser.fromMap(profile);
+
+    } catch (e) {
+      // ==========================================================
+      // 3. JIKA ERROR (MISAL: TIDAK ADA INTERNET / OFFLINE)
+      // ==========================================================
+      // Jangan langsung bikin aplikasi error, cek dulu di kotak lokal HP!
+      final cachedData = box.get(currentUser.id);
+      
+      if (cachedData != null) {
+        // Data ketemu di HP! Ubah tipe datanya biar sesuai dan kembalikan
+        final mappedData = Map<String, dynamic>.from(cachedData);
+        return AppUser.fromMap(mappedData);
+      }
+
+      // Kalau di server gagal dan di HP juga belum pernah tersimpan:
+      throw StateError('Tidak bisa memuat profil saat offline. Pastikan Anda pernah login dengan koneksi internet sebelumnya.');
+    }
   }
 
   // READ: Menampilkan seluruh daftar pengguna
@@ -65,8 +98,8 @@ class UserRepository {
     required String email,
     required String password,
     required String fullName,
-    String? nip, // Ditambahkan agar support form
-    required String role, // Ditambahkan agar support form
+    String? nip, 
+    required String role, 
   }) => _invokeAdminUsers({
         'action': 'create',
         'email': email,

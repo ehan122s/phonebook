@@ -5,19 +5,15 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/activity.dart';
 import '../../models/stored_file.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart';
 import '../../services/report_downloader.dart'; // BARU — pakai downloader native yang sudah ada
 import '../../widgets/glashmorp.dart';
 import '../../widgets/leaflet_map.dart'; // Sesuaikan lokasi file leaflet_map
 
 class HalamanDetailKegiatan extends StatefulWidget {
-  const HalamanDetailKegiatan({
-    super.key,
-    required this.activity,
-    required this.repository,
-  });
+  const HalamanDetailKegiatan({super.key, required this.activity, required this.repository});
   final Activity activity;
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
 
   @override
   State<HalamanDetailKegiatan> createState() => _HalamanDetailKegiatanState();

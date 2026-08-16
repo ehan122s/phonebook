@@ -7,12 +7,12 @@ import 'dart:math';
 import '../../models/app_user.dart';
 import '../../models/activity.dart';
 import '../../models/material_item.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart';
+import '../../services/app_services.dart';
 import '../../services/user_repository.dart';
 import '../../services/material_repository.dart';
 import '../../widgets/file_downloader.dart';
 
-// Import halaman lain sesuaikan dengan struktur folder
 import 'ringkasan.dart';
 import 'ringkasan_oversight.dart';
 import '../kegiatan/halaman_kegiatan.dart';
@@ -29,14 +29,15 @@ class HalamanDashboard extends StatefulWidget {
 }
 
 class _HalamanDashboardState extends State<HalamanDashboard> {
-  late final ActivityRepository _repository;
+  late final OfflineActivityRepository _repository; 
   late final UserRepository _userRepository;
   int _index = 0;
 
   @override
   void initState() {
     super.initState();
-    _repository = ActivityRepository(Supabase.instance.client);
+    
+    _repository = AppServices.offlineActivityRepository; 
     _userRepository = UserRepository(Supabase.instance.client);
   }
 
@@ -46,7 +47,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
     });
   }
 
-  // FUNGSI BARU: Menampilkan Dialog Konfirmasi Logout
   void _tampilKonfirmasiLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -69,7 +69,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
           actionsPadding: const EdgeInsets.only(right: 20, bottom: 20),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext), // Tutup dialog
+              onPressed: () => Navigator.pop(dialogContext),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.grey.shade700,
               ),
@@ -77,8 +77,8 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext); // Tutup dialog dulu
-                Supabase.instance.client.auth.signOut(); // Lakukan proses logout
+                Navigator.pop(dialogContext);
+                Supabase.instance.client.auth.signOut();
               },
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
@@ -165,7 +165,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
     List<IconData> icons;
     Color warnaTema = const Color(0xFF1B5E20);
 
-    // LOGIKA ROLE
     switch (user.role) {
       case 'admin':
         titles = ['Beranda Admin', 'Semua Laporan', 'Pengguna', 'Pengaturan'];
@@ -252,7 +251,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
             repository: _repository,
             onNavigate: _pindahTab,
           ),
-          // INI FILE HALAMAN KEGIATAN YANG ADA DI FOLDER '../kegiatan/halaman_kegiatan.dart'
           HalamanKegiatan(
             key: const ValueKey('penyuluh_1'),
             repository: _repository,
@@ -272,7 +270,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
           backgroundColor: const Color(0xFFF8FAFC),
           body: Row(
             children: [
-              // SIDEBAR DESKTOP
               if (isDesktop)
                 Container(
                   width: 260,
@@ -427,11 +424,9 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                   ),
                 ),
 
-              // KONTEN UTAMA
               Expanded(
                 child: Column(
                   children: [
-                    // HEADER MODERN MOBILE & DESKTOP
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -453,7 +448,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            // BAGIAN KIRI: LOGO (Mobile) + JUDUL HALAMAN
                             Expanded(
                               child: Row(
                                 children: [
@@ -516,8 +510,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                                 ],
                               ),
                             ),
-
-                            // BAGIAN KANAN: TOMBOL LOGOUT & AVATAR
                             Row(
                               children: [
                                 Material(
@@ -586,14 +578,12 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                       ),
                     ),
 
-                    // ANIMASI GANTI TAB YANG BENAR-BENAR SMOOTH
                     Expanded(
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 350),
                         reverseDuration: const Duration(milliseconds: 350),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
-                        // Menumpuk halaman lama & baru sesaat agar transisi tidak kedap-kedip
                         layoutBuilder: (currentChild, previousChildren) {
                           return Stack(
                             alignment: Alignment.topCenter,
@@ -604,7 +594,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                           );
                         },
                         transitionBuilder: (child, animation) {
-                          // Efek Slide kentara dari bawah (8%) + Fade In
                           return FadeTransition(
                             opacity: animation,
                             child: SlideTransition(
@@ -616,8 +605,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
                             ),
                           );
                         },
-                        // KEYEDSUBTREE: Trik ajaib agar Flutter PASTI selalu trigger animasinya 
-                        // walaupun tipe halaman yang dibuka mirip.
                         child: KeyedSubtree(
                           key: ValueKey<int>(_index),
                           child: pages[_index],
@@ -630,7 +617,6 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
             ],
           ),
 
-          // NAVBAR MOBILE
           bottomNavigationBar: isDesktop
               ? null
               : Container(
@@ -676,13 +662,9 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
   }
 }
 
-// ============================================================================
-// WIDGET KONTEN DASHBOARD PENYULUH (INDEX 0) - TETAP DI SINI
-// ============================================================================
-
 class DashboardPenyuluhContent extends StatefulWidget {
   final AppUser user;
-  final ActivityRepository repository;
+  final OfflineActivityRepository repository;
   final Function(int) onNavigate;
 
   const DashboardPenyuluhContent({
@@ -723,16 +705,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
     );
   }
 
-  // Sebelumnya: Navigator.push(MaterialPageRoute(builder: (_) => HalamanDetailKegiatan(...)))
-  // Masalahnya, route seperti itu tidak tercermin di URL browser, jadi begitu
-  // user menekan refresh (F5), Flutter Web memuat ulang app dari nol dan
-  // Navigator kembali ke halaman awal (Dashboard) -- kesannya "data hilang",
-  // padahal datanya tetap ada di database.
-  //
-  // Sekarang kita pakai go_router: push ke '/kegiatan/<id>' supaya URL-nya
-  // ikut berubah. Kalau user refresh di halaman detail, browser akan
-  // membuka ulang persis '/kegiatan/<id>' tsb, dan HalamanDetailKegiatanLoader
-  // akan fetch ulang datanya dari Supabase berdasarkan id itu.
   void _bukaDetail(BuildContext context, Activity a) {
     context.push('/kegiatan/${a.id}').then((_) => _refresh());
   }
@@ -755,7 +727,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
               final totalLaporan = items.length;
               final terbaru = items.take(5).toList();
 
-              // Hitung tren 4 minggu terakhir dari data asli.
               final now = DateTime.now();
               final mingguCounts = List<int>.filled(4, 0);
               for (final a in items) {
@@ -778,7 +749,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // BANNER
                     Container(
                       padding: EdgeInsets.all(isMobile ? 24 : 32),
                       decoration: BoxDecoration(
@@ -803,7 +773,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
 
                     const SizedBox(height: 24),
 
-                    // QUICK ACTION MENUS
                     if (isMobile)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -899,7 +868,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
 
                     const SizedBox(height: 32),
 
-                    // TABEL KEGIATAN TERAKHIR (data asli)
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -1304,9 +1272,6 @@ class _DashboardPenyuluhContentState extends State<DashboardPenyuluhContent> {
   }
 }
 
-// ============================================================================
-// HALAMAN MATERI EDUKASI (INDEX 2)
-// ============================================================================
 class _MateriEdukasiFlat extends StatefulWidget {
   const _MateriEdukasiFlat({super.key});
 
@@ -1628,10 +1593,6 @@ class _MateriEdukasiFlatState extends State<_MateriEdukasiFlat> {
     );
   }
 }
-
-// ============================================================================
-// ANIMATED WIDGETS
-// ============================================================================
 
 class _ChartBar extends StatelessWidget {
   final String label;

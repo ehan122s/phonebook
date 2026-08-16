@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/activity.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart';
+import '../../services/app_services.dart';
 import 'halaman_detail_kegiatan.dart';
 
 /// Dipanggil oleh route `/kegiatan/:id`. Berbeda dari sebelumnya
@@ -20,13 +21,13 @@ class HalamanDetailKegiatanLoader extends StatefulWidget {
 }
 
 class _HalamanDetailKegiatanLoaderState extends State<HalamanDetailKegiatanLoader> {
-  late final ActivityRepository _repository;
+  late final OfflineActivityRepository _repository;
   late Future<Activity> _future;
 
   @override
   void initState() {
     super.initState();
-    _repository = ActivityRepository(Supabase.instance.client);
+    _repository = AppServices.offlineActivityRepository;
     _future = _repository.getById(widget.activityId);
   }
 

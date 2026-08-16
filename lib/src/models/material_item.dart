@@ -45,11 +45,9 @@ class MaterialItem {
         createdAt: map['created_at'] != null
             ? DateTime.tryParse(map['created_at'] as String)
             : null,
-        // Mapping kolom user pengunggah
         uploadedBy: map['uploaded_by'] as String?,
-        // Supabase mengembalikan relasi join sebagai nested map
         uploaderName: map['profiles'] != null 
-            ? map['profiles']['name'] as String? 
+            ? map['profiles']['full_name'] as String? 
             : null,
       );
 

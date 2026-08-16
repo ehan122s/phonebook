@@ -52,6 +52,19 @@ class ActivityRepository {
   Future<void> create(Map<String, dynamic> values) =>
       _client.from('activities').insert(values);
 
+  /// BARU — sama seperti [create], tapi mengembalikan `id` baris yang baru
+  /// dibuat. Dipakai oleh [OfflineActivityRepository] saat menyinkronkan
+  /// kegiatan dari antrian lokal, supaya file/foto yang tadinya nempel ke
+  /// id sementara bisa "dipindah" ke id asli ini.
+  Future<String> createAndReturnId(Map<String, dynamic> values) async {
+    final row = await _client
+        .from('activities')
+        .insert(values)
+        .select('id')
+        .single();
+    return row['id'] as String;
+  }
+
   Future<void> update(String id, Map<String, dynamic> values) =>
       _client.from('activities').update(values).eq('id', id);
 

@@ -3,87 +3,124 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../models/activity.dart';
-import '../../services/activity_repository.dart';
+import '../../services/offline_activity_repository.dart'; // GANTI dari activity_repository.dart
 import '../../widgets/glashmorp.dart';
+import '../../widgets/sync_status_banner.dart'; // BARU
 import 'halaman_detail_kegiatan.dart';
 
 class HalamanKegiatan extends StatefulWidget {
   const HalamanKegiatan({super.key, required this.repository});
-  final ActivityRepository repository;
-  
+  final OfflineActivityRepository repository; // GANTI tipe
+
   @override
   State<HalamanKegiatan> createState() => _HalamanKegiatanState();
 }
 
 class _HalamanKegiatanState extends State<HalamanKegiatan> {
   String _query = '';
+  late Future<List<Activity>> _future;
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<List<Activity>>(
-        future: widget.repository.list(query: _query),
-        builder: (_, snapshot) => ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-          children: [
-            // Search Bar dengan efek Glassmorphism
-            KartuKaca(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              borderRadius: 30,
-              child: TextField(
-                onChanged: (value) => setState(() => _query = value),
-                decoration: const InputDecoration(
-                  icon: Icon(Icons.search, color: Colors.black54),
-                  hintText: 'Cari kegiatan, desa, atau kecamatan...',
-                  border: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  filled: false,
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            
-            if (snapshot.connectionState == ConnectionState.waiting)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(48),
-                  child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-                ),
-              )
-            else if (snapshot.data?.isEmpty ?? true)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(48),
-                  child: Text(
-                    'Tidak ada kegiatan yang ditemukan.',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+  void initState() {
+    super.initState();
+    _muatUlang();
+  }
+
+  void _muatUlang() {
+    _future = widget.repository.list(query: _query);
+  }
+
+  Future<void> _refresh() async {
+    setState(_muatUlang);
+    await _future;
+  }
+
+  @override
+  Widget build(BuildContext context) => RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<List<Activity>>(
+          future: _future,
+          builder: (_, snapshot) => ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            children: [
+              // BARU — muncul otomatis kalau ada kegiatan/file yang
+              // masih menunggu sinkronisasi.
+              SyncStatusBanner(repository: widget.repository),
+
+              // Search Bar dengan efek Glassmorphism
+              KartuKaca(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                borderRadius: 30,
+                child: TextField(
+                  onChanged: (value) => setState(() {
+                    _query = value;
+                    _muatUlang();
+                  }),
+                  decoration: const InputDecoration(
+                    icon: Icon(Icons.search, color: Colors.black54),
+                    hintText: 'Cari kegiatan, desa, atau kecamatan...',
+                    border: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    filled: false,
                   ),
                 ),
-              )
-            else
-              // Menampilkan daftar kegiatan secara responsif menggunakan Wrap/Grid pada desktop, 
-              // namun ListView biasa sudah cukup baik jika itemnya lebar.
-              ...?snapshot.data?.map(
-                (activity) => Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: ItemKegiatanKaca(activity: activity, repository: widget.repository),
-                ),
               ),
-          ],
+              const SizedBox(height: 32),
+
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(48),
+                    child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+                  ),
+                )
+              else if (snapshot.data?.isEmpty ?? true)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(48),
+                    child: Text(
+                      'Tidak ada kegiatan yang ditemukan.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                    ),
+                  ),
+                )
+              else
+                ...?snapshot.data?.map(
+                  (activity) => Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: ItemKegiatanKaca(
+                      activity: activity,
+                      repository: widget.repository,
+                      onChanged: _refresh, // supaya list ke-refresh setelah delete, dll.
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       );
 }
 
 class ItemKegiatanKaca extends StatelessWidget {
-  const ItemKegiatanKaca({super.key, required this.activity, this.repository});
+  const ItemKegiatanKaca({
+    super.key,
+    required this.activity,
+    this.repository,
+    this.onChanged,
+  });
   final Activity activity;
-  final ActivityRepository? repository;
+  final OfflineActivityRepository? repository;
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) => KartuKaca(
         padding: const EdgeInsets.all(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: repository == null
+          // Kegiatan yang masih pending sinkron belum punya id asli, jadi
+          // detail (upload berkas, buat laporan, dll) belum bisa dibuka.
+          onTap: (repository == null || activity.isPendingSync)
               ? null
               : () => Navigator.push(
                     context,
@@ -102,11 +139,36 @@ class ItemKegiatanKaca extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.forest, color: Color(0xFF2E7D32), size: 30),
+              child: Icon(
+                activity.isPendingSync ? Icons.cloud_off_rounded : Icons.forest,
+                color: activity.isPendingSync ? Colors.orange : const Color(0xFF2E7D32),
+                size: 30,
+              ),
             ),
-            title: Text(
-              activity.title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.black87),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    activity.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.black87),
+                  ),
+                ),
+                if (activity.isPendingSync) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: const Text(
+                      'Belum Sinkron',
+                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ],
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 8.0),
@@ -116,12 +178,12 @@ class ItemKegiatanKaca extends StatelessWidget {
               ),
             ),
             isThreeLine: true,
-            trailing: repository == null
+            trailing: (repository == null || activity.isPendingSync)
                 ? null
                 : PopupMenuButton<String>(
                     icon: const Icon(Icons.more_vert, color: Colors.black54),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    color: Colors.white.withValues(alpha: 0.95), // Sedikit transparan
+                    color: Colors.white.withValues(alpha: 0.95),
                     itemBuilder: (_) => const [
                       PopupMenuItem(
                         value: 'upload',
@@ -168,6 +230,7 @@ class ItemKegiatanKaca extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Data kegiatan berhasil dihapus')));
       }
+      onChanged?.call();
       return;
     }
     if (value == 'upload') {
