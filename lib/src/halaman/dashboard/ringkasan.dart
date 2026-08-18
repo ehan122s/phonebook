@@ -16,6 +16,7 @@ import '../profil/halaman_profil.dart';
 import '../materi/halaman_materi.dart';
 import '../admin/halaman_admin.dart' show HalamanAdminKatalog;
 import '../admin/halaman_admin_pengguna.dart';
+import '../admin/halaman_admin_template_laporan.dart'; // BARU
 
 // ========================================================
 // 1. DASHBOARD KHUSUS ADMIN (SISTEM)
@@ -154,6 +155,16 @@ class _HalamanRingkasanAdminState extends State<HalamanRingkasanAdmin> {
                         appBar: AppBar(title: const Text('Semua Kegiatan'), backgroundColor: const Color(0xFF1B5E20), foregroundColor: Colors.white),
                         body: LatarBelakangGradien(child: HalamanKegiatan(repository: widget.repository)),
                       ))).then((_) => _refresh()),
+                    ),
+                    // BARU — jalan pintas ke halaman kelola Template Laporan
+                    QuickActionBtn(
+                      icon: Icons.description_rounded,
+                      label: 'Template\nLaporan',
+                      color: const Color(0xFF7B1FA2),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HalamanAdminTemplateLaporan()),
+                      ).then((_) => _refresh()),
                     ),
                   ],
                 ),

@@ -47,12 +47,20 @@ class _ActivityFormState extends State<ActivityForm> {
   Uint8List? _photoBytes; 
   
   late final Future<List<String>> _garutDistricts;
+  // BARU — di-fetch SEKALI di initState (sama seperti _garutDistricts di
+  // atas), bukan dipanggil ulang setiap kali widget ini rebuild. Sebelumnya
+  // ini dipanggil langsung di dalam build() lewat FutureBuilder(future: ...),
+  // yang bikin Supabase di-query ULANG dan dropdown-nya sempat kosong lagi
+  // setiap kali field lain diisi (pilih tanggal, ambil lokasi, dst) --
+  // itulah yang bikin kategori kelihatan "tidak bisa dipilih".
+  late final Future<List<Category>> _categories;
   bool _saving = false;
   
   @override
   void initState() {
     super.initState();
     _garutDistricts = GarutGeoJsonService().districts();
+    _categories = CategoryRepository(Supabase.instance.client).list(); // BARU
   }
 
   // --- FUNGSI PILIH FOTO ---
@@ -192,12 +200,22 @@ class _ActivityFormState extends State<ActivityForm> {
                           _inputTeks(_title, 'Judul Kegiatan'),
                           
                           FutureBuilder<List<Category>>(
-                            future: CategoryRepository(Supabase.instance.client).list(),
+                            future: _categories, // GANTI — pakai Future yang di-cache, bukan query baru tiap rebuild
                             builder: (context, snapshot) => Padding(
                               padding: const EdgeInsets.only(bottom: 16),
                               child: DropdownButtonFormField<String>(
                                 initialValue: _categoryId,
-                                decoration: const InputDecoration(labelText: 'Jenis Kegiatan'),
+                                decoration: InputDecoration(
+                                  labelText: 'Jenis Kegiatan',
+                                  // BARU — kasih tahu user kalau lagi loading / gagal,
+                                  // jangan diam-diam kosong tanpa penjelasan.
+                                  helperText: snapshot.connectionState == ConnectionState.waiting
+                                      ? 'Memuat daftar kategori...'
+                                      : snapshot.hasError
+                                          ? 'Gagal memuat kategori: ${snapshot.error}'
+                                          : null,
+                                  helperMaxLines: 2,
+                                ),
                                 items: snapshot.data?.map(
                                   (category) => DropdownMenuItem(
                                     value: category.id,

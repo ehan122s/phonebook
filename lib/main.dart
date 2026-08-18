@@ -56,7 +56,7 @@ Future<void> main() async {
   await Hive.initFlutter();
   
   // 2. Buka "kotak" database lu sebelum UI-nya digambar ke layar
-  await AppServices.offlineQueueService.init();
+  await AppServices.init();
   // =========================================================================
 
   runApp(SipenyuluhApp(isSupabaseConfigured: isSupabaseConfigured));

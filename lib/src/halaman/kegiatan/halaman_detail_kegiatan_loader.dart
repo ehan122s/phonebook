@@ -27,7 +27,7 @@ class _HalamanDetailKegiatanLoaderState extends State<HalamanDetailKegiatanLoade
   @override
   void initState() {
     super.initState();
-    _repository = AppServices.offlineActivityRepository;
+    _repository = AppServices.activityRepository;
     _future = _repository.getById(widget.activityId);
   }
 

@@ -37,7 +37,7 @@ class _HalamanDashboardState extends State<HalamanDashboard> {
   void initState() {
     super.initState();
     
-    _repository = AppServices.offlineActivityRepository; 
+    _repository = AppServices.activityRepository; 
     _userRepository = UserRepository(Supabase.instance.client);
   }
 
