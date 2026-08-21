@@ -230,7 +230,7 @@ class OfflineActivityRepository {
         } catch (_) {
           failed++;
         }
-      }
+      } 
     } finally {
       _sedangSinkron = false;
       _refreshPendingCount();

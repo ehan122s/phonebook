@@ -413,7 +413,12 @@ class _ActivityFormState extends State<ActivityForm> {
                     const SizedBox(width: 16),
                     FilledButton(
                       onPressed: _saving ? null : _simpan,
-                      child: Text(_saving ? 'Menyimpan...' : 'Simpan Kegiatan'),
+                      child: Text(_saving ? 'Menyimpan...' : 'Simpan Kegiatan'
+                      
+                      
+                      
+                      
+                      ),
                     ),
                   ],
                 ),
@@ -436,6 +441,7 @@ class _ActivityFormState extends State<ActivityForm> {
         padding: const EdgeInsets.only(bottom: 16),
         child: TextFormField(
           controller: controller,
+
           maxLines: baris,
           decoration: InputDecoration(labelText: label),
         ),

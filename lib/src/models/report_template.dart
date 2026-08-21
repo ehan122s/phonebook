@@ -9,7 +9,7 @@ class ReportTemplate {
   });
   final String id;
   final String name;
-  final String? logoPath; // BARU — path file logo di bucket 'report-template-logos'
+  final String? logoPath; 
   final String? headerHtml;
   final String? bodyHtml;
   final bool isActive;
