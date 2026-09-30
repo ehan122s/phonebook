@@ -66,9 +66,12 @@ class ScheduleController extends Controller
             'location' => $validated['location'] ?? null,
             'description' => $validated['description'] ?? null,
             'reminder_enabled' => $reminderEnabled,
+
+            // Otomatis reminder pukul 00:00 pada tanggal kegiatan
             'reminder_at' => $reminderEnabled
                 ? Carbon::parse($validated['date'])->startOfDay()
                 : null,
+
             'whatsapp_sent' => false,
         ]);
 
@@ -111,9 +114,13 @@ class ScheduleController extends Controller
             'location' => $validated['location'] ?? null,
             'description' => $validated['description'] ?? null,
             'reminder_enabled' => $reminderEnabled,
+
+            // Reset reminder mengikuti tanggal baru
             'reminder_at' => $reminderEnabled
                 ? Carbon::parse($validated['date'])->startOfDay()
                 : null,
+
+            // Jadwal berubah, maka reminder bisa dikirim kembali
             'whatsapp_sent' => false,
         ]);
 

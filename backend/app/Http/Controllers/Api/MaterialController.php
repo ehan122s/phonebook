@@ -42,8 +42,8 @@ class MaterialController extends Controller
 
     public function store(Request $request)
     {
+        
         $validated = $request->validate([
-            'user_id' => 'required|exists:users,id',
             'category_id' => 'nullable|exists:categories,id',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -55,7 +55,7 @@ class MaterialController extends Controller
         $path = $file->store('materials', 'public');
 
         $material = Material::create([
-            'user_id' => $validated['user_id'],
+            'user_id' => $request->user()->id,
             'category_id' => $validated['category_id'] ?? null,
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
@@ -73,7 +73,8 @@ class MaterialController extends Controller
 
     public function update(Request $request, $id)
     {
-        $material = Material::find($id);
+        $material = Material::where('user_id', $request->user()->id)
+            ->find($id);
 
         if (!$material) {
             return response()->json([
@@ -114,9 +115,10 @@ class MaterialController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $material = Material::find($id);
+        $material = Material::where('user_id', $request->user()->id)
+            ->find($id);
 
         if (!$material) {
             return response()->json([
