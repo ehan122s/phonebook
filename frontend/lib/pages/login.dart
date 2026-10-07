@@ -54,26 +54,34 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      if (response.statusCode == 200 && data['token'] != null) {
+      if (response.statusCode == 200 &&
+          data['success'] == true &&
+          data['data']?['token'] != null) {
         final prefs = await SharedPreferences.getInstance();
 
-        await prefs.setString('token', data['token']);
+        await prefs.setString(
+          'token',
+          data['data']['token'],
+        );
+
         await prefs.setString(
           'name',
-          data['user']?['name'] ?? '',
+          data['data']['user']?['name'] ?? '',
         );
+
         await prefs.setString(
           'email',
-          data['user']?['email'] ?? emailController.text.trim(),
+          data['data']['user']?['email'] ??
+              emailController.text.trim(),
         );
 
         if (!mounted) return;
 
-        Navigator.pushReplacement(
-          context,
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => const HomePage(),
           ),
+          (route) => false,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -89,7 +97,9 @@ class _LoginPageState extends State<LoginPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Gagal terhubung ke server: $e'),
+          content: Text(
+            'Gagal terhubung ke server: $e',
+          ),
         ),
       );
     } finally {
@@ -172,7 +182,9 @@ class _LoginPageState extends State<LoginPage> {
                       obscureText: obscurePassword,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
+                        prefixIcon: const Icon(
+                          Icons.lock_outline,
+                        ),
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -182,7 +194,8 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           onPressed: () {
                             setState(() {
-                              obscurePassword = !obscurePassword;
+                              obscurePassword =
+                                  !obscurePassword;
                             });
                           },
                         ),
@@ -200,7 +213,8 @@ class _LoginPageState extends State<LoginPage> {
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child: CircularProgressIndicator(
+                                child:
+                                    CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
                               )
