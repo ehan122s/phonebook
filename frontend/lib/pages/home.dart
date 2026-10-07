@@ -5,7 +5,6 @@ import 'laporan.dart';
 import 'jadwal.dart';
 import 'materi.dart';
 
-import '../widgets/bottom_nav.dart';
 import '../widgets/logout_button.dart';
 
 class HomePage extends StatefulWidget {
@@ -18,37 +17,51 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
-  final List<Widget> pages = const [
-    DashboardPage(),
-    LaporanPage(),
-    JadwalPage(),
-    MateriPage(),
-  ];
-
-  void changePage(int index) {
-    setState(() {
-      selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      DashboardPage(),
+      const LaporanPage(),
+      const JadwalPage(),
+      const MateriPage(),
+    ];
+
     return Scaffold(
       body: Stack(
         children: [
-          IndexedStack(
-            index: selectedIndex,
-            children: pages,
-          ),
+          pages[selectedIndex],
 
           const LogoutButton(),
+        ],
+      ),
 
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: BottomNav(
-              selectedIndex: selectedIndex,
-              onChanged: changePage,
-            ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.description_outlined),
+            selectedIcon: Icon(Icons.description),
+            label: 'Laporan',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Jadwal',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: 'Materi',
           ),
         ],
       ),
