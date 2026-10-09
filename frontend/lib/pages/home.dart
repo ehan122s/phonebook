@@ -30,11 +30,14 @@ class _HomePageState extends State<HomePage> {
       body: Stack(
         children: [
           pages[selectedIndex],
-
-          const LogoutButton(),
+      
+          Positioned(
+            right: 16,
+            bottom: 12,
+            child: const LogoutButton(),
+          ),
         ],
       ),
-
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {

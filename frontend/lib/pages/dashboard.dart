@@ -14,61 +14,74 @@ class DashboardPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
+        padding: const EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          110,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // =========================
+            // WELCOME
+            // =========================
             SizedBox(
               height: 190,
+              width: double.infinity,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(24),
-                child: Stack(
-                  children: [
-                    Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF2E7D32),
-                            Color(0xFF66BB6A),
-                          ],
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF2E7D32),
+                        Color(0xFF66BB6A),
+                      ],
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      mainAxisAlignment:
+                          MainAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Selamat Datang 👋',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 25,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Selamat Datang 👋',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 25,
-                              fontWeight: FontWeight.bold,
+                        const SizedBox(height: 8),
+                        Text(
+                          'Kelola kegiatan dan laporan\n'
+                          'lapangan dengan mudah.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(
+                              alpha: 0.9,
                             ),
+                            fontSize: 15,
+                            height: 1.4,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Kelola kegiatan dan laporan\nlapangan dengan mudah.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontSize: 15,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
 
             const SizedBox(height: 22),
 
+            // =========================
+            // RINGKASAN
+            // =========================
             const Text(
               'Ringkasan',
               style: TextStyle(
@@ -101,8 +114,11 @@ class DashboardPage extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 26),
 
+            // =========================
+            // MENU UTAMA
+            // =========================
             const Text(
               'Menu Utama',
               style: TextStyle(
@@ -116,10 +132,15 @@ class DashboardPage extends StatelessWidget {
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics:
+                  const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 1.05,
+
+              // Kartu dibuat sedikit lebih tinggi
+              // karena icon sekarang berada di atas.
+              childAspectRatio: 0.92,
+
               children: [
                 AnimatedMenuCard(
                   icon: Icons.description_outlined,
@@ -127,24 +148,33 @@ class DashboardPage extends StatelessWidget {
                   subtitle: 'Buat laporan kegiatan',
                   color: const Color(0xFF2E7D32),
                   background: const Color(0xFFE8F5E9),
-                  onTap: () => onNavigate?.call(1),
+                  onTap: () {
+                    onNavigate?.call(1);
+                  },
                 ),
+
                 AnimatedMenuCard(
                   icon: Icons.calendar_month_outlined,
                   title: 'Jadwal',
                   subtitle: 'Lihat jadwal kegiatan',
                   color: const Color(0xFF1976D2),
                   background: const Color(0xFFE3F2FD),
-                  onTap: () => onNavigate?.call(2),
+                  onTap: () {
+                    onNavigate?.call(2);
+                  },
                 ),
+
                 AnimatedMenuCard(
                   icon: Icons.menu_book_outlined,
                   title: 'Materi',
                   subtitle: 'Materi penyuluhan',
                   color: const Color(0xFFF57C00),
                   background: const Color(0xFFFFF3E0),
-                  onTap: () => onNavigate?.call(3),
+                  onTap: () {
+                    onNavigate?.call(3);
+                  },
                 ),
+
                 AnimatedMenuCard(
                   icon: Icons.folder_outlined,
                   title: 'Kategori',
@@ -158,16 +188,26 @@ class DashboardPage extends StatelessWidget {
 
             const SizedBox(height: 24),
 
+            // =========================
+            // LIHAT SELENGKAPNYA
+            // =========================
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: () {},
                 icon: const Icon(Icons.apps),
-                label: const Text('Lihat Selengkapnya'),
+                label: const Text(
+                  'Lihat Selengkapnya',
+                ),
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                  padding:
+                      const EdgeInsets.symmetric(
+                    vertical: 15,
+                  ),
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(14),
                   ),
                 ),
               ),
@@ -178,6 +218,10 @@ class DashboardPage extends StatelessWidget {
     );
   }
 }
+
+// =====================================================
+// STAT CARD
+// =====================================================
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
@@ -201,7 +245,9 @@ class _StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(
+              alpha: 0.05,
+            ),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -212,18 +258,24 @@ class _StatCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: color.withValues(
+                alpha: 0.1,
+              ),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
               color: color,
             ),
           ),
+
           const SizedBox(width: 10),
+
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
