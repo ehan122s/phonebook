@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../constants/laporan_constants.dart';
+import 'offline_database.dart';
 
-const String _baseUrl = 'http://127.0.0.1:8001';
+/// Base URL for the Laravel API.
+const String baseUrl = 'http://127.0.0.1:8001';
 
 /// Service class that handles all report-related API calls.
 class LaporanService {
@@ -14,7 +16,7 @@ class LaporanService {
     String token,
   ) async {
     final response = await http.get(
-      Uri.parse('$_baseUrl/api/reports'),
+      Uri.parse('$baseUrl/api/reports'),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -70,8 +72,8 @@ class LaporanService {
     final isEditing = existingId != null;
 
     final uri = isEditing
-        ? Uri.parse('$_baseUrl/api/reports/$existingId')
-        : Uri.parse('$_baseUrl/api/reports');
+        ? Uri.parse('$baseUrl/api/reports/$existingId')
+        : Uri.parse('$baseUrl/api/reports');
 
     final headers = {
       'Accept': 'application/json',
@@ -100,7 +102,7 @@ class LaporanService {
     dynamic id,
   ) async {
     final response = await http.delete(
-      Uri.parse('$_baseUrl/api/reports/$id'),
+      Uri.parse('$baseUrl/api/reports/$id'),
       headers: {
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
@@ -113,5 +115,29 @@ class LaporanService {
         '${response.body}',
       );
     }
+  }
+
+  /// Saves a report locally for offline use.
+  ///
+  /// The report is stored in the local SQLite database and will be
+  /// synchronised with the server once connectivity is restored.
+  static Future<int> saveOffline({
+    required Map<String, dynamic> payload,
+    required String jenisLaporan,
+  }) async {
+    final data = <String, dynamic>{
+      'title': payload['title'],
+      'activity_date': payload['activity_date'],
+      'location': payload['location'],
+      'description': payload['description'],
+      'latitude': payload['latitude'],
+      'longitude': payload['longitude'],
+      'category_id': payload['category_id'],
+      'status': payload['status'] ?? 'draft',
+      'jenis_laporan': jenisLaporan,
+      'sync_status': 'pending',
+    };
+
+    return OfflineDatabase.instance.insertReport(data);
   }
 }

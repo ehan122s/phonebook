@@ -4,6 +4,7 @@
   import 'package:shared_preferences/shared_preferences.dart';
 
   import '../../constants/laporan_constants.dart';
+  import '../../services/connectivity_service.dart';
   import '../../services/laporan_service.dart';
 
   // ---------------------------------------------------------------------------
@@ -522,6 +523,42 @@
       'status': apiStatus,
     };
 
+    // Check connectivity before deciding how to persist the report.
+    final online = await ConnectivityService.instance.isOnline();
+
+    if (!online) {
+      // ── Offline path: save locally ──
+      try {
+        await LaporanService.saveOffline(
+          payload: payload,
+          jenisLaporan: jenisLaporan,
+        );
+
+        await onReportSaved();
+
+        if (!parentContext.mounted) return;
+        ScaffoldMessenger.of(parentContext).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Laporan disimpan secara offline. '
+              'Akan otomatis dikirim saat ada koneksi.',
+            ),
+          ),
+        );
+
+        if (context.mounted) {
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (!parentContext.mounted) return;
+        ScaffoldMessenger.of(parentContext).showSnackBar(
+          SnackBar(content: Text('Gagal menyimpan offline: $e')),
+        );
+      }
+      return;
+    }
+
+    // ── Online path: send to API ──
     try {
       final existingId = existing?['id'] != null
           ? int.tryParse(existing!['id'].toString())

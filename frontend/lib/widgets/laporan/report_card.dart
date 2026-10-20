@@ -21,6 +21,8 @@ class ReportCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String status = laporan['status'];
+    final bool isOffline = laporan['isOffline'] == true;
+    final String? syncStatus = laporan['syncStatus']?.toString();
 
     final (Color statusColor, Color statusBg) = switch (status) {
       'Selesai' => (
@@ -97,10 +99,56 @@ class ReportCard extends StatelessWidget {
                   ],
                 ),
               ),
-              _StatusBadge(
-                status: status,
-                color: statusColor,
-                background: statusBg,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isOffline)
+                    Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: syncStatus == 'failed'
+                            ? Colors.red.shade50
+                            : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            syncStatus == 'failed'
+                                ? Icons.error_outline
+                                : Icons.cloud_off_rounded,
+                            size: 13,
+                            color: syncStatus == 'failed'
+                                ? Colors.red.shade600
+                                : Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            syncStatus == 'failed'
+                                ? 'Gagal'
+                                : 'Offline',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: syncStatus == 'failed'
+                                  ? Colors.red.shade600
+                                  : Colors.orange.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  _StatusBadge(
+                    status: status,
+                    color: statusColor,
+                    background: statusBg,
+                  ),
+                ],
               ),
             ],
           ),
