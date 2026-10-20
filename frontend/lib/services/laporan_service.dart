@@ -93,4 +93,25 @@ class LaporanService {
 
     return response;
   }
+
+  /// Deletes a report from the API by its [id].
+  static Future<void> deleteReport(
+    String token,
+    dynamic id,
+  ) async {
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/api/reports/$id'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(
+        'Gagal menghapus laporan (${response.statusCode}): '
+        '${response.body}',
+      );
+    }
+  }
 }

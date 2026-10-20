@@ -9,12 +9,14 @@ class ReportCard extends StatelessWidget {
     required this.onView,
     required this.onEdit,
     required this.onDownload,
+    this.onDelete,
   });
 
   final Map<String, dynamic> laporan;
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onDownload;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +131,7 @@ class ReportCard extends StatelessWidget {
             onView: onView,
             onEdit: onEdit,
             onDownload: onDownload,
+            onDelete: onDelete,
           ),
         ],
       ),
@@ -208,12 +211,14 @@ class _ActionButtons extends StatelessWidget {
     required this.onView,
     required this.onEdit,
     required this.onDownload,
+    this.onDelete,
   });
 
   final String status;
   final VoidCallback onView;
   final VoidCallback onEdit;
   final VoidCallback onDownload;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -265,6 +270,23 @@ class _ActionButtons extends StatelessWidget {
               backgroundColor: LaporanColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(11),
+              ),
+            ),
+          ),
+        if (onDelete != null)
+          OutlinedButton.icon(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Hapus'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red.shade700,
+              side: BorderSide(color: Colors.red.shade200),
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,
