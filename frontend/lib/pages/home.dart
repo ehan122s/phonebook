@@ -1,10 +1,13 @@
+
 import 'package:flutter/material.dart';
 
 import 'dashboard.dart';
 import 'laporan.dart';
 import 'jadwal.dart';
 import 'materi.dart';
+import 'profil.dart';
 
+import '../widgets/bottom_nav.dart';
 import '../widgets/logout_button.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,56 +20,40 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
+  void changePage(int index) {
+    if (index < 0 || index > 4) return;
+
+    setState(() {
+      selectedIndex = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      DashboardPage(),
+    final pages = <Widget>[
+      DashboardPage(onNavigate: changePage),
       const LaporanPage(),
       const JadwalPage(),
       const MateriPage(),
+      const ProfilPage(),
     ];
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAF8),
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          pages[selectedIndex],
-      
-          Positioned(
-            right: 16,
-            bottom: 12,
-            child: const LogoutButton(),
+          IndexedStack(
+            index: selectedIndex,
+            sizing: StackFit.expand,
+            children: pages,
           ),
+          const LogoutButton(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: BottomNav(
         selectedIndex: selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Beranda',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.description_outlined),
-            selectedIcon: Icon(Icons.description),
-            label: 'Laporan',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Jadwal',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            selectedIcon: Icon(Icons.menu_book),
-            label: 'Materi',
-          ),
-        ],
+        onChanged: changePage,
       ),
     );
   }

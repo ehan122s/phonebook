@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 class JadwalPage extends StatefulWidget {
@@ -9,390 +10,551 @@ class JadwalPage extends StatefulWidget {
 
 class _JadwalPageState extends State<JadwalPage> {
   DateTime selectedDate = DateTime.now();
+  DateTime displayedMonth = DateTime(
+    DateTime.now().year,
+    DateTime.now().month,
+  );
 
-  final List<Map<String, String>> schedules = [
-    {
-      'time': '08:00 - 10:00',
-      'title': 'Penyuluhan Kehutanan',
-      'location': 'Kecamatan Garut',
-      'description':
-          'Kegiatan penyuluhan kepada masyarakat.',
-    },
-    {
-      'time': '13:00 - 15:00',
-      'title': 'Monitoring Lapangan',
-      'location': 'Kawasan Hutan Garut',
-      'description':
-          'Monitoring kondisi kawasan hutan.',
-    },
+  final searchController = TextEditingController();
+
+  final List<Map<String, dynamic>> schedules = [];
+
+  static const green = Color(0xFF287D3C);
+  static const background = Color(0xFFF6F8F5);
+
+  static const monthNames = [
+    'Januari', 'Februari', 'Maret', 'April',
+    'Mei', 'Juni', 'Juli', 'Agustus',
+    'September', 'Oktober', 'November', 'Desember',
   ];
 
-  String get formattedDate {
-    const months = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember',
-    ];
+  static const dayNames = [
+    'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min',
+  ];
 
-    return '${selectedDate.day} '
-        '${months[selectedDate.month - 1]} '
-        '${selectedDate.year}';
+  String dateKey(DateTime date) =>
+      '${date.year}-${date.month}-${date.day}';
+
+  String formatDate(DateTime date) =>
+      '${date.day} ${monthNames[date.month - 1]} ${date.year}';
+
+  List<Map<String, dynamic>> get filteredSchedules {
+    final query = searchController.text.toLowerCase().trim();
+
+    return schedules.where((item) {
+      final matchesDate = dateKey(item['date'] as DateTime) ==
+          dateKey(selectedDate);
+
+      final matchesSearch = query.isEmpty ||
+          (item['title'] as String).toLowerCase().contains(query) ||
+          (item['location'] as String).toLowerCase().contains(query);
+
+      return matchesDate && matchesSearch;
+    }).toList()
+      ..sort((a, b) =>
+          (a['time'] as String).compareTo(b['time'] as String));
   }
 
-  Future<void> selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-
-    if (picked == null) return;
-
+  void changeMonth(int offset) {
     setState(() {
-      selectedDate = picked;
+      displayedMonth = DateTime(
+        displayedMonth.year,
+        displayedMonth.month + offset,
+      );
     });
   }
 
-  void showScheduleDetail(
-    Map<String, String> schedule,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(
-            24,
-            8,
-            24,
-            30,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Text(
-                schedule['title'] ?? '',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              _DetailRow(
-                icon: Icons.access_time,
-                text: schedule['time'] ?? '',
-              ),
-
-              const SizedBox(height: 12),
-
-              _DetailRow(
-                icon: Icons.location_on_outlined,
-                text: schedule['location'] ?? '',
-              ),
-
-              const SizedBox(height: 12),
-
-              _DetailRow(
-                icon: Icons.description_outlined,
-                text: schedule['description'] ?? '',
-              ),
-            ],
-          ),
-        );
-      },
-    );
+  void selectDay(int day) {
+    setState(() {
+      selectedDate = DateTime(
+        displayedMonth.year,
+        displayedMonth.month,
+        day,
+      );
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
-      appBar: AppBar(
-        title: const Text(
-          'Jadwal',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
+  Future<void> addSchedule() async {
+    final titleController = TextEditingController();
+    final locationController = TextEditingController();
+    final descriptionController = TextEditingController();
+    final timeController = TextEditingController(text: '08:00');
+
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Tambah Jadwal'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama kegiatan',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty
+                          ? 'Nama kegiatan wajib diisi'
+                          : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: timeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Jam (contoh 08:00)',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty
+                          ? 'Jam wajib diisi'
+                          : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Lokasi',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) =>
+                      value == null || value.trim().isEmpty
+                          ? 'Lokasi wajib diisi'
+                          : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: descriptionController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Keterangan (opsional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(dialogContext, true);
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          30,
-        ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {
+        schedules.add({
+          'title': titleController.text.trim(),
+          'time': timeController.text.trim(),
+          'location': locationController.text.trim(),
+          'description': descriptionController.text.trim(),
+          'date': DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+          ),
+        });
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Jadwal berhasil ditambahkan')),
+      );
+    }
+
+    titleController.dispose();
+    locationController.dispose();
+    descriptionController.dispose();
+    timeController.dispose();
+  }
+
+  Future<void> showScheduleDetail(Map<String, dynamic> item) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(22, 8, 22, 32),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // =========================
-            // TANGGAL
-            // =========================
-
-            GestureDetector(
-              onTap: selectDate,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
-                  borderRadius:
-                      BorderRadius.circular(18),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration:
-                          const BoxDecoration(
-                        color: Color(0xFF2E7D32),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.calendar_month,
-                        color: Colors.white,
-                      ),
-                    ),
-
-                    const SizedBox(width: 14),
-
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Tanggal yang dipilih',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            formattedDate,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFF2E7D32),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 26),
-
-            const Text(
-              'Kegiatan Hari Ini',
-              style: TextStyle(
-                fontSize: 20,
+            Text(
+              item['title'] as String,
+              style: const TextStyle(
+                fontSize: 21,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
-            const SizedBox(height: 14),
-
-            if (schedules.isEmpty)
-              const _EmptySchedule()
-            else
-              ...schedules.map(
-                (schedule) => Padding(
-                  padding:
-                      const EdgeInsets.only(
-                    bottom: 12,
-                  ),
-                  child: _ScheduleCard(
-                    schedule: schedule,
-                    onTap: () {
-                      showScheduleDetail(
-                        schedule,
-                      );
-                    },
-                  ),
-                ),
+            const SizedBox(height: 18),
+            _DetailRow(
+              icon: Icons.calendar_today_outlined,
+              text: formatDate(item['date'] as DateTime),
+            ),
+            _DetailRow(
+              icon: Icons.access_time,
+              text: item['time'] as String,
+            ),
+            _DetailRow(
+              icon: Icons.location_on_outlined,
+              text: item['location'] as String,
+            ),
+            if ((item['description'] as String).isNotEmpty)
+              _DetailRow(
+                icon: Icons.notes,
+                text: item['description'] as String,
               ),
           ],
         ),
-      ),
-
-      // =========================
-      // TAMBAH JADWAL
-      // =========================
-
-      floatingActionButton:
-          FloatingActionButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Form tambah jadwal akan dibuat berikutnya.',
-              ),
-            ),
-          );
-        },
-        backgroundColor:
-            const Color(0xFF2E7D32),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
       ),
     );
   }
-}
 
-// =====================================================
-// SCHEDULE CARD
-// =====================================================
-
-class _ScheduleCard extends StatelessWidget {
-  final Map<String, String> schedule;
-  final VoidCallback onTap;
-
-  const _ScheduleCard({
-    required this.schedule,
-    required this.onTap,
-  });
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius:
-              BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(
-                alpha: 0.05,
-              ),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
+    final firstWeekday =
+        DateTime(displayedMonth.year, displayedMonth.month, 1).weekday;
+    final daysInMonth =
+        DateTime(displayedMonth.year, displayedMonth.month + 1, 0).day;
+    final today = DateTime.now();
+
+    return Scaffold(
+      backgroundColor: background,
+      body: SafeArea(
+        child: Column(
           children: [
-            Container(
-              width: 58,
-              height: 70,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE3F2FD),
-                borderRadius:
-                    BorderRadius.circular(14),
-              ),
-              child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
+            // Tombol kembali
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+              child: Row(
                 children: [
-                  const Icon(
-                    Icons.access_time,
-                    color: Color(0xFF1976D2),
-                    size: 22,
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(13),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(13),
+                      onTap: () {
+                        Navigator.maybePop(context);
+                      },
+                      child: const SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: Icon(Icons.arrow_back_rounded),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    schedule['time']!
-                        .split(' - ')
-                        .first,
-                    style: const TextStyle(
-                      color: Color(0xFF1976D2),
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.bold,
+                  const SizedBox(width: 14),
+                  const Text(
+                    'Jadwal Kegiatan',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(width: 14),
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: TextField(
+                controller: searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Cari kegiatan atau lokasi...',
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 18),
 
             Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
                 children: [
-                  Text(
-                    schedule['title'] ?? '',
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight:
-                          FontWeight.bold,
+                  // Kalender
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => changeMonth(-1),
+                              icon: const Icon(Icons.chevron_left),
+                              tooltip: 'Bulan sebelumnya',
+                            ),
+                            Expanded(
+                              child: Text(
+                                '${monthNames[displayedMonth.month - 1]} ${displayedMonth.year}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => changeMonth(1),
+                              icon: const Icon(Icons.chevron_right),
+                              tooltip: 'Bulan selanjutnya',
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Row(
+                          children: dayNames.map((name) {
+                            return Expanded(
+                              child: Center(
+                                child: Text(
+                                  name,
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        ...List.generate(
+                          (firstWeekday - 1 + daysInMonth + 6) ~/ 7,
+                          (week) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 7),
+                              child: Row(
+                                children: List.generate(7, (column) {
+                                  final day =
+                                      week * 7 + column - (firstWeekday - 2);
+
+                                  if (day < 1 || day > daysInMonth) {
+                                    return const Expanded(
+                                      child: SizedBox(height: 40),
+                                    );
+                                  }
+
+                                  final date = DateTime(
+                                    displayedMonth.year,
+                                    displayedMonth.month,
+                                    day,
+                                  );
+                                  final selected =
+                                      dateKey(date) == dateKey(selectedDate);
+                                  final isToday =
+                                      dateKey(date) == dateKey(today);
+                                  final hasSchedule = schedules.any(
+                                    (item) =>
+                                        dateKey(item['date'] as DateTime) ==
+                                        dateKey(date),
+                                  );
+
+                                  return Expanded(
+                                    child: GestureDetector(
+                                      onTap: () => selectDay(day),
+                                      child: Container(
+                                        height: 40,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: selected
+                                              ? green
+                                              : Colors.transparent,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: isToday && !selected
+                                              ? Border.all(color: green)
+                                              : null,
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              '$day',
+                                              style: TextStyle(
+                                                color: selected
+                                                    ? Colors.white
+                                                    : Colors.black87,
+                                                fontWeight:
+                                                    selected || isToday
+                                                        ? FontWeight.bold
+                                                        : FontWeight.normal,
+                                              ),
+                                            ),
+                                            if (hasSchedule)
+                                              Container(
+                                                width: 4,
+                                                height: 4,
+                                                decoration: BoxDecoration(
+                                                  color: selected
+                                                      ? Colors.white
+                                                      : green,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ),
 
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 16),
+
+                  // Tambah jadwal
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: addSchedule,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tambah Jadwal'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
 
                   Row(
                     children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 4),
-                      Expanded(
+                      const Expanded(
                         child: Text(
-                          schedule['location'] ??
-                              '',
-                          maxLines: 1,
-                          overflow:
-                              TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
+                          'Riwayat Jadwal',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                           ),
+                        ),
+                      ),
+                      Text(
+                        formatDate(selectedDate),
+                        style: const TextStyle(
+                          color: green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
+
+                  const SizedBox(height: 12),
+
+                  if (filteredSchedules.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(26),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.event_note_outlined,
+                            size: 42,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            'Belum ada jadwal pada tanggal ini',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...filteredSchedules.map(
+                      (item) => Card(
+                        color: Colors.white,
+                        elevation: 0,
+                        margin: const EdgeInsets.only(bottom: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: ListTile(
+                          onTap: () => showScheduleDetail(item),
+                          leading: Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.event_note_outlined,
+                              color: green,
+                            ),
+                          ),
+                          title: Text(
+                            item['title'] as String,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${item['time']} • ${item['location']}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(
+                            Icons.chevron_right,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
-            ),
-
-            const Icon(
-              Icons.chevron_right,
-              color: Colors.grey,
             ),
           ],
         ),
@@ -400,10 +562,6 @@ class _ScheduleCard extends StatelessWidget {
     );
   }
 }
-
-// =====================================================
-// DETAIL ROW
-// =====================================================
 
 class _DetailRow extends StatelessWidget {
   final IconData icon;
@@ -416,68 +574,17 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Icon(
-          icon,
-          color: const Color(0xFF2E7D32),
-          size: 21,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 15,
-              height: 1.4,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// =====================================================
-// EMPTY STATE
-// =====================================================
-
-class _EmptySchedule extends StatelessWidget {
-  const _EmptySchedule();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(30),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
-      ),
-      child: const Column(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.event_available_outlined,
-            size: 50,
-            color: Colors.grey,
-          ),
-          SizedBox(height: 12),
-          Text(
-            'Belum ada jadwal',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          SizedBox(height: 5),
-          Text(
-            'Jadwal kegiatan akan muncul di sini.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey,
+          Icon(icon, color: const Color(0xFF287D3C)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 15, height: 1.4),
             ),
           ),
         ],

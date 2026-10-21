@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'pages/login.dart';
-import 'services/offline_database.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await OfflineDatabase.instance.database;
+void main() {
   runApp(const PhonebookApp());
 }
 
