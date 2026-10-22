@@ -1,0 +1,13 @@
+[33mcommit 205144aa72e5a25065822560b0a678a7aaea4020[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: Raya Fathan Nurrachmat <r4yy73@gmail.com>
+Date:   Thu Oct 22 09:32:11 2026 +0700
+
+    profile
+
+ frontend/lib/constants/jadwal_constants.dart       | 192 [32m++++++++[m
+ frontend/lib/pages/profil.dart                     | 419 [32m++++++++++++++[m[31m--[m
+ .../lib/widgets/jadwal/jadwal_calendar_card.dart   | 527 [32m+++++++++++++++++++++[m
+ frontend/lib/widgets/jadwal/jadwal_card.dart       | 279 [32m+++++++++++[m
+ frontend/lib/widgets/jadwal/jadwal_dialogs.dart    | 330 [32m+++++++++++++[m
+ frontend/lib/widgets/jadwal/jadwal_filter_bar.dart | 235 [32m+++++++++[m
+ 6 files changed, 1954 insertions(+), 28 deletions(-)
