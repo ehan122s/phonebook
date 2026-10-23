@@ -1,6 +1,12 @@
+// ============================================================================
+// [KHUSUS USER - DASHBOARD USER]
+// Simpan file ini di: lib/pages/dashboard.dart
+// ============================================================================
+
 import 'package:flutter/material.dart';
 
 import '../widgets/animated_menu_card.dart';
+import 'kategori.dart';
 
 class DashboardPage extends StatelessWidget {
   final Function(int)? onNavigate;
@@ -9,6 +15,14 @@ class DashboardPage extends StatelessWidget {
     super.key,
     this.onNavigate,
   });
+
+  void _openUserFolders(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const KategoriPage(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,10 +59,8 @@ class DashboardPage extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
                           'Selamat Datang 👋',
@@ -98,7 +110,7 @@ class DashboardPage extends StatelessWidget {
                   child: _StatCard(
                     icon: Icons.description_outlined,
                     title: 'Laporan',
-                    value: '0',
+                    value: '4',
                     color: const Color(0xFF2E7D32),
                   ),
                 ),
@@ -107,7 +119,7 @@ class DashboardPage extends StatelessWidget {
                   child: _StatCard(
                     icon: Icons.calendar_month_outlined,
                     title: 'Jadwal',
-                    value: '0',
+                    value: '3',
                     color: const Color(0xFF1976D2),
                   ),
                 ),
@@ -132,15 +144,10 @@ class DashboardPage extends StatelessWidget {
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
-              physics:
-                  const NeverScrollableScrollPhysics(),
+              physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-
-              // Kartu dibuat sedikit lebih tinggi
-              // karena icon sekarang berada di atas.
               childAspectRatio: 0.92,
-
               children: [
                 AnimatedMenuCard(
                   icon: Icons.description_outlined,
@@ -152,7 +159,6 @@ class DashboardPage extends StatelessWidget {
                     onNavigate?.call(1);
                   },
                 ),
-
                 AnimatedMenuCard(
                   icon: Icons.calendar_month_outlined,
                   title: 'Jadwal',
@@ -163,7 +169,6 @@ class DashboardPage extends StatelessWidget {
                     onNavigate?.call(2);
                   },
                 ),
-
                 AnimatedMenuCard(
                   icon: Icons.menu_book_outlined,
                   title: 'Materi',
@@ -174,14 +179,13 @@ class DashboardPage extends StatelessWidget {
                     onNavigate?.call(3);
                   },
                 ),
-
                 AnimatedMenuCard(
                   icon: Icons.folder_outlined,
-                  title: 'Kategori',
-                  subtitle: 'Kelola kategori',
+                  title: 'Folder Arsip',
+                  subtitle: 'Semua laporan & arsip',
                   color: const Color(0xFF7B1FA2),
                   background: const Color(0xFFF3E5F5),
-                  onTap: () {},
+                  onTap: () => _openUserFolders(context),
                 ),
               ],
             ),
@@ -189,25 +193,23 @@ class DashboardPage extends StatelessWidget {
             const SizedBox(height: 24),
 
             // =========================
-            // LIHAT SELENGKAPNYA
+            // LIHAT SELENGKAPNYA (BUKA FOLDER ARSIP USER)
             // =========================
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.apps),
+                onPressed: () => _openUserFolders(context),
+                icon: const Icon(Icons.folder_open_rounded),
                 label: const Text(
-                  'Lihat Selengkapnya',
+                  'Lihat Seluruh Folder Laporan & Arsip Saya',
                 ),
                 style: OutlinedButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  foregroundColor: const Color(0xFF285C2E),
+                  padding: const EdgeInsets.symmetric(
                     vertical: 15,
                   ),
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
               ),
@@ -218,10 +220,6 @@ class DashboardPage extends StatelessWidget {
     );
   }
 }
-
-// =====================================================
-// STAT CARD
-// =====================================================
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
@@ -261,21 +259,17 @@ class _StatCard extends StatelessWidget {
               color: color.withValues(
                 alpha: 0.1,
               ),
-              borderRadius:
-                  BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
               color: color,
             ),
           ),
-
           const SizedBox(width: 10),
-
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,

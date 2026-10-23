@@ -1,3 +1,10 @@
+// ============================================================================
+// [FILE LOGIN - OTOMATIS MASUK SESUAI AKUN (ADMIN vs USER)]
+// Simpan file ini di: lib/pages/login.dart
+// - Jika login memakai akun Admin (role == 'admin' atau email admin) -> AdminPage()
+// - Jika login memakai akun User biasa -> HomePage()
+// ============================================================================
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
+import 'admin_page.dart';
 import 'home.dart';
 
 String get baseUrl => ApiConstants.baseUrl;
@@ -23,13 +31,25 @@ class _LoginPageState extends State<LoginPage> {
   bool isLoading = false;
   bool obscurePassword = true;
 
+  /// Mengecek apakah akun yang login adalah akun khusus Admin
+  bool _isAdminAccount({required String email, required String role}) {
+    final lowerEmail = email.trim().toLowerCase();
+    final lowerRole = role.trim().toLowerCase();
+
+    return lowerRole == 'admin' ||
+        lowerEmail == 'admin@kehutanan.go.id' ||
+        lowerEmail == 'admin@phonebook.com' ||
+        lowerEmail == 'admin@gmail.com' ||
+        lowerEmail.startsWith('admin@');
+  }
+
   Future<void> login() async {
-    if (emailController.text.trim().isEmpty ||
-        passwordController.text.isEmpty) {
+    final inputEmail = emailController.text.trim();
+    final inputPassword = passwordController.text;
+
+    if (inputEmail.isEmpty || inputPassword.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Email dan password wajib diisi'),
-        ),
+        const SnackBar(content: Text('Email dan password wajib diisi')),
       );
       return;
     }
@@ -45,10 +65,7 @@ class _LoginPageState extends State<LoginPage> {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({
-          'email': emailController.text.trim(),
-          'password': passwordController.text,
-        }),
+        body: jsonEncode({'email': inputEmail, 'password': inputPassword}),
       );
 
       final data = jsonDecode(response.body);
@@ -60,49 +77,39 @@ class _LoginPageState extends State<LoginPage> {
           data['data']?['token'] != null) {
         final prefs = await SharedPreferences.getInstance();
 
-        await prefs.setString(
-          'token',
-          data['data']['token'],
-        );
+        final userMap = data['data']['user'] ?? {};
+        final userEmail = (userMap['email'] ?? inputEmail).toString();
+        final userName = (userMap['name'] ?? '').toString();
+        final userRole = (userMap['role'] ?? '').toString();
 
-        await prefs.setString(
-          'name',
-          data['data']['user']?['name'] ?? '',
-        );
+        final isAdmin = _isAdminAccount(email: userEmail, role: userRole);
 
-        await prefs.setString(
-          'email',
-          data['data']['user']?['email'] ??
-              emailController.text.trim(),
-        );
+        await prefs.setString('token', data['data']['token']);
+        await prefs.setString('name', userName);
+        await prefs.setString('email', userEmail);
+        await prefs.setString('role', isAdmin ? 'admin' : 'user');
 
         if (!mounted) return;
 
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => const HomePage(),
+            builder: (_) => isAdmin ? const AdminPage() : const HomePage(),
           ),
           (route) => false,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              data['message'] ?? 'Email atau password salah',
-            ),
+            content: Text(data['message'] ?? 'Email atau password salah'),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Gagal terhubung ke server: $e',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal terhubung ke server: $e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -127,9 +134,7 @@ class _LoginPageState extends State<LoginPage> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 420,
-            ),
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Card(
               elevation: 6,
               child: Padding(
@@ -142,9 +147,7 @@ class _LoginPageState extends State<LoginPage> {
                       size: 70,
                       color: Color(0xFF2E7D32),
                     ),
-
                     const SizedBox(height: 16),
-
                     const Text(
                       'PHONEBOOK',
                       style: TextStyle(
@@ -153,19 +156,13 @@ class _LoginPageState extends State<LoginPage> {
                         color: Color(0xFF2E7D32),
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     const Text(
                       'Aplikasi Pelaporan Kehutanan',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(color: Colors.grey),
                     ),
-
                     const SizedBox(height: 30),
-
                     TextField(
                       controller: emailController,
                       keyboardType: TextInputType.emailAddress,
@@ -175,17 +172,16 @@ class _LoginPageState extends State<LoginPage> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-
                     const SizedBox(height: 16),
-
                     TextField(
                       controller: passwordController,
                       obscureText: obscurePassword,
+                      onSubmitted: (_) {
+                        if (!isLoading) login();
+                      },
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        prefixIcon: const Icon(
-                          Icons.lock_outline,
-                        ),
+                        prefixIcon: const Icon(Icons.lock_outline),
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -195,16 +191,13 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           onPressed: () {
                             setState(() {
-                              obscurePassword =
-                                  !obscurePassword;
+                              obscurePassword = !obscurePassword;
                             });
                           },
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
                     SizedBox(
                       width: double.infinity,
                       height: 52,
@@ -214,16 +207,13 @@ class _LoginPageState extends State<LoginPage> {
                             ? const SizedBox(
                                 width: 24,
                                 height: 24,
-                                child:
-                                    CircularProgressIndicator(
+                                child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
                               )
                             : const Text(
                                 'MASUK',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                       ),
                     ),
