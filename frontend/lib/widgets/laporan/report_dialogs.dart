@@ -1,8 +1,10 @@
   import 'dart:convert';
-  import 'dart:typed_data';
 
+  import 'package:flutter/foundation.dart';
   import 'package:flutter/material.dart';
+  import 'package:flutter/services.dart';
   import 'package:geolocator/geolocator.dart';
+  import 'package:http/http.dart' as http;
   import 'package:image_picker/image_picker.dart';
   import 'package:shared_preferences/shared_preferences.dart';
 
@@ -131,20 +133,81 @@
           builder: (sheetContext, setModalState) {
             Future<void> getCurrentLocation() async {
               setModalState(() => isGettingLocation = true);
+
+              Future<void> handleFallbackLocation() async {
+                try {
+                  final res = await http
+                      .get(Uri.parse('http://ip-api.com/json'))
+                      .timeout(const Duration(seconds: 4));
+                  if (res.statusCode == 200) {
+                    final data = jsonDecode(res.body);
+                    if (data['status'] == 'success') {
+                      final lat = (data['lat'] as num).toDouble();
+                      final lon = (data['lon'] as num).toDouble();
+                      final city =
+                          '${data['city'] ?? ''}, ${data['regionName'] ?? ''}'
+                              .trim();
+                      latCtrl.text = lat.toStringAsFixed(6);
+                      lngCtrl.text = lon.toStringAsFixed(6);
+                      if (lokasiCtrl.text.trim().isEmpty && city.isNotEmpty) {
+                        lokasiCtrl.text = city;
+                      }
+                      if (sheetContext.mounted) {
+                        ScaffoldMessenger.of(sheetContext).showSnackBar(
+                          SnackBar(
+                            content: Text('Lokasi berhasil didapatkan ($city)'),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                } catch (_) {}
+
+                // Default koordinat Garut jika offline / geolocator tidak didukung
+                latCtrl.text = '-7.227900';
+                lngCtrl.text = '107.908700';
+                if (lokasiCtrl.text.trim().isEmpty) {
+                  lokasiCtrl.text = 'Kawasan Hutan Garut';
+                }
+                if (sheetContext.mounted) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Koordinat default wilayah Garut berhasil disetel.',
+                      ),
+                    ),
+                  );
+                }
+              }
+
+              // Di Linux desktop, geolocator tidak memiliki implementasi native, gunakan fallback IP/koordinat
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+                await handleFallbackLocation();
+                if (sheetContext.mounted) {
+                  setModalState(() => isGettingLocation = false);
+                }
+                return;
+              }
+
               try {
-                bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                bool serviceEnabled =
+                    await Geolocator.isLocationServiceEnabled();
                 if (!serviceEnabled) {
                   if (sheetContext.mounted) {
                     ScaffoldMessenger.of(sheetContext).showSnackBar(
                       const SnackBar(
-                        content: Text('Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.'),
+                        content: Text(
+                          'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
+                        ),
                       ),
                     );
                   }
                   return;
                 }
 
-                LocationPermission permission = await Geolocator.checkPermission();
+                LocationPermission permission =
+                    await Geolocator.checkPermission();
                 if (permission == LocationPermission.denied) {
                   permission = await Geolocator.requestPermission();
                   if (permission == LocationPermission.denied) {
@@ -163,7 +226,9 @@
                   if (sheetContext.mounted) {
                     ScaffoldMessenger.of(sheetContext).showSnackBar(
                       const SnackBar(
-                        content: Text('Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.'),
+                        content: Text(
+                          'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
+                        ),
                       ),
                     );
                   }
@@ -187,14 +252,39 @@
 
                 if (sheetContext.mounted) {
                   ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    const SnackBar(content: Text('Koordinat GPS berhasil diperoleh!')),
+                    const SnackBar(
+                      content: Text('Koordinat GPS berhasil diperoleh!'),
+                    ),
                   );
                 }
+              } on MissingPluginException {
+                await handleFallbackLocation();
+              } on PlatformException catch (pe) {
+                if (pe.code == 'MissingPluginException' ||
+                    pe.message?.contains('No implementation') == true) {
+                  await handleFallbackLocation();
+                } else {
+                  if (sheetContext.mounted) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
+                        ),
+                      ),
+                    );
+                  }
+                }
               } catch (e) {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text('Gagal mendapatkan lokasi GPS: $e')),
-                  );
+                final msg = e.toString();
+                if (msg.contains('MissingPluginException') ||
+                    msg.contains('No implementation')) {
+                  await handleFallbackLocation();
+                } else {
+                  if (sheetContext.mounted) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(content: Text('Gagal mendapatkan lokasi GPS: $e')),
+                    );
+                  }
                 }
               } finally {
                 if (sheetContext.mounted) {
@@ -212,7 +302,10 @@
                 ),
                 builder: (pickerCtx) => SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 20,
+                      horizontal: 18,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -229,7 +322,10 @@
                         const SizedBox(height: 18),
                         const Text(
                           'Pilih Sumber Foto',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         const Text(
@@ -239,32 +335,54 @@
                         ),
                         const SizedBox(height: 18),
                         ListTile(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           leading: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: LaporanColors.primary.withValues(alpha: 0.12),
+                              color: LaporanColors.primary.withValues(
+                                alpha: 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(Icons.camera_alt_rounded, color: LaporanColors.primary),
+                            child: const Icon(
+                              Icons.camera_alt_rounded,
+                              color: LaporanColors.primary,
+                            ),
                           ),
-                          title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Buka kamera untuk mengambil foto secara langsung'),
+                          title: const Text(
+                            'Ambil dari Kamera',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: const Text(
+                            'Buka kamera untuk mengambil foto secara langsung',
+                          ),
                           onTap: () => Navigator.pop(pickerCtx, ImageSource.camera),
                         ),
                         const SizedBox(height: 8),
                         ListTile(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           leading: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: Colors.blue.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(Icons.photo_library_rounded, color: Colors.blue),
+                            child: const Icon(
+                              Icons.photo_library_rounded,
+                              color: Colors.blue,
+                            ),
                           ),
-                          title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Pilih gambar yang tersimpan dari memori perangkat'),
+                          title: const Text(
+                            'Pilih dari Galeri',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: const Text(
+                            'Pilih gambar yang tersimpan dari memori perangkat',
+                          ),
                           onTap: () => Navigator.pop(pickerCtx, ImageSource.gallery),
                         ),
                         const SizedBox(height: 10),
@@ -277,11 +395,43 @@
               if (source != null) {
                 try {
                   final picker = ImagePicker();
-                  final picked = await picker.pickImage(
-                    source: source,
-                    imageQuality: 80,
-                    maxWidth: 1600,
-                  );
+                  XFile? picked;
+
+                  if (!kIsWeb &&
+                      defaultTargetPlatform == TargetPlatform.linux &&
+                      source == ImageSource.camera) {
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Kamera langsung belum didukung di Linux Desktop. Membuka pemilih berkas/galeri...',
+                          ),
+                        ),
+                      );
+                    }
+                    picked = await picker.pickImage(
+                      source: ImageSource.gallery,
+                      imageQuality: 80,
+                    );
+                  } else {
+                    try {
+                      picked = await picker.pickImage(
+                        source: source,
+                        imageQuality: 80,
+                        maxWidth: 1600,
+                      );
+                    } on PlatformException {
+                      if (source == ImageSource.camera) {
+                        picked = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 80,
+                        );
+                      } else {
+                        rethrow;
+                      }
+                    }
+                  }
+
                   if (picked != null) {
                     final bytes = await picked.readAsBytes();
                     setModalState(() {
