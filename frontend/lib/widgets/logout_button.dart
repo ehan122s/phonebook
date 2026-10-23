@@ -41,7 +41,21 @@ class LogoutButton extends StatelessWidget {
 
     final prefs = await SharedPreferences.getInstance();
 
+    final isRemember = prefs.getBool('remember_me') ?? false;
+    final rememberEmail = prefs.getString('remember_email');
+    final rememberPassword = prefs.getString('remember_password');
+
     await prefs.clear();
+
+    if (isRemember) {
+      await prefs.setBool('remember_me', true);
+      if (rememberEmail != null) {
+        await prefs.setString('remember_email', rememberEmail);
+      }
+      if (rememberPassword != null) {
+        await prefs.setString('remember_password', rememberPassword);
+      }
+    }
 
     if (!context.mounted) return;
 

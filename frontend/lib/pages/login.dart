@@ -30,6 +30,29 @@ class _LoginPageState extends State<LoginPage> {
 
   bool isLoading = false;
   bool obscurePassword = true;
+  bool rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedCredentials();
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isRemember = prefs.getBool('remember_me') ?? false;
+    if (isRemember) {
+      final savedEmail = prefs.getString('remember_email') ?? '';
+      final savedPassword = prefs.getString('remember_password') ?? '';
+      if (mounted) {
+        setState(() {
+          rememberMe = true;
+          emailController.text = savedEmail;
+          passwordController.text = savedPassword;
+        });
+      }
+    }
+  }
 
   /// Mengecek apakah akun yang login adalah akun khusus Admin
   bool _isAdminAccount({required String email, required String role}) {
@@ -88,6 +111,16 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('name', userName);
         await prefs.setString('email', userEmail);
         await prefs.setString('role', isAdmin ? 'admin' : 'user');
+
+        if (rememberMe) {
+          await prefs.setBool('remember_me', true);
+          await prefs.setString('remember_email', inputEmail);
+          await prefs.setString('remember_password', inputPassword);
+        } else {
+          await prefs.setBool('remember_me', false);
+          await prefs.remove('remember_email');
+          await prefs.remove('remember_password');
+        }
 
         if (!mounted) return;
 
@@ -197,7 +230,44 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: Checkbox(
+                            value: rememberMe,
+                            activeColor: const Color(0xFF2E7D32),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            onChanged: (val) {
+                              setState(() {
+                                rememberMe = val ?? false;
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              rememberMe = !rememberMe;
+                            });
+                          },
+                          child: const Text(
+                            'Ingat Saya',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF2E7D32),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
                       height: 52,
