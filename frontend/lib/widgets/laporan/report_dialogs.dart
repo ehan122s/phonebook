@@ -1,6 +1,9 @@
   import 'dart:convert';
+  import 'dart:typed_data';
 
   import 'package:flutter/material.dart';
+  import 'package:geolocator/geolocator.dart';
+  import 'package:image_picker/image_picker.dart';
   import 'package:shared_preferences/shared_preferences.dart';
 
   import '../../constants/laporan_constants.dart';
@@ -112,6 +115,10 @@
       text: existing?['longitude']?.toString() ?? '',
     );
 
+    XFile? pickedPhotoFile;
+    Uint8List? pickedPhotoBytes;
+    bool isGettingLocation = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -120,179 +127,453 @@
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            18,
-            20,
-            MediaQuery.of(ctx).viewInsets.bottom + 25,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _DragHandle(),
-                const SizedBox(height: 20),
+        return StatefulBuilder(
+          builder: (sheetContext, setModalState) {
+            Future<void> getCurrentLocation() async {
+              setModalState(() => isGettingLocation = true);
+              try {
+                bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                if (!serviceEnabled) {
+                  if (sheetContext.mounted) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.'),
+                      ),
+                    );
+                  }
+                  return;
+                }
 
-                // Title
-                Text(
-                  jenisLaporan,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.bold,
+                LocationPermission permission = await Geolocator.checkPermission();
+                if (permission == LocationPermission.denied) {
+                  permission = await Geolocator.requestPermission();
+                  if (permission == LocationPermission.denied) {
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Izin akses lokasi GPS ditolak.'),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                }
+
+                if (permission == LocationPermission.deniedForever) {
+                  if (sheetContext.mounted) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.'),
+                      ),
+                    );
+                  }
+                  return;
+                }
+
+                final position = await Geolocator.getCurrentPosition(
+                  locationSettings: const LocationSettings(
+                    accuracy: LocationAccuracy.high,
+                    timeLimit: Duration(seconds: 12),
+                  ),
+                );
+
+                latCtrl.text = position.latitude.toStringAsFixed(6);
+                lngCtrl.text = position.longitude.toStringAsFixed(6);
+
+                if (lokasiCtrl.text.trim().isEmpty) {
+                  lokasiCtrl.text =
+                      'Titik Koordinat (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
+                }
+
+                if (sheetContext.mounted) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    const SnackBar(content: Text('Koordinat GPS berhasil diperoleh!')),
+                  );
+                }
+              } catch (e) {
+                if (sheetContext.mounted) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(content: Text('Gagal mendapatkan lokasi GPS: $e')),
+                  );
+                }
+              } finally {
+                if (sheetContext.mounted) {
+                  setModalState(() => isGettingLocation = false);
+                }
+              }
+            }
+
+            Future<void> pickPhoto() async {
+              final source = await showModalBottomSheet<ImageSource>(
+                context: sheetContext,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                ),
+                builder: (pickerCtx) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 42,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Pilih Sumber Foto',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Pilih untuk mengambil foto bukti langsung dari kamera atau galeri',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                        const SizedBox(height: 18),
+                        ListTile(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: LaporanColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.camera_alt_rounded, color: LaporanColors.primary),
+                          ),
+                          title: const Text('Ambil dari Kamera', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Buka kamera untuk mengambil foto secara langsung'),
+                          onTap: () => Navigator.pop(pickerCtx, ImageSource.camera),
+                        ),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.photo_library_rounded, color: Colors.blue),
+                          ),
+                          title: const Text('Pilih dari Galeri', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Pilih gambar yang tersimpan dari memori perangkat'),
+                          onTap: () => Navigator.pop(pickerCtx, ImageSource.gallery),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Lengkapi data laporan sesuai kegiatan di lapangan.',
-                  style: TextStyle(color: Colors.grey),
-                ),
+              );
 
-                const SizedBox(height: 20),
+              if (source != null) {
+                try {
+                  final picker = ImagePicker();
+                  final picked = await picker.pickImage(
+                    source: source,
+                    imageQuality: 80,
+                    maxWidth: 1600,
+                  );
+                  if (picked != null) {
+                    final bytes = await picked.readAsBytes();
+                    setModalState(() {
+                      pickedPhotoFile = picked;
+                      pickedPhotoBytes = bytes;
+                    });
+                  }
+                } catch (e) {
+                  if (sheetContext.mounted) {
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(content: Text('Gagal mengambil foto: $e')),
+                    );
+                  }
+                }
+              }
+            }
 
-                // Fields
-                _FormField(
-                  controller: judulCtrl,
-                  label: 'Judul Laporan',
-                  hint: 'Contoh: Penyuluhan Kehutanan',
-                  icon: Icons.title_rounded,
-                ),
-                const SizedBox(height: 13),
-                _FormField(
-                  controller: isiCtrl,
-                  label: 'Isi / Keterangan Laporan',
-                  hint: 'Tuliskan hasil kegiatan...',
-                  icon: Icons.notes_rounded,
-                  maxLines: 5,
-                ),
-                const SizedBox(height: 13),
-                _FormField(
-                  controller: lokasiCtrl,
-                  label: 'Lokasi Kegiatan',
-                  hint: 'Contoh: Kawasan Hutan Garut',
-                  icon: Icons.location_on_outlined,
-                ),
-                const SizedBox(height: 13),
-
-                // Lat / Lng
-                Row(
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                18,
+                20,
+                MediaQuery.of(sheetContext).viewInsets.bottom + 25,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _FormField(
-                        controller: latCtrl,
-                        label: 'Latitude',
-                        hint: '-7.2279',
-                        icon: Icons.my_location_outlined,
+                    const _DragHandle(),
+                    const SizedBox(height: 20),
+
+                    // Title
+                    Text(
+                      jenisLaporan,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _FormField(
-                        controller: lngCtrl,
-                        label: 'Longitude',
-                        hint: '107.9087',
-                        icon: Icons.explore_outlined,
-                      ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Lengkapi data laporan sesuai kegiatan di lapangan.',
+                      style: TextStyle(color: Colors.grey),
                     ),
-                  ],
-                ),
 
-                const SizedBox(height: 15),
-                const _PhotoButton(),
-                const SizedBox(height: 22),
+                    const SizedBox(height: 20),
 
-                // Action buttons
-                Row(
-                  children: [
-                    // Save draft
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          await _handleSubmit(
-                            context: ctx,
-                            parentContext: context,
-                            jenisLaporan: jenisLaporan,
-                            existing: existing,
-                            judulCtrl: judulCtrl,
-                            isiCtrl: isiCtrl,
-                            lokasiCtrl: lokasiCtrl,
-                            latCtrl: latCtrl,
-                            lngCtrl: lngCtrl,
-                            status: 'Draft',
-                            onReportSaved: onReportSaved,
-                          );
-                        },
-                        icon: const Icon(Icons.save_outlined),
-                        label: const Text('Simpan Sementara'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: LaporanColors.primary,
-                          side: const BorderSide(
-                            color: LaporanColors.primary,
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 15,
-                            horizontal: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(13),
+                    // Fields
+                    _FormField(
+                      controller: judulCtrl,
+                      label: 'Judul Laporan',
+                      hint: 'Contoh: Penyuluhan Kehutanan',
+                      icon: Icons.title_rounded,
+                    ),
+                    const SizedBox(height: 13),
+                    _FormField(
+                      controller: isiCtrl,
+                      label: 'Isi / Keterangan Laporan',
+                      hint: 'Tuliskan hasil kegiatan...',
+                      icon: Icons.notes_rounded,
+                      maxLines: 5,
+                    ),
+                    const SizedBox(height: 13),
+                    _FormField(
+                      controller: lokasiCtrl,
+                      label: 'Lokasi Kegiatan',
+                      hint: 'Contoh: Kawasan Hutan Garut',
+                      icon: Icons.location_on_outlined,
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Geolocator GPS Button & Coordinates
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Koordinat Lokasi',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: LaporanColors.textDark,
                           ),
                         ),
-                      ),
+                        TextButton.icon(
+                          onPressed: isGettingLocation ? null : getCurrentLocation,
+                          icon: isGettingLocation
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: LaporanColors.primary,
+                                  ),
+                                )
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(
+                            isGettingLocation ? 'Mencari GPS...' : 'Gunakan GPS',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: LaporanColors.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _FormField(
+                            controller: latCtrl,
+                            label: 'Latitude',
+                            hint: '-7.2279',
+                            icon: Icons.my_location_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _FormField(
+                            controller: lngCtrl,
+                            label: 'Longitude',
+                            hint: '107.9087',
+                            icon: Icons.explore_outlined,
+                          ),
+                        ),
+                      ],
                     ),
 
-                    const SizedBox(width: 10),
+                    const SizedBox(height: 16),
 
-                    // Submit
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          if (judulCtrl.text.trim().isEmpty ||
-                              isiCtrl.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Isi judul dan isi laporan sebelum '
-                                  'menyelesaikan laporan.',
-                                ),
+                    // Photo Picker Section
+                    if (pickedPhotoBytes != null)
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: LaporanColors.fieldFill,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: LaporanColors.borderField),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                              child: Image.memory(
+                                pickedPhotoBytes!,
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
                               ),
-                            );
-                            return;
-                          }
-                          await _handleSubmit(
-                            context: ctx,
-                            parentContext: context,
-                            jenisLaporan: jenisLaporan,
-                            existing: existing,
-                            judulCtrl: judulCtrl,
-                            isiCtrl: isiCtrl,
-                            lokasiCtrl: lokasiCtrl,
-                            latCtrl: latCtrl,
-                            lngCtrl: lngCtrl,
-                            status: 'Selesai',
-                            onReportSaved: onReportSaved,
-                            closeOnSuccess: true,
-                          );
-                        },
-                        icon: const Icon(Icons.check_circle_outline),
-                        label: const Text('Selesaikan'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: LaporanColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 15,
-                            horizontal: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(13),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      pickedPhotoFile?.name ?? 'Foto Bukti Kegiatan',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: pickPhoto,
+                                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                                    label: const Text('Ganti'),
+                                    style: TextButton.styleFrom(foregroundColor: LaporanColors.primary),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      setModalState(() {
+                                        pickedPhotoBytes = null;
+                                        pickedPhotoFile = null;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                    label: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      _PhotoButton(onTap: pickPhoto),
+
+                    const SizedBox(height: 22),
+
+                    // Action buttons
+                    Row(
+                      children: [
+                        // Save draft
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              await _handleSubmit(
+                                context: sheetContext,
+                                parentContext: context,
+                                jenisLaporan: jenisLaporan,
+                                existing: existing,
+                                judulCtrl: judulCtrl,
+                                isiCtrl: isiCtrl,
+                                lokasiCtrl: lokasiCtrl,
+                                latCtrl: latCtrl,
+                                lngCtrl: lngCtrl,
+                                status: 'Draft',
+                                onReportSaved: onReportSaved,
+                                photoBytes: pickedPhotoBytes,
+                                photoFilename: pickedPhotoFile?.name,
+                              );
+                            },
+                            icon: const Icon(Icons.save_outlined),
+                            label: const Text('Simpan Sementara'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: LaporanColors.primary,
+                              side: const BorderSide(
+                                color: LaporanColors.primary,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 15,
+                                horizontal: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+
+                        const SizedBox(width: 10),
+
+                        // Submit
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              if (judulCtrl.text.trim().isEmpty ||
+                                  isiCtrl.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Isi judul dan isi laporan sebelum '
+                                      'menyelesaikan laporan.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              await _handleSubmit(
+                                context: sheetContext,
+                                parentContext: context,
+                                jenisLaporan: jenisLaporan,
+                                existing: existing,
+                                judulCtrl: judulCtrl,
+                                isiCtrl: isiCtrl,
+                                lokasiCtrl: lokasiCtrl,
+                                latCtrl: latCtrl,
+                                lngCtrl: lngCtrl,
+                                status: 'Selesai',
+                                onReportSaved: onReportSaved,
+                                closeOnSuccess: true,
+                                photoBytes: pickedPhotoBytes,
+                                photoFilename: pickedPhotoFile?.name,
+                              );
+                            },
+                            icon: const Icon(Icons.check_circle_outline),
+                            label: const Text('Selesaikan'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: LaporanColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 15,
+                                horizontal: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -474,6 +755,8 @@
     required String status,
     required Future<void> Function() onReportSaved,
     bool closeOnSuccess = false,
+    Uint8List? photoBytes,
+    String? photoFilename,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -573,6 +856,25 @@
       if (!parentContext.mounted) return;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final body = jsonDecode(response.body);
+        final reportId = body['data']?['id'] != null
+            ? int.tryParse(body['data']['id'].toString())
+            : existingId;
+
+        // If a photo was selected, upload it to the server
+        if (reportId != null && photoBytes != null) {
+          try {
+            await LaporanService.uploadReportPhoto(
+              token: token,
+              reportId: reportId,
+              photoBytes: photoBytes,
+              filename: photoFilename ?? 'bukti_laporan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+              latitude: double.tryParse(latCtrl.text.trim()),
+              longitude: double.tryParse(lngCtrl.text.trim()),
+            );
+          } catch (_) {}
+        }
+
         await onReportSaved();
 
         if (!parentContext.mounted) return;
@@ -581,7 +883,9 @@
             content: Text(
               apiStatus == 'draft'
                   ? 'Draft berhasil disimpan ke database.'
-                  : 'Laporan berhasil dikirim ke database.',
+                  : (photoBytes != null
+                      ? 'Laporan dan foto bukti berhasil dikirim.'
+                      : 'Laporan berhasil dikirim ke database.'),
             ),
           ),
         );
@@ -741,20 +1045,13 @@
 
   /// Photo capture / pick button shown in the report form.
   class _PhotoButton extends StatelessWidget {
-    const _PhotoButton();
+    final VoidCallback onTap;
+    const _PhotoButton({required this.onTap});
 
     @override
     Widget build(BuildContext context) {
       return InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Fitur pengambilan foto akan dihubungkan ke kamera.',
-              ),
-            ),
-          );
-        },
+        onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           width: double.infinity,
@@ -785,7 +1082,7 @@
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Ambil atau pilih foto sebagai bukti kegiatan.',
+                      'Ambil dari kamera atau galeri sebagai bukti kegiatan.',
                       style: TextStyle(
                         color: Colors.grey,
                         fontSize: 12,

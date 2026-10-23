@@ -286,19 +286,6 @@ class _LaporanPageState extends State<LaporanPage> {
     await prefs.setString(_storageKey, jsonEncode(_laporanList));
   }
 
-  Future<void> _saveReport(Map<String, dynamic> report) async {
-    final id = report['id'];
-    final index = _laporanList.indexWhere((item) => item['id'] == id);
-    setState(() {
-      if (index >= 0) {
-        _laporanList[index] = report;
-      } else {
-        _laporanList.insert(0, report);
-      }
-    });
-    await _persistReports();
-  }
-
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------

@@ -97,6 +97,39 @@ class LaporanService {
     return response;
   }
 
+  /// Uploads a photo attachment for a given [reportId].
+  static Future<http.Response> uploadReportPhoto({
+    required String token,
+    required int reportId,
+    required List<int> photoBytes,
+    required String filename,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/reports/$reportId/photos');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Accept'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'photo',
+        photoBytes,
+        filename: filename,
+      ),
+    );
+
+    if (latitude != null) {
+      request.fields['latitude'] = latitude.toString();
+    }
+    if (longitude != null) {
+      request.fields['longitude'] = longitude.toString();
+    }
+
+    final streamedResponse = await request.send();
+    return http.Response.fromStream(streamedResponse);
+  }
+
   /// Deletes a report from the API by its [id].
   static Future<void> deleteReport(
     String token,
