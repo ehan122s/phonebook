@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../constants/api_constants.dart';
 import '../constants/laporan_constants.dart';
 import 'offline_database.dart';
 
-/// Base URL for the Laravel API.
-const String baseUrl = 'http://127.0.0.1:8001';
+/// Base URL for the Laravel API (mengacu ke [ApiConstants.baseUrl]).
+String get baseUrl => ApiConstants.baseUrl;
 
 /// Service class that handles all report-related API calls.
 class LaporanService {

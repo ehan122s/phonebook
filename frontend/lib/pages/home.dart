@@ -8,7 +8,6 @@ import 'materi.dart';
 import 'profil.dart';
 
 import '../widgets/bottom_nav.dart';
-import '../widgets/logout_button.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -55,27 +54,15 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAF8),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          IndexedStack(
-            index: selectedIndex,
-            sizing: StackFit.expand,
-            children: List<Widget>.generate(
-              _pages.length,
-              (index) => index == selectedIndex || _pages[index] != null
-                  ? _pageAt(index)
-                  : const SizedBox.shrink(),
-            ),
-          ),
-          const Positioned(
-            top: 12,
-            right: 12,
-            child: SafeArea(
-              child: LogoutButton(),
-            ),
-          ),
-        ],
+      body: IndexedStack(
+        index: selectedIndex,
+        sizing: StackFit.expand,
+        children: List<Widget>.generate(
+          _pages.length,
+          (index) => index == selectedIndex || _pages[index] != null
+              ? _pageAt(index)
+              : const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: SizedBox(
         height: 72 + MediaQuery.paddingOf(context).bottom,
