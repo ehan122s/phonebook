@@ -18,9 +18,17 @@
     }
   ],
   "env": {
+    "APP_NAME": "Phonebook",
     "APP_ENV": "production",
     "APP_DEBUG": "true",
     "APP_KEY": "base64:oMMGWszAqiLu7gkVC78u1KcOrQ0GMMoBvBZPKl8SogA=",
+    "DB_CONNECTION": "pgsql",
+    "DB_HOST": "db.qxzdmbluvpsrgjfkvzez.supabase.co",
+    "DB_PORT": "5432",
+    "DB_DATABASE": "postgres",
+    "DB_USERNAME": "postgres",
+    "DB_PASSWORD": "iaC1IG4no3yGSXcc",
+    "DB_SSLMODE": "prefer",
     "APP_CONFIG_CACHE": "/tmp/config.php",
     "APP_EVENTS_CACHE": "/tmp/events.php",
     "APP_PACKAGES_CACHE": "/tmp/packages.php",
