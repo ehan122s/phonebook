@@ -63,6 +63,51 @@ class AuthController extends Controller
         ]);
     }
 
+    public function googleLogin(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+            'name' => 'required|string|max:255',
+            'google_id' => 'nullable|string|max:255',
+            'avatar' => 'nullable|string|max:1000',
+        ]);
+
+        $email = strtolower(trim($validated['email']));
+        $name = trim($validated['name']);
+
+        $user = User::where('email', $email)->first();
+
+        $isAdminEmail = str_starts_with($email, 'admin@') ||
+            $email === 'admin@kehutanan.go.id' ||
+            $email === 'admin@phonebook.com' ||
+            $email === 'admin@gmail.com';
+
+        if (!$user) {
+            $user = User::create([
+                'name' => $name,
+                'email' => $email,
+                'password' => Hash::make(\Illuminate\Support\Str::random(32)),
+                'role' => $isAdminEmail ? 'admin' : 'user',
+            ]);
+        } else {
+            if ($isAdminEmail && ($user->role !== 'admin')) {
+                $user->role = 'admin';
+                $user->save();
+            }
+        }
+
+        $token = $user->createToken('phonebook-token')->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login Google berhasil',
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+            ],
+        ]);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();

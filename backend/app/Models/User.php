@@ -16,6 +16,7 @@ class User extends Authenticatable
         'email',
         'password',
         'whatsapp_number',
+        'role',
     ];
 
     protected $hidden = [

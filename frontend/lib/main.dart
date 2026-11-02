@@ -10,6 +10,10 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'pages/admin_page.dart';
+import 'pages/home.dart';
 import 'pages/login.dart';
 
 void main() {
@@ -178,19 +182,36 @@ class _SplashScreenState extends State<SplashScreen>
     });
 
     // Timer independen: dijamin tidak pernah stuck walaupun tab browser tidak fokus saat Hot Restart
-    _navTimer = Timer(const Duration(milliseconds: 2400), _goToLogin);
+    _navTimer = Timer(const Duration(milliseconds: 2400), _navigateNext);
   }
 
-  void _goToLogin() {
+  Future<void> _navigateNext() async {
     if (_hasNavigated || !mounted) return;
     _hasNavigated = true;
     _navTimer?.cancel();
 
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    final email = (prefs.getString('email') ?? '').trim().toLowerCase();
+
+    final bool isLoggedIn = token != null && token.isNotEmpty;
+    final bool isAdmin = role == 'admin' ||
+        email == 'admin@kehutanan.go.id' ||
+        email == 'admin@phonebook.com' ||
+        email == 'admin@gmail.com' ||
+        email.startsWith('admin@');
+
+    final Widget targetPage = isLoggedIn
+        ? (isAdmin ? const AdminPage() : const HomePage())
+        : const LoginPage();
+
+    if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 700),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const LoginPage(),
+        pageBuilder: (context, animation, secondaryAnimation) => targetPage,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
@@ -219,7 +240,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: GestureDetector(
-        onTap: _goToLogin,
+        onTap: _navigateNext,
         behavior: HitTestBehavior.opaque,
         child: Container(
           width: double.infinity,
