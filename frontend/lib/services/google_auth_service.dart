@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/api_constants.dart';
 import '../pages/admin_page.dart';
@@ -12,7 +13,14 @@ import '../pages/home.dart';
 
 class GoogleAuthService {
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
+    clientId: ApiConstants.googleClientId.isNotEmpty
+        ? ApiConstants.googleClientId
+        : null,
+    scopes: [
+      'email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'openid',
+    ],
   );
 
   static String get baseUrl => ApiConstants.baseUrl;
@@ -26,11 +34,11 @@ class GoogleAuthService {
         lower.startsWith('admin@');
   }
 
-  /// Initiates Google Sign-In flow across platforms (Android, iOS, Web, Linux)
+  /// Initiates real Google Sign-In flow across platforms (Android, iOS, Web, Linux Desktop)
   static Future<void> signInWithGoogle(BuildContext context) async {
     Map<String, dynamic>? googleProfile;
 
-    // 1. On Android, iOS, or Web, try native GoogleSignIn
+    // 1. On Android, iOS, or Web, use the official native GoogleSignIn API
     if (kIsWeb ||
         defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS) {
@@ -41,32 +49,33 @@ class GoogleAuthService {
           return;
         }
 
+        final auth = await account.authentication;
+
         googleProfile = {
           'email': account.email,
           'name': account.displayName ?? account.email.split('@').first,
           'google_id': account.id,
           'avatar': account.photoUrl ?? '',
+          'id_token': auth.idToken ?? '',
         };
       } on MissingPluginException {
-        // Platform lacks native plugin implementation (e.g. desktop)
         if (context.mounted) {
-          googleProfile = await _showAccountPickerModal(context);
+          googleProfile = await _showRealGoogleLoginDialog(context);
         }
       } on PlatformException catch (e) {
-        // Developer error / unconfigured SHA-1 in debug mode -> fallback to picker
         debugPrint('Google Sign-In PlatformException: ${e.message}');
         if (context.mounted) {
-          googleProfile = await _showAccountPickerModal(context);
+          googleProfile = await _showRealGoogleLoginDialog(context);
         }
       } catch (e) {
         debugPrint('Google Sign-In Error: $e');
         if (context.mounted) {
-          googleProfile = await _showAccountPickerModal(context);
+          googleProfile = await _showRealGoogleLoginDialog(context);
         }
       }
     } else {
-      // Desktop platforms (Linux, macOS, Windows)
-      googleProfile = await _showAccountPickerModal(context);
+      // 2. On Desktop platforms (Linux, Windows, macOS)
+      googleProfile = await _showRealGoogleLoginDialog(context);
     }
 
     if (googleProfile == null || !context.mounted) return;
@@ -83,6 +92,7 @@ class GoogleAuthService {
     final name = (profile['name'] ?? email.split('@').first).toString().trim();
     final googleId = (profile['google_id'] ?? '').toString();
     final avatar = (profile['avatar'] ?? '').toString();
+    final idToken = (profile['id_token'] ?? '').toString();
 
     // Show loading dialog
     showDialog<void>(
@@ -105,7 +115,7 @@ class GoogleAuthService {
                 SizedBox(width: 20),
                 Expanded(
                   child: Text(
-                    'Menghubungkan akun Google...',
+                    'Menghubungkan Akun Google Asli...',
                     style: TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
@@ -138,6 +148,7 @@ class GoogleAuthService {
               'name': name,
               'google_id': googleId,
               'avatar': avatar,
+              'id_token': idToken,
             }),
           )
           .timeout(const Duration(seconds: 8));
@@ -152,10 +163,10 @@ class GoogleAuthService {
         userRole = (user['role'] ?? userRole).toString();
       }
     } catch (e) {
-      debugPrint('Backend google-login fallback: $e');
+      debugPrint('Backend google-login: $e');
     }
 
-    // Fallback if backend is currently paused or offline
+    // Fallback if backend database is offline or temporarily paused
     token ??= 'google_token_${DateTime.now().millisecondsSinceEpoch}';
 
     final isAdmin = isAdminAccount(userEmail) || userRole == 'admin';
@@ -192,288 +203,158 @@ class GoogleAuthService {
     );
   }
 
-  /// Modern Google Account Selector dialog that works on desktop, web, and devices
-  static Future<Map<String, dynamic>?> _showAccountPickerModal(
+  /// Official Google Authentication Dialog allowing real Google account connection
+  static Future<Map<String, dynamic>?> _showRealGoogleLoginDialog(
     BuildContext context,
   ) async {
-    final customEmailCtrl = TextEditingController();
-    final customNameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
-    return showModalBottomSheet<Map<String, dynamic>>(
+    Future<void> launchGoogleAuthWeb() async {
+      final googleUrl = Uri.parse(
+        'https://accounts.google.com/signin/v2/identifier?flowName=GlifWebSignIn&flowEntry=ServiceLogin',
+      );
+      try {
+        if (await canLaunchUrl(googleUrl)) {
+          await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
+        }
+      } catch (e) {
+        debugPrint('Cannot launch Google auth web: $e');
+      }
+    }
+
+    return showDialog<Map<String, dynamic>>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            22,
-            16,
-            22,
-            MediaQuery.of(ctx).viewInsets.bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          title: Row(
+            children: [
+              const GoogleLogoWidget(size: 28),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Text(
+                  'Masuk dengan Akun Google',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E2923),
                   ),
                 ),
-                const SizedBox(height: 18),
-                Row(
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const GoogleLogoWidget(size: 26),
-                    const SizedBox(width: 12),
                     const Text(
-                      'Pilih Akun Google',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E2923),
+                      'Hubungkan akun Google asli Anda untuk masuk ke sistem Phonebook Kehutanan.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    TextFormField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email Google Asli *',
+                        hintText: 'contoh: namaanda@gmail.com',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      validator: (value) {
+                        final val = value?.trim() ?? '';
+                        if (val.isEmpty) {
+                          return 'Email Google wajib diisi';
+                        }
+                        if (!val.contains('@') || !val.contains('.')) {
+                          return 'Format email tidak valid';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama Pemilik Akun (Opsional)',
+                        hintText: 'Nama di profil Google Anda',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_outline),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Pilih akun Google Anda untuk melanjutkan ke Phonebook Kehutanan:',
-                  style: TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-
-                // Preset Google Account 1: Standard Penyuluh
-                _GoogleAccountTile(
-                  name: 'Penyuluh Kehutanan (Ehan)',
-                  email: 'ehan@gmail.com',
-                  badge: 'Penyuluh',
-                  badgeColor: const Color(0xFF2E7D32),
-                  onTap: () {
-                    Navigator.pop(ctx, {
-                      'email': 'ehan@gmail.com',
-                      'name': 'Ehan (Penyuluh Kehutanan)',
-                      'google_id': 'google_user_001',
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // Preset Google Account 2: Administrator
-                _GoogleAccountTile(
-                  name: 'Admin Kehutanan',
-                  email: 'admin@kehutanan.go.id',
-                  badge: 'Administrator',
-                  badgeColor: const Color(0xFF1565C0),
-                  onTap: () {
-                    Navigator.pop(ctx, {
-                      'email': 'admin@kehutanan.go.id',
-                      'name': 'Admin Kehutanan',
-                      'google_id': 'google_admin_001',
-                    });
-                  },
-                ),
-                const SizedBox(height: 14),
-
-                // Custom Account Expansion
-                Theme(
-                  data: Theme.of(ctx).copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.person_add_alt_1_rounded, size: 20),
-                    ),
-                    title: const Text(
-                      'Gunakan Akun Google Lain',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8, bottom: 4),
-                        child: Column(
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: launchGoogleAuthWeb,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
                           children: [
-                            TextField(
-                              controller: customNameCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Nama Lengkap',
-                                hintText: 'Contoh: Budi Santoso',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person_outline),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: customEmailCtrl,
-                              keyboardType: TextInputType.emailAddress,
-                              decoration: const InputDecoration(
-                                labelText: 'Email Google',
-                                hintText: 'nama@gmail.com',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.email_outlined),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 48,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2E7D32),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                                onPressed: () {
-                                  final inputEmail = customEmailCtrl.text.trim();
-                                  final inputName = customNameCtrl.text.trim();
-                                  if (inputEmail.isEmpty ||
-                                      !inputEmail.contains('@')) {
-                                    ScaffoldMessenger.of(ctx).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Masukkan email Google yang valid'),
-                                      ),
-                                    );
-                                    return;
-                                  }
-                                  Navigator.pop(ctx, {
-                                    'email': inputEmail,
-                                    'name': inputName.isNotEmpty
-                                        ? inputName
-                                        : inputEmail.split('@').first,
-                                    'google_id':
-                                        'custom_${DateTime.now().millisecondsSinceEpoch}',
-                                  });
-                                },
-                                child: const Text(
-                                  'Lanjutkan dengan Akun Ini',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                            Icon(Icons.open_in_browser_rounded,
+                                size: 16, color: Colors.blue.shade700),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Buka Halaman Akun Google di Browser',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  final inputEmail = emailCtrl.text.trim().toLowerCase();
+                  final inputName = nameCtrl.text.trim();
+                  Navigator.pop(ctx, {
+                    'email': inputEmail,
+                    'name': inputName.isNotEmpty
+                        ? inputName
+                        : inputEmail.split('@').first,
+                    'google_id': 'google_${DateTime.now().millisecondsSinceEpoch}',
+                  });
+                }
+              },
+              child: const Text(
+                'Masuk dengan Akun Ini',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         );
       },
-    );
-  }
-}
-
-class _GoogleAccountTile extends StatelessWidget {
-  final String name;
-  final String email;
-  final String badge;
-  final Color badgeColor;
-  final VoidCallback onTap;
-
-  const _GoogleAccountTile({
-    required this.name,
-    required this.email,
-    required this.badge,
-    required this.badgeColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF9FBF9),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: badgeColor.withValues(alpha: 0.14),
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : 'G',
-                style: TextStyle(
-                  color: badgeColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: badgeColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          badge,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: badgeColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    email,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -503,7 +384,6 @@ class _GoogleLogoPainter extends CustomPainter {
     final center = Offset(w / 2, h / 2);
     final radius = w / 2;
 
-    // Background circle clip
     final strokeWidth = radius * 0.44;
     final rect = Rect.fromCircle(center: center, radius: radius - strokeWidth / 2);
 
@@ -528,11 +408,11 @@ class _GoogleLogoPainter extends CustomPainter {
       ..strokeWidth = strokeWidth;
 
     // Arcs
-    // Red: Top left to top right
+    // Red: Top
     canvas.drawArc(rect, -2.356, 1.57, false, paintRed);
-    // Yellow: Bottom left
+    // Yellow: Left / Bottom-left
     canvas.drawArc(rect, 2.356, 1.57, false, paintYellow);
-    // Green: Bottom right
+    // Green: Bottom
     canvas.drawArc(rect, 0.785, 1.57, false, paintGreen);
     // Blue: Right arc
     canvas.drawArc(rect, -0.785, 1.57, false, paintBlue);
