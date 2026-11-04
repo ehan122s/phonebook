@@ -86,6 +86,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/google-check', [AuthController::class, 'googleCheck']);
+Route::post('/google-register', [AuthController::class, 'googleRegister']);
 Route::post('/google-login', [AuthController::class, 'googleLogin']);
 
 Route::middleware('auth:sanctum')->group(function () {
