@@ -51,13 +51,16 @@ Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
 /*
 |--------------------------------------------------------------------------
-| Materials
+| Materials (Materi Edukasi - Terlihat oleh Semua User)
 |--------------------------------------------------------------------------
 */
 
+Route::get('/materials', [MaterialController::class, 'index']);
+Route::get('/materials/{id}', [MaterialController::class, 'show']);
+Route::post('/materials/public', [MaterialController::class, 'store']);
+Route::delete('/materials/{id}/public', [MaterialController::class, 'destroy']);
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/materials', [MaterialController::class, 'index']);
-    Route::get('/materials/{id}', [MaterialController::class, 'show']);
     Route::post('/materials', [MaterialController::class, 'store']);
     Route::post('/materials/{id}', [MaterialController::class, 'update']);
     Route::delete('/materials/{id}', [MaterialController::class, 'destroy']);
