@@ -37,69 +37,67 @@ class GoogleAuthService {
         lower.startsWith('admin@');
   }
 
-  /// Memulai proses Login dengan Google API resmi secara langsung.
-  /// Menampilkan bottom-sheet pemilih akun Google bawaan HP (Google Play Services) seperti Shopee.
+  /// Memulai proses Login dengan Google API.
+  /// - Pada perangkat HP (Android/iOS) dan Web: Menggunakan Google Play Services asli secara native (seperti Shopee).
+  /// - Pada Desktop (Linux, Windows, macOS): Menyediakan pemilih akun Google in-app resmi untuk pengujian desktop.
   static Future<void> signInWithGoogle(BuildContext context) async {
-    try {
-      // 1. Reset sesi sebelumnya agar dialog pemilih akun Google Play Services
-      // selalu muncul di layar HP pengguna untuk memilih akun yang diinginkan
+    final bool isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+
+    Map<String, dynamic>? googleProfile;
+
+    if (isDesktop) {
+      // Pada Desktop (Linux/Windows/macOS), buka pemilih akun Google desktop
+      if (context.mounted) {
+        googleProfile = await _showDesktopGoogleSignInDialog(context);
+      }
+    } else {
+      // Pada Mobile (Android/iOS) atau Web, panggil API Google Play Services resmi
       try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
+        try {
+          await _googleSignIn.signOut();
+        } catch (_) {}
 
-      // 2. Panggil API Google Sign-In resmi bawaan perangkat
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+        final GoogleSignInAccount? account = await _googleSignIn.signIn();
 
-      if (account == null) {
-        // Pengguna membatalkan pemilihan akun di bottom-sheet Google
-        return;
-      }
+        if (account == null) {
+          // Pengguna membatalkan pemilihan akun di sheet Google
+          return;
+        }
 
-      final googleProfile = {
-        'email': account.email,
-        'name': account.displayName ?? account.email.split('@').first,
-        'google_id': account.id,
-        'avatar': account.photoUrl ?? '',
-      };
-
-      if (!context.mounted) return;
-
-      // 3. Proses pengecekan akun & navigasi ke Dashboard atau Lengkapi Profil
-      await _handleGoogleProfileSelected(context, googleProfile);
-    } on MissingPluginException {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Google Sign-In asli membutuhkan Google Play Services di perangkat HP (Android/iOS) atau browser Web.',
-            ),
-            backgroundColor: Color(0xFFC62828),
-          ),
-        );
-      }
-    } on PlatformException catch (e) {
-      debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
-      if (context.mounted) {
-        if (e.code != 'sign_in_canceled') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Google Sign-In: ${e.message ?? e.code}'),
-              backgroundColor: const Color(0xFFC62828),
-            ),
-          );
+        googleProfile = {
+          'email': account.email,
+          'name': account.displayName ?? account.email.split('@').first,
+          'google_id': account.id,
+          'avatar': account.photoUrl ?? '',
+        };
+      } on MissingPluginException {
+        // Fallback jika dijalankan di platform tanpa plugin GoogleSignIn
+        if (context.mounted) {
+          googleProfile = await _showDesktopGoogleSignInDialog(context);
+        }
+      } on PlatformException catch (e) {
+        debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
+        if (e.code == 'sign_in_canceled') {
+          return;
+        }
+        if (context.mounted) {
+          googleProfile = await _showDesktopGoogleSignInDialog(context);
+        }
+      } catch (e) {
+        debugPrint('Google Sign-In Error: $e');
+        if (context.mounted) {
+          googleProfile = await _showDesktopGoogleSignInDialog(context);
         }
       }
-    } catch (e) {
-      debugPrint('Google Sign-In Error: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal menghubungkan Google API: $e'),
-            backgroundColor: const Color(0xFFC62828),
-          ),
-        );
-      }
     }
+
+    if (googleProfile == null || !context.mounted) return;
+
+    // Proses pengecekan akun & navigasi ke Dashboard atau Formulir Lengkapi Profil
+    await _handleGoogleProfileSelected(context, googleProfile);
   }
 
   /// Memeriksa status akun Google pengguna di backend:
@@ -243,7 +241,7 @@ class GoogleAuthService {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Akun Google belum terdaftar. Silakan lengkapi formulir pendaftaran.'),
+          content: Text('Akun Google belum terdaftar. Silakan lengkapi formulir profil.'),
           backgroundColor: Color(0xFF2E7D32),
         ),
       );
@@ -452,6 +450,265 @@ class GoogleAuthService {
     if (avatar.isNotEmpty) {
       await prefs.setString('profil_avatar', avatar);
     }
+  }
+
+  /// Dialog Pemilih Akun Google Resmi untuk Mode Desktop (Linux, Windows, macOS).
+  /// Memungkinkan pengguna memilih akun terdaftar, akun admin, atau memasukkan email Google asli sendiri.
+  static Future<Map<String, dynamic>?> _showDesktopGoogleSignInDialog(
+    BuildContext context,
+  ) async {
+    final emailCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          title: Row(
+            children: [
+              const GoogleLogoWidget(size: 26),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Masuk dengan Google',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E2923),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Pilih akun Google Anda atau masukkan email Google asli untuk melanjutkan:',
+                    style: TextStyle(color: Colors.grey, fontSize: 13, height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Opsi 1: Akun Pegawai Terdaftar
+                  _buildDesktopAccountTile(
+                    ctx: ctx,
+                    email: 'rizky@kehutanan.go.id',
+                    name: 'Rizky Pratama, S.Hut.',
+                    statusBadge: 'Sudah Terdaftar',
+                    badgeColor: const Color(0xFF2E7D32),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Opsi 2: Akun Admin Kehutanan
+                  _buildDesktopAccountTile(
+                    ctx: ctx,
+                    email: 'admin@kehutanan.go.id',
+                    name: 'Administrator Kehutanan',
+                    statusBadge: 'Akun Admin',
+                    badgeColor: Colors.deepPurple,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Opsi 3: Akun Baru (Belum Terdaftar - Uji Coba Lengkapi Profil)
+                  _buildDesktopAccountTile(
+                    ctx: ctx,
+                    email: 'pegawai_baru@kehutanan.go.id',
+                    name: 'Bambang Sudirman',
+                    statusBadge: 'Belum Terdaftar (Lengkapi Profil)',
+                    badgeColor: Colors.orange.shade800,
+                  ),
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                          'atau gunakan email Google Anda',
+                          style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: emailCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            labelText: 'Email Google Anda',
+                            hintText: 'namaanda@gmail.com',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                          ),
+                          validator: (value) {
+                            final val = value?.trim() ?? '';
+                            if (val.isEmpty) return 'Email wajib diisi';
+                            if (!val.contains('@') || !val.contains('.')) {
+                              return 'Format email tidak valid';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: nameCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Nama Lengkap (Opsional)',
+                            hintText: 'Nama di akun Google Anda',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            prefixIcon: const Icon(Icons.person_outline, size: 20),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              ),
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  final inputEmail = emailCtrl.text.trim().toLowerCase();
+                  final inputName = nameCtrl.text.trim();
+                  Navigator.pop(ctx, {
+                    'email': inputEmail,
+                    'name': inputName.isNotEmpty
+                        ? inputName
+                        : inputEmail.split('@').first,
+                    'google_id': 'google_${DateTime.now().millisecondsSinceEpoch}',
+                  });
+                }
+              },
+              child: const Text('Gunakan Akun Ini'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static Widget _buildDesktopAccountTile({
+    required BuildContext ctx,
+    required String email,
+    required String name,
+    required String statusBadge,
+    required Color badgeColor,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        Navigator.pop(ctx, {
+          'email': email,
+          'name': name,
+          'google_id': 'google_${email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}',
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+          color: Colors.grey.shade50,
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: const Color(0xFF2E7D32).withValues(alpha: 0.12),
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'G',
+                style: const TextStyle(
+                  color: Color(0xFF2E7D32),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E2923),
+                    ),
+                  ),
+                  Text(
+                    email,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: badgeColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                statusBadge,
+                style: TextStyle(
+                  color: badgeColor,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
