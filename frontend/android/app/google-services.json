@@ -1,0 +1,43 @@
+{
+  "project_info": {
+    "project_number": "52603373586",
+    "project_id": "phonebook-kehutanan",
+    "storage_bucket": "phonebook-kehutanan.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:52603373586:android:placeholder",
+        "android_client_info": {
+          "package_name": "com.cdkv"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "52603373586-50s66kj1332j7mu6o4ilv0dk1sga1jjt.apps.googleusercontent.com",
+          "client_type": 1
+        },
+        {
+          "client_id": "52603373586-iv996p86tugj1e4nnldh994p3cec4j7n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": ""
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "52603373586-iv996p86tugj1e4nnldh994p3cec4j7n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
