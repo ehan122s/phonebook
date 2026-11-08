@@ -7,9 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
-import '../pages/admin_page.dart';
-import '../pages/home.dart';
-import '../pages/lengkapi_profil_page.dart';
+import '../pages/admin/admin_page.dart';
+import '../pages/home/home.dart';
+import '../pages/login/lengkapi_profil_page.dart';
 import 'desktop_oauth.dart';
 
 class GoogleAuthService {
@@ -469,7 +469,7 @@ class GoogleAuthService {
     await prefs.setString('email', email);
     await prefs.setString('role', resolvedRole);
     await prefs.setString('login_method', 'google');
-    await prefs.setString('remember_me', 'true');
+    await prefs.setBool('remember_me', true);
 
     await prefs.setString('profil_nama', name);
     await prefs.setString('profil_nip', nip);

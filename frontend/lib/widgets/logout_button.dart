@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../pages/login.dart';
+import '../pages/login/login.dart';
 
 class LogoutButton extends StatelessWidget {
   const LogoutButton({super.key});
@@ -41,7 +41,12 @@ class LogoutButton extends StatelessWidget {
 
     final prefs = await SharedPreferences.getInstance();
 
-    final isRemember = prefs.getBool('remember_me') ?? false;
+    bool isRemember = false;
+    try {
+      isRemember = prefs.getBool('remember_me') ?? false;
+    } catch (_) {
+      isRemember = prefs.getString('remember_me') == 'true';
+    }
     final rememberEmail = prefs.getString('remember_email');
     final rememberPassword = prefs.getString('remember_password');
 

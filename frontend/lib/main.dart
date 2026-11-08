@@ -12,9 +12,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'pages/admin_page.dart';
-import 'pages/home.dart';
-import 'pages/login.dart';
+import 'pages/admin/admin_page.dart';
+import 'pages/home/home.dart';
+import 'pages/login/login.dart';
 
 void main() {
   runApp(const PhonebookApp());
