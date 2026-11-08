@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\MaterialController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\UserController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -80,6 +81,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy']);
 });
 
+
+/*
+|--------------------------------------------------------------------------
+| Users (Manajemen Pengguna - Database User)
+|--------------------------------------------------------------------------
+*/
+Route::get('/users', [UserController::class, 'index']);
+Route::post('/users', [UserController::class, 'store']);
+Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
 /*
 |--------------------------------------------------------------------------

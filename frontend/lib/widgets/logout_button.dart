@@ -47,19 +47,32 @@ class LogoutButton extends StatelessWidget {
     } catch (_) {
       isRemember = prefs.getString('remember_me') == 'true';
     }
-    final rememberEmail = prefs.getString('remember_email');
-    final rememberPassword = prefs.getString('remember_password');
+    // Hapus hanya data sesi pengguna yang sedang login,
+    // JANGAN memanggil prefs.clear() agar data database pengguna, arsip folder,
+    // materi, dan draft laporan tidak hilang saat logout.
+    const sessionKeys = [
+      'token',
+      'name',
+      'email',
+      'role',
+      'login_method',
+      'profil_nama',
+      'profil_nip',
+      'profil_jabatan',
+      'profil_wilayah',
+      'profil_email_nip',
+      'profil_whatsapp',
+      'profil_avatar',
+    ];
 
-    await prefs.clear();
+    for (final key in sessionKeys) {
+      await prefs.remove(key);
+    }
 
-    if (isRemember) {
-      await prefs.setBool('remember_me', true);
-      if (rememberEmail != null) {
-        await prefs.setString('remember_email', rememberEmail);
-      }
-      if (rememberPassword != null) {
-        await prefs.setString('remember_password', rememberPassword);
-      }
+    if (!isRemember) {
+      await prefs.remove('remember_me');
+      await prefs.remove('remember_email');
+      await prefs.remove('remember_password');
     }
 
     if (!context.mounted) return;

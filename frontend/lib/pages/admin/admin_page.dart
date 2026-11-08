@@ -7,8 +7,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../constants/api_constants.dart';
 import 'admin_folder_page.dart';
 import '../jadwal/jadwal.dart';
 import '../laporan/laporan.dart';
@@ -115,7 +117,7 @@ class _AdminPageState extends State<AdminPage> {
     final savedName = prefs.getString('name');
     final rawUsers = prefs.getString(_usersStorageKey);
 
-    List<Map<String, String>> loadedUsers = _defaultUsers;
+    List<Map<String, String>> loadedUsers = List.from(_defaultUsers);
     if (rawUsers != null && rawUsers.isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(rawUsers);
@@ -140,11 +142,94 @@ class _AdminPageState extends State<AdminPage> {
         ..clear()
         ..addAll(loadedUsers);
     });
+
+    // Sinkronisasi data pengguna dari database backend
+    _fetchUsersFromBackend();
+  }
+
+  Future<void> _fetchUsersFromBackend() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('${ApiConstants.baseUrl}/api/users'),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final List<dynamic> serverUsers = data['data'];
+          if (serverUsers.isNotEmpty && mounted) {
+            setState(() {
+              final existingEmails = <String>{};
+              final merged = <Map<String, String>>[];
+
+              for (final su in serverUsers) {
+                final email = (su['email'] ?? '').toString().trim().toLowerCase();
+                if (email.isNotEmpty && !existingEmails.contains(email)) {
+                  existingEmails.add(email);
+                  merged.add({
+                    'id': (su['id'] ?? 'USR-${DateTime.now().millisecondsSinceEpoch}').toString(),
+                    'nip': (su['nip'] ?? '').toString(),
+                    'name': (su['name'] ?? '').toString(),
+                    'email': email,
+                    'whatsapp': (su['whatsapp'] ?? '').toString(),
+                    'wilayah': (su['wilayah'] ?? 'CDK Wilayah Garut').toString(),
+                    'role': (su['role'] ?? 'Penyuluh').toString(),
+                    'status': (su['status'] ?? 'Aktif').toString(),
+                  });
+                }
+              }
+
+              // Sertakan pengguna lokal jika belum tercatat di server
+              for (final lu in _users) {
+                final email = (lu['email'] ?? '').toString().trim().toLowerCase();
+                if (email.isNotEmpty && !existingEmails.contains(email)) {
+                  existingEmails.add(email);
+                  merged.add(lu);
+                }
+              }
+
+              _users
+                ..clear()
+                ..addAll(merged);
+            });
+            _persistUsers();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Sync users from backend error: $e');
+    }
   }
 
   Future<void> _persistUsers() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_usersStorageKey, jsonEncode(_users));
+  }
+
+  Future<void> _syncUserToBackend(Map<String, String> user) async {
+    try {
+      await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/api/users'),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'name': user['name'],
+          'email': user['email'],
+          'nip': user['nip'],
+          'whatsapp': user['whatsapp'],
+          'wilayah': user['wilayah'],
+          'role': user['role'],
+          'status': user['status'],
+        }),
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      debugPrint('Sync user to backend error: $e');
+    }
   }
 
   List<Map<String, String>> get _filteredUsers {
@@ -345,6 +430,7 @@ class _AdminPageState extends State<AdminPage> {
                                   }
                                 });
                                 _persistUsers();
+                                _syncUserToBackend(item);
                               },
                               icon: const Icon(Icons.save_outlined, size: 18),
                               label: const Text('Simpan Pengguna'),
@@ -365,9 +451,24 @@ class _AdminPageState extends State<AdminPage> {
 
   void _deleteUser(Map<String, String> user) {
     setState(() {
-      _users.removeWhere((u) => u['id'] == user['id']);
+      _users.removeWhere((u) => u['id'] == user['id'] || u['email'] == user['email']);
     });
     _persistUsers();
+    _deleteUserFromBackend(user);
+  }
+
+  Future<void> _deleteUserFromBackend(Map<String, String> user) async {
+    try {
+      final identifier = user['id'] ?? user['email'] ?? '';
+      if (identifier.isNotEmpty) {
+        await http.delete(
+          Uri.parse('${ApiConstants.baseUrl}/api/users/$identifier'),
+          headers: {'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 6));
+      }
+    } catch (e) {
+      debugPrint('Delete user from backend error: $e');
+    }
   }
 
   Future<void> _handleLogout() async {

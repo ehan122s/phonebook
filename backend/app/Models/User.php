@@ -22,6 +22,7 @@ class User extends Authenticatable
         'wilayah',
         'avatar',
         'google_id',
+        'status',
     ];
 
     protected $hidden = [

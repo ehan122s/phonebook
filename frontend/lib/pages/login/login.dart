@@ -118,6 +118,31 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('email', userEmail);
         await prefs.setString('role', isAdmin ? 'admin' : 'user');
 
+        try {
+          const userKey = 'phonebook_admin_users_v1';
+          final rawUsers = prefs.getString(userKey);
+          List<dynamic> users = [];
+          if (rawUsers != null && rawUsers.isNotEmpty) {
+            users = jsonDecode(rawUsers);
+          }
+          final alreadyPresent = users.any(
+            (u) => (u['email'] ?? '').toString().toLowerCase() == userEmail.toLowerCase(),
+          );
+          if (!alreadyPresent) {
+            users.add({
+              'id': 'USR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+              'nip': (userMap['nip'] ?? '').toString().isNotEmpty ? userMap['nip'].toString() : '-',
+              'name': userName.isNotEmpty ? userName : userEmail.split('@').first,
+              'email': userEmail,
+              'whatsapp': (userMap['whatsapp_number'] ?? '').toString(),
+              'wilayah': (userMap['wilayah'] ?? '').toString().isNotEmpty ? userMap['wilayah'].toString() : 'CDK Wilayah Garut',
+              'role': isAdmin ? 'Administrator' : 'Penyuluh',
+              'status': 'Aktif',
+            });
+            await prefs.setString(userKey, jsonEncode(users));
+          }
+        } catch (_) {}
+
         if (rememberMe) {
           await prefs.setBool('remember_me', true);
           await prefs.setString('remember_email', inputEmail);
