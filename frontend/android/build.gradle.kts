@@ -22,7 +22,7 @@ subprojects {
 subprojects {
     configurations.configureEach {
         resolutionStrategy.eachDependency {
-            if (requested.group == "androidx.core") {
+            if (requested.group == "androidx.core" && (requested.name == "core" || requested.name == "core-ktx")) {
                 useVersion("1.13.1")
             }
         }
