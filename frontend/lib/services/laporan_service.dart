@@ -25,9 +25,18 @@ class LaporanService {
     );
 
     if (response.statusCode != 200) {
+      final body = response.body;
+      if (body.contains('SQLSTATE') ||
+          body.contains('FATAL') ||
+          body.contains('pooler.supabase') ||
+          body.contains('tenant')) {
+        throw Exception(
+          'Database cloud Supabase sedang tidak aktif (Paused). '
+          'Silakan restore/unpause project di Supabase Dashboard.',
+        );
+      }
       throw Exception(
-        'Gagal mengambil laporan (${response.statusCode}): '
-        '${response.body}',
+        'Gagal mengambil laporan dari server (HTTP ${response.statusCode})',
       );
     }
 
@@ -144,9 +153,16 @@ class LaporanService {
     );
 
     if (response.statusCode != 200 && response.statusCode != 204) {
+      final body = response.body;
+      if (body.contains('SQLSTATE') ||
+          body.contains('FATAL') ||
+          body.contains('pooler.supabase')) {
+        throw Exception(
+          'Database Supabase sedang tidak aktif (Paused).',
+        );
+      }
       throw Exception(
-        'Gagal menghapus laporan (${response.statusCode}): '
-        '${response.body}',
+        'Gagal menghapus laporan (${response.statusCode})',
       );
     }
   }

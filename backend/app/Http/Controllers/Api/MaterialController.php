@@ -61,6 +61,8 @@ class MaterialController extends Controller
             'description' => 'nullable|string',
             'file_type' => 'nullable|string|max:50',
             'file_name' => 'nullable|string|max:255',
+            'file_path' => 'nullable|string',
+            'drive_url' => 'nullable|string',
             'file' => 'nullable|file|max:20480',
             'uploader_name' => 'nullable|string|max:255',
             'uploader_role' => 'nullable|string|max:50',
@@ -84,6 +86,8 @@ class MaterialController extends Controller
             $filePath = $file->store('materials', 'public');
             $fileName = $file->getClientOriginalName();
             $fileType = strtoupper($file->getClientOriginalExtension());
+        } elseif ($request->filled('drive_url')) {
+            $filePath = $request->input('drive_url');
         } elseif ($request->filled('file_path')) {
             $filePath = $request->input('file_path');
         }

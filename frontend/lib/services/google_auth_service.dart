@@ -16,15 +16,12 @@ class GoogleAuthService {
   static String get baseUrl => ApiConstants.baseUrl;
 
   /// Instance GoogleSignIn dari package google_sign_in.
-  /// Pada Android: clientId HARUS null (menggunakan google-services.json + SHA-1).
-  /// Pada Web: clientId diambil dari <meta name="google-signin-client_id"> di index.html.
+  /// Di Android: serverClientId diarahkan ke Web Client ID agar backend & Play Services sinkron.
+  /// Pada Web: clientId diambil dari Web Client ID.
   /// Pada iOS: clientId langsung dari ApiConstants.
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    // clientId per platform:
-    // - Web: menggunakan Web Client ID
-    // - iOS: menggunakan iOS Client ID
-    // - Android: HARUS null (dikonfigurasi via google-services.json + SHA-1)
+    serverClientId: ApiConstants.googleClientIdWeb,
     clientId: kIsWeb
         ? ApiConstants.googleClientIdWeb
         : (defaultTargetPlatform == TargetPlatform.iOS
@@ -50,9 +47,9 @@ class GoogleAuthService {
 
   /// Memulai proses Login dengan Google.
   /// - Desktop (Linux/Windows/macOS): Menggunakan Google OAuth 2.0 Loopback API resmi.
-  /// - Android/iOS: Mencoba native Google Play Services terlebih dahulu,
-  ///   dan otomatis fallback ke Browser Google OAuth jika native mengalami error (misal Error 10/SHA-1 belum terdaftar)
-  ///   sehingga pengguna di perangkat manapun bisa langsung masuk tanpa hambatan.
+  /// - Android/iOS: Menggunakan Google Sign-In native Google Play Services.
+  ///   CATATAN: Di perangkat mobile tidak menggunakan loopback localhost karena mobile Chrome
+  ///   tidak mengizinkan loopback ke aplikasi internal sehingga menyebabkan loading tanpa henti.
   static Future<void> signInWithGoogle(BuildContext context) async {
     Map<String, dynamic>? googleProfile;
 
@@ -61,18 +58,11 @@ class GoogleAuthService {
         googleProfile = await performDesktopGoogleOAuth(context);
       }
     } else {
-      // 1. Coba Native Google Sign-In di HP
+      // Native Google Play Services di HP
       try {
         googleProfile = await _signInWithGoogleAPI(context);
       } catch (e) {
         debugPrint('Native Google Sign-In error: $e');
-      }
-
-      // 2. Jika Native belum berhasil (misal error 10, SHA-1 belum terdaftar di perangkat, dsb),
-      // otomatis alihkan ke Browser Google OAuth agar bisa langsung login dari perangkat manapun.
-      if (googleProfile == null && context.mounted) {
-        debugPrint('Beralih ke Browser Google OAuth...');
-        googleProfile = await performDesktopGoogleOAuth(context);
       }
     }
 
@@ -88,13 +78,21 @@ class GoogleAuthService {
     BuildContext context,
   ) async {
     try {
-      // Sign out dulu agar selalu menampilkan account chooser
-      await _googleSignIn.signOut();
+      // Sign out dulu agar selalu menampilkan dialog pemilihan akun
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
 
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      final GoogleSignInAccount? account = await _googleSignIn.signIn().timeout(
+        const Duration(seconds: 25),
+        onTimeout: () {
+          debugPrint('Google Sign-In timeout');
+          return null;
+        },
+      );
 
       if (account == null) {
-        // User membatalkan login
+        // User membatalkan login atau timeout
         return null;
       }
 
@@ -106,9 +104,32 @@ class GoogleAuthService {
       };
     } on PlatformException catch (e) {
       debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
+      if (context.mounted) {
+        final isDevError = e.code == '10' || e.code == 'DEVELOPER_ERROR';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isDevError
+                  ? 'Kunci SHA-1 / OAuth Google Play Services belum sesuai dengan build APK (${e.code}).'
+                  : 'Gagal Login Google (${e.code}): ${e.message ?? 'Coba lagi'}',
+            ),
+            backgroundColor: Colors.orange.shade800,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       return null;
     } catch (e) {
       debugPrint('Google Sign-In unexpected error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Kendala login Google: $e'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       return null;
     }
   }
@@ -117,7 +138,7 @@ class GoogleAuthService {
 
   /// Memeriksa status akun Google pengguna di backend:
   /// - Jika sudah terdaftar -> Langsung masuk Dashboard
-  /// - Jika belum terdaftar -> Arahkan ke formulir Lengkapi Profil Pegawai
+  /// - Jika belum terdaftar -> Otomatis registrasi dan langsung masuk Dashboard
   static Future<void> _handleGoogleProfileSelected(
     BuildContext context,
     Map<String, dynamic> googleProfile,
@@ -127,7 +148,8 @@ class GoogleAuthService {
     final googleId = (googleProfile['google_id'] ?? '').toString();
     final avatar = (googleProfile['avatar'] ?? '').toString();
 
-    // Tampilkan loading dialog in-app
+    // Tampilkan single loading dialog in-app
+    bool dialogShown = false;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -162,69 +184,104 @@ class GoogleAuthService {
         ),
       ),
     );
-
-    bool isRegistered = false;
-    Map<String, dynamic>? userRecord;
-    String? token;
+    dialogShown = true;
 
     try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/google-check'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({'email': email}),
-          )
-          .timeout(const Duration(seconds: 8));
+      bool isRegistered = false;
+      Map<String, dynamic>? userRecord;
+      String? token;
 
-      final data = jsonDecode(response.body);
+      // 1. Coba verifikasi dengan server backend (timeout pendek 4s agar tidak loading lama jika database mati)
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/api/google-check'),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'email': email}),
+            )
+            .timeout(const Duration(seconds: 4));
 
-      if (response.statusCode == 200 && data['success'] == true) {
-        if (data['is_registered'] == true) {
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['is_registered'] == true) {
+            isRegistered = true;
+            userRecord = data['data']?['user'] as Map<String, dynamic>?;
+            token = data['data']?['token'];
+          }
+        }
+      } catch (e) {
+        debugPrint('Backend google-check error/timeout: $e');
+      }
+
+      // 2. Jika belum terverifikasi dari backend, cek cache lokal SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      if (!isRegistered) {
+        final cachedEmail = (prefs.getString('email') ?? '').trim().toLowerCase();
+        final rawUsers = prefs.getString('phonebook_admin_users_v1');
+        if (cachedEmail.isNotEmpty && cachedEmail == email) {
           isRegistered = true;
-          userRecord = data['data']?['user'] as Map<String, dynamic>?;
-          token = data['data']?['token'];
-        } else {
-          isRegistered = false;
+        } else if (rawUsers != null && rawUsers.contains(email)) {
+          isRegistered = true;
+        } else if (isAdminAccount(email)) {
+          isRegistered = true;
         }
       }
-    } catch (e) {
-      debugPrint('Backend google-check error: $e');
 
-      // Offline fallback: Cek SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final cachedEmail = (prefs.getString('email') ?? '').trim().toLowerCase();
-      final rawUsers = prefs.getString('phonebook_admin_users_v1');
+      // 3. Jika belum terdaftar di manapun, coba daftarkan ke backend
+      String userRole = isAdminAccount(email) ? 'admin' : 'user';
+      if (!isRegistered) {
+        try {
+          final regResponse = await http
+              .post(
+                Uri.parse('$baseUrl/api/google-register'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'email': email,
+                  'name': name,
+                  'nip': '',
+                  'jabatan': 'Penyuluh Kehutanan',
+                  'wilayah': 'CDK Wilayah Garut',
+                  'whatsapp_number': '',
+                  'google_id': googleId,
+                  'avatar': avatar,
+                }),
+              )
+              .timeout(const Duration(seconds: 4));
 
-      if (cachedEmail.isNotEmpty && cachedEmail == email) {
-        isRegistered = true;
-      } else if (rawUsers != null && rawUsers.contains(email)) {
-        isRegistered = true;
-      } else if (isAdminAccount(email)) {
-        isRegistered = true;
+          if (regResponse.statusCode == 200 || regResponse.statusCode == 201) {
+            final resData = jsonDecode(regResponse.body);
+            if (resData['success'] == true) {
+              token = resData['data']?['token'];
+              final u = resData['data']?['user'];
+              if (u != null && u['role'] != null) {
+                userRole = u['role'].toString();
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Backend google-register error/timeout: $e');
+        }
       }
-    }
 
-    if (!context.mounted) return;
-    // Tutup loading dialog
-    Navigator.of(context, rootNavigator: true).pop();
+      // 4. Pastikan token lokal selalu tersedia
+      token ??= 'google_session_${DateTime.now().millisecondsSinceEpoch}';
 
-    if (isRegistered) {
-      // 1. Akun SUDAH TERDAFTAR -> Masuk langsung ke Dashboard
-      final prefs = await SharedPreferences.getInstance();
-      final userRole = (userRecord?['role'] ?? (isAdminAccount(email) ? 'admin' : 'user')).toString();
       final resolvedName = (userRecord?['name'] ?? name).toString();
       final resolvedNip = (userRecord?['nip'] ?? '').toString();
-      final resolvedJabatan = (userRecord?['jabatan'] ?? '').toString();
-      final resolvedWilayah = (userRecord?['wilayah'] ?? '').toString();
+      final resolvedJabatan = (userRecord?['jabatan'] ?? 'Penyuluh Kehutanan').toString();
+      final resolvedWilayah = (userRecord?['wilayah'] ?? 'CDK Wilayah Garut').toString();
       final resolvedWa = (userRecord?['whatsapp_number'] ?? '').toString();
       final resolvedAvatar = (userRecord?['avatar'] ?? avatar).toString();
 
       await _persistSession(
         prefs: prefs,
-        token: token ?? 'google_session_${DateTime.now().millisecondsSinceEpoch}',
+        token: token,
         name: resolvedName,
         email: email,
         role: userRole,
@@ -235,12 +292,42 @@ class GoogleAuthService {
         avatar: resolvedAvatar,
       );
 
+      // Sinkronkan ke daftar folder user admin di SharedPreferences
+      try {
+        const userKey = 'phonebook_admin_users_v1';
+        final rawUsers = prefs.getString(userKey);
+        List<dynamic> users = [];
+        if (rawUsers != null && rawUsers.isNotEmpty) {
+          users = jsonDecode(rawUsers);
+        }
+        final alreadyPresent = users.any(
+          (u) => (u['email'] ?? '').toString().toLowerCase() == email,
+        );
+        if (!alreadyPresent) {
+          users.add({
+            'id': 'USR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+            'nip': resolvedNip.isNotEmpty ? resolvedNip : '-',
+            'name': resolvedName,
+            'email': email,
+            'wilayah': resolvedWilayah,
+            'role': userRole == 'admin' ? 'Administrator' : resolvedJabatan,
+          });
+          await prefs.setString(userKey, jsonEncode(users));
+        }
+      } catch (_) {}
+
+      // Tutup dialog loading secara aman
+      if (dialogShown && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogShown = false;
+      }
+
       final bool isAdmin = isAdminAccount(email) || userRole == 'admin';
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Selamat datang kembali, $resolvedName!'),
+          content: Text('Selamat datang, $resolvedName!'),
           backgroundColor: const Color(0xFF2E7D32),
         ),
       );
@@ -251,172 +338,21 @@ class GoogleAuthService {
         ),
         (route) => false,
       );
-    } else {
-      // 2. Akun BELUM TERDAFTAR -> OTOMATIS DAFTAR LANGSUNG MASUK KE DASHBOARD!
-      if (!context.mounted) return;
-      await registerAndEnterDashboard(
-        context,
-        {
-          'email': email,
-          'name': name,
-          'google_id': googleId,
-          'avatar': avatar,
-          'nip': '',
-          'jabatan': 'Penyuluh Kehutanan',
-          'wilayah': 'CDK Wilayah Garut',
-          'whatsapp_number': '',
-        },
-      );
-    }
-  }
-
-  /// Mendaftarkan data profil pegawai baru dari Google dan langsung mengarahkan ke Dashboard
-  static Future<void> registerAndEnterDashboard(
-    BuildContext context,
-    Map<String, dynamic> data,
-  ) async {
-    final email = (data['email'] ?? '').toString().trim().toLowerCase();
-    final name = (data['name'] ?? email.split('@').first).toString().trim();
-    final nip = (data['nip'] ?? '').toString().trim();
-    final jabatan = (data['jabatan'] ?? '').toString().trim();
-    final wilayah = (data['wilayah'] ?? '').toString().trim();
-    final wa = (data['whatsapp_number'] ?? '').toString().trim();
-    final googleId = (data['google_id'] ?? '').toString();
-    final avatar = (data['avatar'] ?? '').toString();
-
-    // Tampilkan loading dialog
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  color: Color(0xFF2E7D32),
-                  strokeWidth: 3,
-                ),
-                SizedBox(width: 20),
-                Expanded(
-                  child: Text(
-                    'Menyimpan Profil & Menuju Dashboard...',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E2923),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-
-    String? token;
-    String userRole = isAdminAccount(email) ? 'admin' : 'user';
-
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/google-register'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'email': email,
-              'name': name,
-              'nip': nip,
-              'jabatan': jabatan,
-              'wilayah': wilayah,
-              'whatsapp_number': wa,
-              'google_id': googleId,
-              'avatar': avatar,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-
-      final resData = jsonDecode(response.body);
-
-      if ((response.statusCode == 200 || response.statusCode == 201) &&
-          resData['success'] == true) {
-        token = resData['data']?['token'];
-        final user = resData['data']?['user'];
-        if (user != null && user['role'] != null) {
-          userRole = user['role'].toString();
-        }
-      }
     } catch (e) {
-      debugPrint('Backend google-register error: $e');
+      debugPrint('General error in _handleGoogleProfileSelected: $e');
+      if (dialogShown && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogShown = false;
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyelesaikan login: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
     }
-
-    token ??= 'google_reg_${DateTime.now().millisecondsSinceEpoch}';
-
-    final prefs = await SharedPreferences.getInstance();
-    await _persistSession(
-      prefs: prefs,
-      token: token,
-      name: name,
-      email: email,
-      role: userRole,
-      nip: nip,
-      jabatan: jabatan,
-      wilayah: wilayah,
-      whatsapp: wa,
-      avatar: avatar,
-    );
-
-    // Sinkronkan ke daftar folder user admin di SharedPreferences
-    try {
-      const userKey = 'phonebook_admin_users_v1';
-      final rawUsers = prefs.getString(userKey);
-      List<dynamic> users = [];
-      if (rawUsers != null && rawUsers.isNotEmpty) {
-        users = jsonDecode(rawUsers);
-      }
-      final alreadyPresent = users.any(
-        (u) => (u['email'] ?? '').toString().toLowerCase() == email,
-      );
-      if (!alreadyPresent) {
-        users.add({
-          'id': 'USR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-          'nip': nip.isNotEmpty ? nip : '-',
-          'name': name,
-          'email': email,
-          'wilayah': wilayah.isNotEmpty ? wilayah : 'CDK Wilayah Garut',
-          'role': userRole == 'admin' ? 'Administrator' : (jabatan.isNotEmpty ? jabatan : 'Penyuluh'),
-        });
-        await prefs.setString(userKey, jsonEncode(users));
-      }
-    } catch (_) {}
-
-    if (!context.mounted) return;
-    // Tutup loading dialog
-    Navigator.of(context, rootNavigator: true).pop();
-
-    final bool isAdmin = isAdminAccount(email) || userRole == 'admin';
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Pendaftaran berhasil! Selamat datang, $name.'),
-        backgroundColor: const Color(0xFF2E7D32),
-      ),
-    );
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => isAdmin ? const AdminPage() : const HomePage(),
-      ),
-      (route) => false,
-    );
   }
 
   /// Menyimpan sesi autentikasi dan profil pengguna ke SharedPreferences (Auto-Login aktif)
