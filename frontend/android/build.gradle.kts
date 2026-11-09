@@ -3,15 +3,8 @@ allprojects {
         google()
         mavenCentral()
     }
-    configurations.all {
-        resolutionStrategy {
-            force("androidx.core:core:1.13.1")
-            force("androidx.core:core-ktx:1.13.1")
-            force("androidx.activity:activity:1.9.3")
-            force("androidx.activity:activity-ktx:1.9.3")
-            force("androidx.fragment:fragment:1.8.5")
-            force("androidx.fragment:fragment-ktx:1.8.5")
-        }
+    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+        enabled = false
     }
 }
 
@@ -27,6 +20,11 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+subprojects {
+    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+        enabled = false
+    }
 }
 
 tasks.register<Delete>("clean") {
