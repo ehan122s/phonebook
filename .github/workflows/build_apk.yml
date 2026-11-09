@@ -39,8 +39,9 @@ jobs:
         if: failure()
         run: |
           if [ -f build_output.txt ]; then
-            echo "::error::Build failed! Last 60 lines:"
-            tail -n 60 build_output.txt
+            tail -n 40 build_output.txt | while IFS= read -r line; do
+              echo "::error title=BuildLog::$line"
+            done
           fi
 
       - name: Upload Release APK
