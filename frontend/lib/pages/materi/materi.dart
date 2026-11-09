@@ -520,43 +520,23 @@ class _MateriPageState extends State<MateriPage> {
                         InkWell(
                           onTap: () async {
                             try {
-                              PlatformFile? file;
-                              try {
-                                file = await FilePicker.pickFile(
-                                  type: FileType.custom,
-                                  allowedExtensions: [
-                                    'pdf',
-                                    'ppt',
-                                    'pptx',
-                                    'doc',
-                                    'docx',
-                                    'xls',
-                                    'xlsx',
-                                    'mp4',
-                                    'txt',
-                                  ],
-                                );
-                              } catch (_) {
-                                final result = await FilePicker.platform.pickFiles(
-                                  type: FileType.custom,
-                                  allowedExtensions: [
-                                    'pdf',
-                                    'ppt',
-                                    'pptx',
-                                    'doc',
-                                    'docx',
-                                    'xls',
-                                    'xlsx',
-                                    'mp4',
-                                    'txt',
-                                  ],
-                                );
-                                if (result != null && result.files.isNotEmpty) {
-                                  file = result.files.first;
-                                }
-                              }
+                              final result = await FilePicker.platform.pickFiles(
+                                type: FileType.custom,
+                                allowedExtensions: [
+                                  'pdf',
+                                  'ppt',
+                                  'pptx',
+                                  'doc',
+                                  'docx',
+                                  'xls',
+                                  'xlsx',
+                                  'mp4',
+                                  'txt',
+                                ],
+                              );
 
-                              if (file != null) {
+                              if (result != null && result.files.isNotEmpty) {
+                                final file = result.files.first;
                                 selectedFile = file;
                                 fileNameCtrl.text = file.name;
 

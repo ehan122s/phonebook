@@ -39,7 +39,7 @@ jobs:
         if: failure()
         run: |
           if [ -f build_output.txt ]; then
-            grep -E "FAILURE:|What went wrong:|Execution failed|caused by|Caused by:" -A 8 build_output.txt | head -n 35 | while IFS= read -r line; do
+            grep -E "FAILURE:|What went wrong:|Execution failed|caused by|Caused by:|Error:|error:" -A 8 build_output.txt | head -n 35 | while IFS= read -r line; do
               echo "::error title=BuildFailure::$line"
             done
           fi
