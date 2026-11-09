@@ -20,10 +20,13 @@ subprojects {
 }
 
 subprojects {
-    configurations.configureEach {
-        resolutionStrategy.eachDependency {
-            if (requested.group == "androidx.core" && (requested.name == "core" || requested.name == "core-ktx")) {
-                useVersion("1.13.1")
+    afterEvaluate {
+        if (project.hasProperty("android")) {
+            val android = project.extensions.findByName("android")
+            try {
+                val method = android?.javaClass?.getMethod("compileSdkVersion", Int::class.javaPrimitiveType)
+                method?.invoke(android, 36)
+            } catch (e: Exception) {
             }
         }
     }
