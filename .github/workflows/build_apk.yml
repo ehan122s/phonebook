@@ -39,8 +39,8 @@ jobs:
         if: failure()
         run: |
           if [ -f build_output.txt ]; then
-            tail -n 40 build_output.txt | while IFS= read -r line; do
-              echo "::error title=BuildLog::$line"
+            grep -E "FAILURE:|What went wrong:|Execution failed|caused by|Caused by:" -A 8 build_output.txt | head -n 35 | while IFS= read -r line; do
+              echo "::error title=BuildFailure::$line"
             done
           fi
 
