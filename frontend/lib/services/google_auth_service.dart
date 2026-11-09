@@ -30,8 +30,6 @@ class GoogleAuthService {
         : (defaultTargetPlatform == TargetPlatform.iOS
             ? ApiConstants.googleClientIdIos
             : null),
-    // serverClientId diperlukan di Android untuk mendapatkan auth code
-    serverClientId: ApiConstants.googleClientIdWeb,
   );
 
   /// Cek apakah email memiliki hak akses administrator
@@ -52,7 +50,9 @@ class GoogleAuthService {
 
   /// Memulai proses Login dengan Google.
   /// - Desktop (Linux/Windows/macOS): Menggunakan Google OAuth 2.0 Loopback API resmi.
-  /// - Android/iOS/Web: Menggunakan GoogleSignIn plugin resmi.
+  /// - Android/iOS: Mencoba native Google Play Services terlebih dahulu,
+  ///   dan otomatis fallback ke Browser Google OAuth jika native mengalami error (misal Error 10/SHA-1 belum terdaftar)
+  ///   sehingga pengguna di perangkat manapun bisa langsung masuk tanpa hambatan.
   static Future<void> signInWithGoogle(BuildContext context) async {
     Map<String, dynamic>? googleProfile;
 
@@ -61,12 +61,24 @@ class GoogleAuthService {
         googleProfile = await performDesktopGoogleOAuth(context);
       }
     } else {
-      googleProfile = await _signInWithGoogleAPI(context);
+      // 1. Coba Native Google Sign-In di HP
+      try {
+        googleProfile = await _signInWithGoogleAPI(context);
+      } catch (e) {
+        debugPrint('Native Google Sign-In error: $e');
+      }
+
+      // 2. Jika Native belum berhasil (misal error 10, SHA-1 belum terdaftar di perangkat, dsb),
+      // otomatis alihkan ke Browser Google OAuth agar bisa langsung login dari perangkat manapun.
+      if (googleProfile == null && context.mounted) {
+        debugPrint('Beralih ke Browser Google OAuth...');
+        googleProfile = await performDesktopGoogleOAuth(context);
+      }
     }
 
     if (googleProfile == null || !context.mounted) return;
 
-    // Proses pengecekan akun & navigasi ke Dashboard atau Lengkapi Profil
+    // Proses pengecekan akun & navigasi ke Dashboard otomatis
     await _handleGoogleProfileSelected(context, googleProfile);
   }
 
@@ -94,39 +106,9 @@ class GoogleAuthService {
       };
     } on PlatformException catch (e) {
       debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
-
-      if (!context.mounted) return null;
-
-      if (e.code == 'sign_in_failed' || e.code == 'network_error') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Google Sign-In gagal: ${e.message ?? "Pastikan koneksi internet aktif"}',
-            ),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Google Sign-In error: ${e.code}'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      }
       return null;
     } catch (e) {
       debugPrint('Google Sign-In unexpected error: $e');
-
-      if (!context.mounted) return null;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Gagal memulai Google Sign-In. Pastikan Google Play Services tersedia.',
-          ),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
       return null;
     }
   }
@@ -270,26 +252,20 @@ class GoogleAuthService {
         (route) => false,
       );
     } else {
-      // 2. Akun BELUM TERDAFTAR -> Arahkan ke formulir Lengkapi Profil
+      // 2. Akun BELUM TERDAFTAR -> OTOMATIS DAFTAR LANGSUNG MASUK KE DASHBOARD!
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Akun Google belum terdaftar. Silakan lengkapi formulir profil.'),
-          backgroundColor: Color(0xFF2E7D32),
-        ),
-      );
-
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => LengkapiProfilPage(
-            googleData: {
-              'email': email,
-              'name': name,
-              'google_id': googleId,
-              'avatar': avatar,
-            },
-          ),
-        ),
+      await registerAndEnterDashboard(
+        context,
+        {
+          'email': email,
+          'name': name,
+          'google_id': googleId,
+          'avatar': avatar,
+          'nip': '',
+          'jabatan': 'Penyuluh Kehutanan',
+          'wilayah': 'CDK Wilayah Garut',
+          'whatsapp_number': '',
+        },
       );
     }
   }
