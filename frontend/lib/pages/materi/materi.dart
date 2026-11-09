@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../constants/api_constants.dart';
 
@@ -274,6 +275,7 @@ class _MateriPageState extends State<MateriPage> {
     String selectedCat = 'Penyuluhan';
     String selectedType = 'PDF';
     bool isGoogleDriveSource = false;
+    PlatformFile? selectedFile;
     final formKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -329,7 +331,7 @@ class _MateriPageState extends State<MateriPage> {
                                 Text(
                                   isGoogleDriveSource
                                       ? 'Unggah Materi dari Google Drive'
-                                      : 'Upload Materi Edukasi Baru',
+                                      : 'Upload Materi dari File Manager',
                                   style: const TextStyle(
                                     fontSize: 17.5,
                                     fontWeight: FontWeight.bold,
@@ -338,7 +340,7 @@ class _MateriPageState extends State<MateriPage> {
                                 ),
                                 const SizedBox(height: 2),
                                 const Text(
-                                  'Mendukung PDF, PPT Slides, Word & Link Google Drive.',
+                                  'Pilih langsung dari File Manager HP (PDF, PPT, Word) atau Drive.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey,
@@ -357,7 +359,7 @@ class _MateriPageState extends State<MateriPage> {
                       const Divider(),
                       const SizedBox(height: 10),
 
-                      // Toggle Sumber: Dokumen Langsung vs Google Drive
+                      // Toggle Sumber: Dokumen File Manager vs Google Drive
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -388,7 +390,7 @@ class _MateriPageState extends State<MateriPage> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        Icons.file_present_rounded,
+                                        Icons.folder_open_rounded,
                                         size: 17,
                                         color: !isGoogleDriveSource
                                             ? const Color(0xFF2E7D32)
@@ -396,7 +398,7 @@ class _MateriPageState extends State<MateriPage> {
                                       ),
                                       const SizedBox(width: 6),
                                       Text(
-                                        'File Dokumen',
+                                        'File Manager HP',
                                         style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: !isGoogleDriveSource
@@ -504,6 +506,168 @@ class _MateriPageState extends State<MateriPage> {
                       ),
                       const SizedBox(height: 14),
 
+                      // BAGIAN KHUSUS PILIH DARI FILE MANAGER HP
+                      if (!isGoogleDriveSource) ...[
+                        const Text(
+                          'Pilih Dokumen dari File Manager *',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E2923),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: () async {
+                            try {
+                              final result = await FilePicker.platform.pickFiles(
+                                type: FileType.custom,
+                                allowedExtensions: [
+                                  'pdf',
+                                  'ppt',
+                                  'pptx',
+                                  'doc',
+                                  'docx',
+                                  'xls',
+                                  'xlsx',
+                                  'mp4',
+                                  'txt',
+                                ],
+                              );
+
+                              if (result != null && result.files.isNotEmpty) {
+                                final file = result.files.first;
+                                selectedFile = file;
+                                fileNameCtrl.text = file.name;
+
+                                // Auto deteksi tipe dokumen berdasarkan ekstensi
+                                final ext = (file.extension ?? '').toLowerCase();
+                                if (ext == 'pdf') {
+                                  selectedType = 'PDF';
+                                } else if (ext == 'ppt' || ext == 'pptx') {
+                                  selectedType = 'PPT';
+                                } else if (ext == 'doc' || ext == 'docx') {
+                                  selectedType = 'DOC';
+                                } else if (ext == 'xls' || ext == 'xlsx') {
+                                  selectedType = 'XLS';
+                                } else if (ext == 'mp4') {
+                                  selectedType = 'VIDEO';
+                                }
+
+                                // Auto isi judul jika masih kosong
+                                if (titleCtrl.text.trim().isEmpty) {
+                                  final nameNoExt = file.name.contains('.')
+                                      ? file.name.substring(0, file.name.lastIndexOf('.'))
+                                      : file.name;
+                                  titleCtrl.text = nameNoExt.replaceAll('_', ' ');
+                                }
+
+                                setModalState(() {});
+                              }
+                            } catch (e) {
+                              debugPrint('FilePicker error: $e');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Gagal membuka file manager: $e')),
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: selectedFile != null
+                                  ? const Color(0xFFE8F5E9)
+                                  : const Color(0xFFF9FBF9),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: selectedFile != null
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.grey.shade300,
+                                width: selectedFile != null ? 1.5 : 1.0,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: selectedFile != null
+                                        ? const Color(0xFF2E7D32)
+                                        : Colors.grey.shade200,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    selectedFile != null
+                                        ? Icons.check_circle_rounded
+                                        : Icons.folder_open_rounded,
+                                    color: selectedFile != null
+                                        ? Colors.white
+                                        : const Color(0xFF2E7D32),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        selectedFile != null
+                                            ? selectedFile!.name
+                                            : 'Buka File Manager HP / Unduhan',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13.5,
+                                          color: selectedFile != null
+                                              ? const Color(0xFF1B5E20)
+                                              : const Color(0xFF1E2923),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        selectedFile != null
+                                            ? '${(selectedFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB • Format: ${selectedFile!.extension?.toUpperCase() ?? selectedType}'
+                                            : 'Ketuk untuk memilih file PDF, PPT, Word dari HP',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: selectedFile != null
+                                        ? Colors.white
+                                        : const Color(0xFF2E7D32),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: selectedFile != null
+                                        ? Border.all(color: const Color(0xFF2E7D32))
+                                        : null,
+                                  ),
+                                  child: Text(
+                                    selectedFile != null ? 'Ganti File' : 'Pilih File',
+                                    style: TextStyle(
+                                      color: selectedFile != null
+                                          ? const Color(0xFF2E7D32)
+                                          : Colors.white,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
                       // Judul Materi
                       const Text(
                         'Judul Materi Edukasi *',
@@ -529,7 +693,7 @@ class _MateriPageState extends State<MateriPage> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Kategori & Format File Baris
+                      // Kategori & Format Dokumen Baris
                       Row(
                         children: [
                           Expanded(
@@ -717,7 +881,7 @@ class _MateriPageState extends State<MateriPage> {
                       Text(
                         isGoogleDriveSource
                             ? 'Label Nama File (Opsional)'
-                            : 'Nama File / Dokumen (PDF, PPT, DOC) *',
+                            : 'Nama Berkas yang Terpilih',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -730,7 +894,7 @@ class _MateriPageState extends State<MateriPage> {
                         decoration: _inputDecoration(
                           hint: isGoogleDriveSource
                               ? 'Contoh: Materi_PPT_Kelompok_Tani_2026.pptx'
-                              : 'Contoh: Panduan_Budidaya_Madu_2026.pdf',
+                              : 'Nama file akan terisi otomatis saat memilih dari File Manager',
                           icon: Icons.attach_file_rounded,
                         ),
                       ),
@@ -805,16 +969,26 @@ class _MateriPageState extends State<MateriPage> {
                                 ? '${titleCtrl.text.trim().replaceAll(' ', '_')}.${selectedType.toLowerCase()}'
                                 : '${titleCtrl.text.trim().replaceAll(' ', '_')}.${selectedType.toLowerCase()}';
 
+                            final resolvedFileName = fileNameCtrl.text.trim().isNotEmpty
+                                ? fileNameCtrl.text.trim()
+                                : fallbackName;
+
                             final newMaterial = {
                               'id': 'MAT-${DateTime.now().millisecondsSinceEpoch}',
                               'title': titleCtrl.text.trim(),
                               'category': selectedCat,
                               'type': selectedType,
                               'drive_url': driveUrl,
-                              'file_path': driveUrl.isNotEmpty ? driveUrl : 'materials/$fallbackName',
-                              'file_name': fileNameCtrl.text.trim().isNotEmpty
-                                  ? fileNameCtrl.text.trim()
-                                  : fallbackName,
+                              'file_path': driveUrl.isNotEmpty
+                                  ? driveUrl
+                                  : (selectedFile?.path != null && selectedFile!.path!.isNotEmpty
+                                      ? selectedFile!.path!
+                                      : 'materials/$resolvedFileName'),
+                              'file_name': resolvedFileName,
+                              'file_size': selectedFile != null
+                                  ? '${(selectedFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB'
+                                  : '',
+                              'local_path': selectedFile?.path ?? '',
                               'description': descCtrl.text.trim(),
                               'uploader_name': _currentUserName,
                               'uploader_role': _currentUserRole == 'admin'
@@ -829,12 +1003,16 @@ class _MateriPageState extends State<MateriPage> {
                           icon: Icon(
                             isGoogleDriveSource
                                 ? Icons.add_to_drive_rounded
-                                : Icons.check_circle_outline_rounded,
+                                : (selectedFile != null
+                                    ? Icons.cloud_upload_rounded
+                                    : Icons.check_circle_outline_rounded),
                           ),
                           label: Text(
                             isGoogleDriveSource
                                 ? 'Simpan & Bagikan dari Google Drive'
-                                : 'Upload & Publikasikan Materi',
+                                : (selectedFile != null
+                                    ? 'Upload Dokumen Terpilih'
+                                    : 'Upload & Publikasikan Materi'),
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
