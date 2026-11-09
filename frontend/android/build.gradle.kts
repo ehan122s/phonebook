@@ -3,9 +3,6 @@ allprojects {
         google()
         mavenCentral()
     }
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
-    }
 }
 
 val newBuildDir: Directory =
@@ -20,11 +17,6 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-}
-subprojects {
-    tasks.matching { it.name.contains("AarMetadata") }.configureEach {
-        enabled = false
-    }
 }
 
 tasks.register<Delete>("clean") {
