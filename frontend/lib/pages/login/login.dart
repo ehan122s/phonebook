@@ -30,8 +30,32 @@ class _LoginPageState extends State<LoginPage> {
   final passwordController = TextEditingController();
 
   bool isLoading = false;
+  bool isGoogleLoading = false;
   bool obscurePassword = true;
   bool rememberMe = false;
+
+  Future<void> _handleGoogleSignIn() async {
+    if (isLoading || isGoogleLoading) return;
+    setState(() {
+      isGoogleLoading = true;
+    });
+
+    try {
+      await GoogleAuthService.signInWithGoogle(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kendala login Google: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isGoogleLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -398,32 +422,59 @@ class _LoginPageState extends State<LoginPage> {
                       width: double.infinity,
                       height: 52,
                       child: OutlinedButton(
-                        onPressed: isLoading
+                        onPressed: (isLoading || isGoogleLoading)
                             ? null
-                            : () => GoogleAuthService.signInWithGoogle(context),
+                            : _handleGoogleSignIn,
                         style: OutlinedButton.styleFrom(
                           backgroundColor: Colors.white,
-                          side: BorderSide(color: Colors.grey.shade300),
+                          side: BorderSide(
+                            color: isGoogleLoading
+                                ? const Color(0xFF2E7D32)
+                                : Colors.grey.shade300,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 0,
                         ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            GoogleLogoWidget(size: 22),
-                            SizedBox(width: 12),
-                            Text(
-                              'Masuk dengan Google',
-                              style: TextStyle(
-                                color: Color(0xFF1E2923),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                        child: isGoogleLoading
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF2E7D32),
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Menghubungkan Akun Google...',
+                                    style: TextStyle(
+                                      color: Color(0xFF2E7D32),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  GoogleLogoWidget(size: 22),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Masuk dengan Google',
+                                    style: TextStyle(
+                                      color: Color(0xFF1E2923),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ],
-                        ),
                       ),
                     ),
                   ],

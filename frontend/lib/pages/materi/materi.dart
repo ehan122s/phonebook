@@ -781,7 +781,7 @@ class _MateriPageState extends State<MateriPage> {
                         Row(
                           children: [
                             const Text(
-                              'Tautan Berkas Google Drive *',
+                              'Tautan Google Drive *',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
@@ -789,7 +789,98 @@ class _MateriPageState extends State<MateriPage> {
                               ),
                             ),
                             const Spacer(),
-                            if (driveUrlCtrl.text.trim().isNotEmpty)
+                            // Tombol Buka Drive
+                            InkWell(
+                              onTap: () async {
+                                try {
+                                  await launchUrl(
+                                    Uri.parse('https://drive.google.com'),
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                } catch (_) {}
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.blue.shade200),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.cloud_outlined, size: 13, color: Color(0xFF1A73E8)),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Buka Drive',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1A73E8)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Tombol Tempel dari Clipboard
+                            InkWell(
+                              onTap: () async {
+                                final data = await Clipboard.getData(Clipboard.kTextPlain);
+                                final text = data?.text?.trim() ?? '';
+                                if (text.isNotEmpty) {
+                                  driveUrlCtrl.text = text;
+                                  final lower = text.toLowerCase();
+                                  if (lower.contains('.pdf')) {
+                                    selectedType = 'PDF';
+                                  } else if (lower.contains('.ppt') || lower.contains('presentation')) {
+                                    selectedType = 'PPT';
+                                  } else if (lower.contains('.doc') || lower.contains('document')) {
+                                    selectedType = 'DOC';
+                                  } else if (lower.contains('.xls') || lower.contains('spreadsheet')) {
+                                    selectedType = 'XLS';
+                                  } else if (lower.contains('.mp4') || lower.contains('video')) {
+                                    selectedType = 'VIDEO';
+                                  }
+                                  setModalState(() {});
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Tautan berhasil ditempel dari clipboard!'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Color(0xFF1A73E8),
+                                      ),
+                                    );
+                                  }
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Clipboard kosong. Salin tautan Google Drive terlebih dahulu.'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8F5E9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFC8E6C9)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.content_paste_rounded, size: 13, color: Color(0xFF2E7D32)),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      'Tempel Link',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (driveUrlCtrl.text.trim().isNotEmpty) ...[
+                              const SizedBox(width: 8),
                               InkWell(
                                 onTap: () async {
                                   final raw = driveUrlCtrl.text.trim();
@@ -800,9 +891,11 @@ class _MateriPageState extends State<MateriPage> {
                                       );
                                       await launchUrl(uri, mode: LaunchMode.externalApplication);
                                     } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Tidak dapat membuka link: $e')),
-                                      );
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Tidak dapat membuka link: $e')),
+                                        );
+                                      }
                                     }
                                   }
                                 },
@@ -825,12 +918,27 @@ class _MateriPageState extends State<MateriPage> {
                                   ),
                                 ),
                               ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 6),
                         TextFormField(
                           controller: driveUrlCtrl,
-                          onChanged: (_) => setModalState(() {}),
+                          onChanged: (val) {
+                            final lower = val.toLowerCase();
+                            if (lower.contains('.pdf')) {
+                              selectedType = 'PDF';
+                            } else if (lower.contains('.ppt') || lower.contains('presentation')) {
+                              selectedType = 'PPT';
+                            } else if (lower.contains('.doc') || lower.contains('document')) {
+                              selectedType = 'DOC';
+                            } else if (lower.contains('.xls') || lower.contains('spreadsheet')) {
+                              selectedType = 'XLS';
+                            } else if (lower.contains('.mp4') || lower.contains('video')) {
+                              selectedType = 'VIDEO';
+                            }
+                            setModalState(() {});
+                          },
                           decoration: _inputDecoration(
                             hint: 'https://drive.google.com/file/d/.../view?usp=sharing',
                             icon: Icons.link_rounded,
@@ -1039,10 +1147,11 @@ class _MateriPageState extends State<MateriPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_storageKey, jsonEncode(_materials));
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Materi edukasi berhasil diupload oleh ${_currentUserName} dan terlihat oleh semua user.',
+          'Materi edukasi berhasil diupload oleh $_currentUserName dan terlihat oleh semua user.',
         ),
         backgroundColor: const Color(0xFF2E7D32),
       ),
@@ -1096,6 +1205,7 @@ class _MateriPageState extends State<MateriPage> {
         (driveUrl.startsWith('http') && driveUrl.contains('drive'));
 
     final isUploader = uploaderName.toLowerCase() == _currentUserName.toLowerCase() ||
+        (_currentUserEmail.isNotEmpty && uploaderName.toLowerCase() == _currentUserEmail.toLowerCase()) ||
         _currentUserRole == 'admin';
 
     showModalBottomSheet(

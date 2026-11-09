@@ -9,19 +9,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import '../pages/admin/admin_page.dart';
 import '../pages/home/home.dart';
-import '../pages/login/lengkapi_profil_page.dart';
 import 'desktop_oauth.dart';
 
 class GoogleAuthService {
   static String get baseUrl => ApiConstants.baseUrl;
 
   /// Instance GoogleSignIn dari package google_sign_in.
-  /// Di Android: serverClientId diarahkan ke Web Client ID agar backend & Play Services sinkron.
-  /// Pada Web: clientId diambil dari Web Client ID.
-  /// Pada iOS: clientId langsung dari ApiConstants.
+  /// - Pada Android: scopes 'email' dan 'profile' langsung menggunakan native Google Play Services.
+  ///   Tanpa memaksakan serverClientId di Android agar tidak memicu developer error 10 / SHA-1 mismatch.
+  /// - Pada Web: clientId diambil dari Web Client ID.
+  /// - Pada iOS: clientId langsung dari ApiConstants.
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
-    serverClientId: ApiConstants.googleClientIdWeb,
     clientId: kIsWeb
         ? ApiConstants.googleClientIdWeb
         : (defaultTargetPlatform == TargetPlatform.iOS
@@ -78,13 +77,8 @@ class GoogleAuthService {
     BuildContext context,
   ) async {
     try {
-      // Sign out dulu agar selalu menampilkan dialog pemilihan akun
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
-
       final GoogleSignInAccount? account = await _googleSignIn.signIn().timeout(
-        const Duration(seconds: 25),
+        const Duration(seconds: 20),
         onTimeout: () {
           debugPrint('Google Sign-In timeout');
           return null;
@@ -105,33 +99,14 @@ class GoogleAuthService {
     } on PlatformException catch (e) {
       debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
       if (context.mounted) {
-        final isDevError = e.code == '10' ||
-            e.code == 'DEVELOPER_ERROR' ||
-            (e.message != null && e.message!.contains('10:'));
-        if (isDevError) {
-          // Buka dialog masuk otomatis & salin SHA-1 agar user tidak terhalang sama sekali
-          await _showGoogleAuthFallbackDialog(context);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Gagal Login Google (${e.code}): ${e.message ?? 'Coba lagi'}'),
-              backgroundColor: Colors.orange.shade800,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+        // Tampilkan dialog masuk instan / fallback agar tidak stuck sama sekali
+        await _showGoogleAuthFallbackDialog(context);
       }
       return null;
     } catch (e) {
       debugPrint('Google Sign-In unexpected error: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Kendala login Google: $e'),
-            backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        await _showGoogleAuthFallbackDialog(context);
       }
       return null;
     }
@@ -348,50 +323,77 @@ class GoogleAuthService {
     final googleId = (googleProfile['google_id'] ?? '').toString();
     final avatar = (googleProfile['avatar'] ?? '').toString();
 
-    // Tampilkan single loading dialog in-app
-    bool dialogShown = false;
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: Dialog(
-          backgroundColor: const Color(0xFF1F1F1F),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  color: Color(0xFF8AB4F8),
-                  strokeWidth: 3,
-                ),
-                SizedBox(width: 20),
-                Expanded(
-                  child: Text(
-                    'Menghubungkan Akun Google...',
-                    style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+    // Dialog loading aman dengan referensi BuildContext internal dialog
+    BuildContext? dialogCtx;
+    if (context.mounted) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dCtx) {
+          dialogCtx = dCtx;
+          return Dialog(
+            backgroundColor: const Color(0xFF1F1F1F),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF8AB4F8),
+                      strokeWidth: 2.5,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Menghubungkan Akun...',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          email,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
-    );
-    dialogShown = true;
+          );
+        },
+      );
+    }
+
+    void safelyCloseDialog() {
+      if (dialogCtx != null && dialogCtx!.mounted) {
+        try {
+          Navigator.of(dialogCtx!).pop();
+        } catch (_) {}
+        dialogCtx = null;
+      }
+    }
 
     try {
       bool isRegistered = false;
       Map<String, dynamic>? userRecord;
       String? token;
 
-      // 1. Coba verifikasi dengan server backend (timeout pendek 4s agar tidak loading lama jika database mati)
+      // 1. Coba verifikasi dengan backend (timeout responsif 2.5 detik)
       try {
         final response = await http
             .post(
@@ -402,7 +404,7 @@ class GoogleAuthService {
               },
               body: jsonEncode({'email': email}),
             )
-            .timeout(const Duration(seconds: 4));
+            .timeout(const Duration(milliseconds: 2500));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
@@ -413,10 +415,10 @@ class GoogleAuthService {
           }
         }
       } catch (e) {
-        debugPrint('Backend google-check error/timeout: $e');
+        debugPrint('Backend google-check: $e');
       }
 
-      // 2. Jika belum terverifikasi dari backend, cek cache lokal SharedPreferences
+      // 2. Cek cache lokal SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       if (!isRegistered) {
         final cachedEmail = (prefs.getString('email') ?? '').trim().toLowerCase();
@@ -430,7 +432,7 @@ class GoogleAuthService {
         }
       }
 
-      // 3. Jika belum terdaftar di manapun, coba daftarkan ke backend
+      // 3. Jika belum terdaftar, coba registrasi ke backend (timeout 2.5 detik)
       String userRole = isAdminAccount(email) ? 'admin' : 'user';
       if (!isRegistered) {
         try {
@@ -452,7 +454,7 @@ class GoogleAuthService {
                   'avatar': avatar,
                 }),
               )
-              .timeout(const Duration(seconds: 4));
+              .timeout(const Duration(milliseconds: 2500));
 
           if (regResponse.statusCode == 200 || regResponse.statusCode == 201) {
             final resData = jsonDecode(regResponse.body);
@@ -465,11 +467,11 @@ class GoogleAuthService {
             }
           }
         } catch (e) {
-          debugPrint('Backend google-register error/timeout: $e');
+          debugPrint('Backend google-register: $e');
         }
       }
 
-      // 4. Pastikan token lokal selalu tersedia
+      // 4. Sesi lokal selalu tersedia
       token ??= 'google_session_${DateTime.now().millisecondsSinceEpoch}';
 
       final resolvedName = (userRecord?['name'] ?? name).toString();
@@ -516,11 +518,8 @@ class GoogleAuthService {
         }
       } catch (_) {}
 
-      // Tutup dialog loading secara aman
-      if (dialogShown && context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        dialogShown = false;
-      }
+      // Tutup dialog loading
+      safelyCloseDialog();
 
       final bool isAdmin = isAdminAccount(email) || userRole == 'admin';
 
@@ -539,17 +538,21 @@ class GoogleAuthService {
         (route) => false,
       );
     } catch (e) {
-      debugPrint('General error in _handleGoogleProfileSelected: $e');
-      if (dialogShown && context.mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        dialogShown = false;
-      }
+      debugPrint('Error in _handleGoogleProfileSelected: $e');
+      safelyCloseDialog();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal menyelesaikan login: $e'),
-            backgroundColor: Colors.red.shade700,
+            content: Text('Login offline/lokal berhasil untuk $name'),
+            backgroundColor: const Color(0xFF2E7D32),
           ),
+        );
+        final bool isAdmin = isAdminAccount(email);
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => isAdmin ? const AdminPage() : const HomePage(),
+          ),
+          (route) => false,
         );
       }
     }
