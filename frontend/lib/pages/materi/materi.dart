@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
@@ -117,8 +119,25 @@ class _MateriPageState extends State<MateriPage> {
                     'user')
                 .toString();
 
+            final rawFilePath = (item['file_path'] ?? '').toString();
+            final rawDriveUrl = (item['drive_url'] ?? '').toString();
+
+            // Pertahankan file_data_uri lokal jika judul/id sama
+            final existingLocal =
+                _materials.cast<Map<String, dynamic>?>().firstWhere(
+                      (m) =>
+                          m != null &&
+                          (m['id']?.toString() == item['id']?.toString() ||
+                              m['title']?.toString().toLowerCase() ==
+                                  (item['title'] ?? '')
+                                      .toString()
+                                      .toLowerCase()),
+                      orElse: () => null,
+                    );
+
             merged.add({
-              'id': item['id']?.toString() ?? 'MAT-${DateTime.now().millisecondsSinceEpoch}',
+              'id': item['id']?.toString() ??
+                  'MAT-${DateTime.now().millisecondsSinceEpoch}',
               'title': item['title'] ?? 'Materi Kehutanan',
               'type': (item['file_type'] ?? 'PDF').toString().toUpperCase(),
               'category': item['category_name'] ??
@@ -128,6 +147,10 @@ class _MateriPageState extends State<MateriPage> {
               'uploader_name': uploaderName,
               'uploader_role': uploaderRole,
               'file_name': item['file_name'] ?? 'Dokumen_Materi.pdf',
+              'file_size': existingLocal?['file_size'] ?? '',
+              'file_path': rawFilePath,
+              'drive_url': rawDriveUrl.isNotEmpty ? rawDriveUrl : rawFilePath,
+              'file_data_uri': existingLocal?['file_data_uri'] ?? '',
               'uploaded_at': _formatServerDate(item['created_at']),
             });
           }
@@ -159,7 +182,7 @@ class _MateriPageState extends State<MateriPage> {
     if (dateVal == null) return 'Baru saja';
     try {
       final dt = DateTime.parse(dateVal.toString()).toLocal();
-      final months = [
+      const months = [
         '',
         'Jan',
         'Feb',
@@ -251,7 +274,8 @@ class _MateriPageState extends State<MateriPage> {
     return _materials.where((material) {
       final title = (material['title'] ?? '').toString().toLowerCase();
       final desc = (material['description'] ?? '').toString().toLowerCase();
-      final uploader = (material['uploader_name'] ?? '').toString().toLowerCase();
+      final uploader =
+          (material['uploader_name'] ?? '').toString().toLowerCase();
       final category = (material['category'] ?? '').toString();
 
       final matchesSearch = _searchQuery.isEmpty ||
@@ -266,7 +290,119 @@ class _MateriPageState extends State<MateriPage> {
     }).toList();
   }
 
-  /// Membuka form modal upload materi baru
+  /// Helper aman untuk mengambil path lokal tanpa memicu error di Flutter Web
+  String _safeFilePath(PlatformFile? file) {
+    if (file == null || kIsWeb) return '';
+    try {
+      return file.path ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Format ukuran file agar mudah dibaca (KB / MB)
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(2)} MB';
+  }
+
+  /// Menentukan MIME type dari ekstensi file untuk Data URI
+  String _mimeFromExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'mp4':
+        return 'video/mp4';
+      case 'txt':
+        return 'text/plain';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  /// Membuka pemilih file lokal dengan fallback otomatis ke ImagePicker
+  /// sehingga tidak pernah gagal akibat LateInitializationError (_instance) di Flutter Web.
+  Future<PlatformFile?> _pickLocalFileSafe() async {
+    // 1. Coba gunakan FilePicker standar terlebih dahulu
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        withData: true,
+        allowedExtensions: [
+          'pdf',
+          'ppt',
+          'pptx',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'mp4',
+          'txt',
+          'jpg',
+          'jpeg',
+          'png',
+        ],
+      );
+      if (result != null && result.files.isNotEmpty) {
+        return result.files.first;
+      }
+      return null;
+    } catch (filePickerErr) {
+      debugPrint(
+        'FilePicker.platform belum terinisialisasi ($filePickerErr), beralih ke pemilih berkas bawaan...',
+      );
+    }
+
+    // 2. Fallback otomatis menggunakan ImagePicker (selalu terdaftar di Web, Android, iOS, & Desktop)
+    try {
+      final picker = ImagePicker();
+      XFile? xfile;
+      try {
+        xfile = await picker.pickMedia();
+      } catch (_) {
+        xfile = await picker.pickImage(source: ImageSource.gallery);
+      }
+
+      if (xfile == null) return null;
+
+      final bytes = await xfile.readAsBytes();
+      final fileName = xfile.name.isNotEmpty
+          ? xfile.name
+          : 'Dokumen_${DateTime.now().millisecondsSinceEpoch}';
+
+      return PlatformFile(
+        name: fileName,
+        size: bytes.length,
+        bytes: bytes,
+        path: kIsWeb ? null : xfile.path,
+      );
+    } catch (fallbackErr) {
+      debugPrint('Fallback picker error: $fallbackErr');
+      rethrow;
+    }
+  }
+
+  /// Membuka form modal upload materi baru dengan File Picker & Google Drive
   void _showUploadMaterialModal() {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -288,6 +424,55 @@ class _MateriPageState extends State<MateriPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            Future<void> pickFileFromDevice() async {
+              try {
+                final file = await _pickLocalFileSafe();
+
+                if (file != null) {
+                  selectedFile = file;
+                  fileNameCtrl.text = file.name;
+
+                  // Auto deteksi Format File berdasarkan ekstensi nama file
+                  final ext = file.name.contains('.')
+                      ? file.name.split('.').last.toLowerCase()
+                      : (file.extension ?? '').toLowerCase();
+                  if (ext == 'pdf') {
+                    selectedType = 'PDF';
+                  } else if (ext == 'ppt' || ext == 'pptx') {
+                    selectedType = 'PPT';
+                  } else if (ext == 'doc' || ext == 'docx') {
+                    selectedType = 'DOC';
+                  } else if (ext == 'xls' || ext == 'xlsx') {
+                    selectedType = 'XLS';
+                  } else if (ext == 'mp4' || ext == 'mov' || ext == 'avi') {
+                    selectedType = 'VIDEO';
+                  }
+
+                  // Auto isi judul jika masih kosong
+                  if (titleCtrl.text.trim().isEmpty) {
+                    final nameNoExt = file.name.contains('.')
+                        ? file.name.substring(0, file.name.lastIndexOf('.'))
+                        : file.name;
+                    titleCtrl.text = nameNoExt
+                        .replaceAll('_', ' ')
+                        .replaceAll('-', ' ');
+                  }
+
+                  setModalState(() {});
+                }
+              } catch (e) {
+                debugPrint('Error memilih file: $e');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Gagal memilih file: $e'),
+                      backgroundColor: Colors.red.shade700,
+                    ),
+                  );
+                }
+              }
+            }
+
             return Padding(
               padding: EdgeInsets.only(
                 left: 22,
@@ -324,23 +509,21 @@ class _MateriPageState extends State<MateriPage> {
                             ),
                           ),
                           const SizedBox(width: 14),
-                          Expanded(
+                          const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  isGoogleDriveSource
-                                      ? 'Unggah Materi dari Google Drive'
-                                      : 'Upload Materi dari File Manager',
-                                  style: const TextStyle(
+                                  'Upload Materi Edukasi Baru',
+                                  style: TextStyle(
                                     fontSize: 17.5,
                                     fontWeight: FontWeight.bold,
                                     color: Color(0xFF1E2923),
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Pilih langsung dari File Manager HP (PDF, PPT, Word) atau Drive.',
+                                SizedBox(height: 2),
+                                Text(
+                                  'Materi akan terlihat oleh seluruh user & penyuluh.',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey,
@@ -359,112 +542,12 @@ class _MateriPageState extends State<MateriPage> {
                       const Divider(),
                       const SizedBox(height: 10),
 
-                      // Toggle Sumber: Dokumen File Manager vs Google Drive
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setModalState(() => isGoogleDriveSource = false),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: !isGoogleDriveSource ? Colors.white : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(9),
-                                    boxShadow: !isGoogleDriveSource
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.black.withValues(alpha: 0.05),
-                                              blurRadius: 4,
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.folder_open_rounded,
-                                        size: 17,
-                                        color: !isGoogleDriveSource
-                                            ? const Color(0xFF2E7D32)
-                                            : Colors.grey.shade600,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'File Manager HP',
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: !isGoogleDriveSource
-                                              ? FontWeight.bold
-                                              : FontWeight.w500,
-                                          color: !isGoogleDriveSource
-                                              ? const Color(0xFF2E7D32)
-                                              : Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setModalState(() => isGoogleDriveSource = true),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: isGoogleDriveSource ? const Color(0xFF1A73E8) : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(9),
-                                    boxShadow: isGoogleDriveSource
-                                        ? [
-                                            BoxShadow(
-                                              color: Colors.blue.withValues(alpha: 0.2),
-                                              blurRadius: 4,
-                                            )
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.cloud_circle_rounded,
-                                        size: 17,
-                                        color: isGoogleDriveSource ? Colors.white : Colors.blue.shade700,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Google Drive',
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: isGoogleDriveSource
-                                              ? FontWeight.bold
-                                              : FontWeight.w500,
-                                          color: isGoogleDriveSource
-                                              ? Colors.white
-                                              : Colors.grey.shade700,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
                       // Info Uploader Banner
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFE8F5E9),
                           borderRadius: BorderRadius.circular(10),
@@ -483,19 +566,24 @@ class _MateriPageState extends State<MateriPage> {
                                 text: TextSpan(
                                   style: const TextStyle(
                                     color: Color(0xFF1E3F24),
-                                    fontSize: 12,
+                                    fontSize: 12.5,
                                   ),
                                   children: [
                                     const TextSpan(text: 'Diupload oleh: '),
                                     TextSpan(
                                       text: _currentUserName,
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                     ),
                                     TextSpan(
                                       text: _currentUserRole == 'admin'
                                           ? ' (Admin)'
-                                          : ' (Penyuluh)',
-                                      style: TextStyle(color: Colors.grey.shade700, fontSize: 11),
+                                          : ' (Akun Anda)',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontSize: 11.5,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -505,168 +593,6 @@ class _MateriPageState extends State<MateriPage> {
                         ),
                       ),
                       const SizedBox(height: 14),
-
-                      // BAGIAN KHUSUS PILIH DARI FILE MANAGER HP
-                      if (!isGoogleDriveSource) ...[
-                        const Text(
-                          'Pilih Dokumen dari File Manager *',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        InkWell(
-                          onTap: () async {
-                            try {
-                              final result = await FilePicker.platform.pickFiles(
-                                type: FileType.custom,
-                                allowedExtensions: [
-                                  'pdf',
-                                  'ppt',
-                                  'pptx',
-                                  'doc',
-                                  'docx',
-                                  'xls',
-                                  'xlsx',
-                                  'mp4',
-                                  'txt',
-                                ],
-                              );
-
-                              if (result != null && result.files.isNotEmpty) {
-                                final file = result.files.first;
-                                selectedFile = file;
-                                fileNameCtrl.text = file.name;
-
-                                // Auto deteksi tipe dokumen berdasarkan ekstensi
-                                final ext = (file.extension ?? '').toLowerCase();
-                                if (ext == 'pdf') {
-                                  selectedType = 'PDF';
-                                } else if (ext == 'ppt' || ext == 'pptx') {
-                                  selectedType = 'PPT';
-                                } else if (ext == 'doc' || ext == 'docx') {
-                                  selectedType = 'DOC';
-                                } else if (ext == 'xls' || ext == 'xlsx') {
-                                  selectedType = 'XLS';
-                                } else if (ext == 'mp4') {
-                                  selectedType = 'VIDEO';
-                                }
-
-                                // Auto isi judul jika masih kosong
-                                if (titleCtrl.text.trim().isEmpty) {
-                                  final nameNoExt = file.name.contains('.')
-                                      ? file.name.substring(0, file.name.lastIndexOf('.'))
-                                      : file.name;
-                                  titleCtrl.text = nameNoExt.replaceAll('_', ' ');
-                                }
-
-                                setModalState(() {});
-                              }
-                            } catch (e) {
-                              debugPrint('FilePicker error: $e');
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Gagal membuka file manager: $e')),
-                              );
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: selectedFile != null
-                                  ? const Color(0xFFE8F5E9)
-                                  : const Color(0xFFF9FBF9),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: selectedFile != null
-                                    ? const Color(0xFF2E7D32)
-                                    : Colors.grey.shade300,
-                                width: selectedFile != null ? 1.5 : 1.0,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: selectedFile != null
-                                        ? const Color(0xFF2E7D32)
-                                        : Colors.grey.shade200,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Icon(
-                                    selectedFile != null
-                                        ? Icons.check_circle_rounded
-                                        : Icons.folder_open_rounded,
-                                    color: selectedFile != null
-                                        ? Colors.white
-                                        : const Color(0xFF2E7D32),
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        selectedFile != null
-                                            ? selectedFile!.name
-                                            : 'Buka File Manager HP / Unduhan',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13.5,
-                                          color: selectedFile != null
-                                              ? const Color(0xFF1B5E20)
-                                              : const Color(0xFF1E2923),
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        selectedFile != null
-                                            ? '${(selectedFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB • Format: ${selectedFile!.extension?.toUpperCase() ?? selectedType}'
-                                            : 'Ketuk untuk memilih file PDF, PPT, Word dari HP',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: Colors.grey.shade600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: selectedFile != null
-                                        ? Colors.white
-                                        : const Color(0xFF2E7D32),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: selectedFile != null
-                                        ? Border.all(color: const Color(0xFF2E7D32))
-                                        : null,
-                                  ),
-                                  child: Text(
-                                    selectedFile != null ? 'Ganti File' : 'Pilih File',
-                                    style: TextStyle(
-                                      color: selectedFile != null
-                                          ? const Color(0xFF2E7D32)
-                                          : Colors.white,
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
 
                       // Judul Materi
                       const Text(
@@ -681,7 +607,8 @@ class _MateriPageState extends State<MateriPage> {
                       TextFormField(
                         controller: titleCtrl,
                         decoration: _inputDecoration(
-                          hint: 'Contoh: Presentasi Silvikultur Hutan Rakyat 2026',
+                          hint:
+                              'Contoh: Panduan Teknis Budidaya Madu Hutan',
                           icon: Icons.title_rounded,
                         ),
                         validator: (val) {
@@ -693,7 +620,7 @@ class _MateriPageState extends State<MateriPage> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Kategori & Format Dokumen Baris
+                      // Kategori & Format File Baris (Bebas Overflow)
                       Row(
                         children: [
                           Expanded(
@@ -710,6 +637,7 @@ class _MateriPageState extends State<MateriPage> {
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
                                   value: selectedCat,
+                                  isExpanded: true,
                                   decoration: _inputDecoration(
                                     hint: 'Kategori',
                                     icon: Icons.category_outlined,
@@ -721,7 +649,8 @@ class _MateriPageState extends State<MateriPage> {
                                           value: cat,
                                           child: Text(
                                             cat,
-                                            style: const TextStyle(fontSize: 12.5),
+                                            style:
+                                                const TextStyle(fontSize: 12.5),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
@@ -742,7 +671,7 @@ class _MateriPageState extends State<MateriPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Format Dokumen *',
+                                  'Format File *',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
@@ -751,17 +680,54 @@ class _MateriPageState extends State<MateriPage> {
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
                                   value: selectedType,
+                                  isExpanded: true,
                                   decoration: _inputDecoration(
                                     hint: 'Format',
                                     icon: Icons.insert_drive_file_outlined,
                                   ),
                                   items: const [
-                                    DropdownMenuItem(value: 'PDF', child: Text('PDF Dokumen')),
-                                    DropdownMenuItem(value: 'PPT', child: Text('PPT Slides')),
-                                    DropdownMenuItem(value: 'DOC', child: Text('Word (DOC)')),
-                                    DropdownMenuItem(value: 'XLS', child: Text('Excel (XLS)')),
-                                    DropdownMenuItem(value: 'VIDEO', child: Text('Video')),
-                                    DropdownMenuItem(value: 'PANDUAN', child: Text('Panduan Link')),
+                                    DropdownMenuItem(
+                                      value: 'PDF',
+                                      child: Text(
+                                        'PDF',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'PPT',
+                                      child: Text(
+                                        'PPT Slides',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'DOC',
+                                      child: Text(
+                                        'Word (DOC)',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'XLS',
+                                      child: Text(
+                                        'Excel (XLS)',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'VIDEO',
+                                      child: Text(
+                                        'Video',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'PANDUAN',
+                                      child: Text(
+                                        'Panduan Link',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                   ],
                                   onChanged: (val) {
                                     if (val != null) {
@@ -774,174 +740,307 @@ class _MateriPageState extends State<MateriPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
-                      // Input Google Drive Link JIKA MODE GOOGLE DRIVE AKTIF
-                      if (isGoogleDriveSource) ...[
-                        Row(
-                          children: [
-                            const Text(
-                              'Tautan Google Drive *',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A73E8),
-                              ),
+                      // ========================================================
+                      // BAGIAN PILIH FILE MATERI (FILE PICKER LOKAL / GOOGLE DRIVE)
+                      // ========================================================
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'File / Dokumen Materi *',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E2923),
                             ),
-                            const Spacer(),
-                            // Tombol Buka Drive
-                            InkWell(
-                              onTap: () async {
-                                try {
-                                  await launchUrl(
-                                    Uri.parse('https://drive.google.com'),
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                } catch (_) {}
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.blue.shade200),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.cloud_outlined, size: 13, color: Color(0xFF1A73E8)),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      'Buka Drive',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1A73E8)),
+                          ),
+                          // Toggle Sumber File: Folder Lokal vs Google Drive
+                          Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                GestureDetector(
+                                  onTap: () => setModalState(
+                                    () => isGoogleDriveSource = false,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Tombol Tempel dari Clipboard
-                            InkWell(
-                              onTap: () async {
-                                final data = await Clipboard.getData(Clipboard.kTextPlain);
-                                final text = data?.text?.trim() ?? '';
-                                if (text.isNotEmpty) {
-                                  driveUrlCtrl.text = text;
-                                  final lower = text.toLowerCase();
-                                  if (lower.contains('.pdf')) {
-                                    selectedType = 'PDF';
-                                  } else if (lower.contains('.ppt') || lower.contains('presentation')) {
-                                    selectedType = 'PPT';
-                                  } else if (lower.contains('.doc') || lower.contains('document')) {
-                                    selectedType = 'DOC';
-                                  } else if (lower.contains('.xls') || lower.contains('spreadsheet')) {
-                                    selectedType = 'XLS';
-                                  } else if (lower.contains('.mp4') || lower.contains('video')) {
-                                    selectedType = 'VIDEO';
-                                  }
-                                  setModalState(() {});
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Tautan berhasil ditempel dari clipboard!'),
-                                        duration: Duration(seconds: 2),
-                                        backgroundColor: Color(0xFF1A73E8),
-                                      ),
-                                    );
-                                  }
-                                } else {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Clipboard kosong. Salin tautan Google Drive terlebih dahulu.'),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFE8F5E9),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFFC8E6C9)),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.content_paste_rounded, size: 13, color: Color(0xFF2E7D32)),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      'Tempel Link',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
+                                    decoration: BoxDecoration(
+                                      color: !isGoogleDriveSource
+                                          ? const Color(0xFF2E7D32)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
-                                  ],
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.folder_open_rounded,
+                                          size: 14,
+                                          color: !isGoogleDriveSource
+                                              ? Colors.white
+                                              : Colors.grey.shade700,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Folder Lokal',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: !isGoogleDriveSource
+                                                ? Colors.white
+                                                : Colors.grey.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
+                                GestureDetector(
+                                  onTap: () => setModalState(
+                                    () => isGoogleDriveSource = true,
+                                  ),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isGoogleDriveSource
+                                          ? const Color(0xFF1A73E8)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.add_to_drive_rounded,
+                                          size: 14,
+                                          color: isGoogleDriveSource
+                                              ? Colors.white
+                                              : Colors.blue.shade700,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Google Drive',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: isGoogleDriveSource
+                                                ? Colors.white
+                                                : Colors.grey.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      if (!isGoogleDriveSource) ...[
+                        // KOTAK FILE PICKER INTERAKTIF (KLIK UNTUK PILIH FILE DARI KOMPUTER / HP)
+                        InkWell(
+                          onTap: pickFileFromDevice,
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selectedFile != null
+                                  ? const Color(0xFFE8F5E9)
+                                  : const Color(0xFFF9FBF9),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: selectedFile != null
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.grey.shade300,
+                                width: selectedFile != null ? 1.5 : 1.0,
                               ),
                             ),
-                            if (driveUrlCtrl.text.trim().isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              InkWell(
-                                onTap: () async {
-                                  final raw = driveUrlCtrl.text.trim();
-                                  if (raw.isNotEmpty) {
-                                    try {
-                                      final uri = Uri.parse(
-                                        raw.startsWith('http') ? raw : 'https://$raw',
-                                      );
-                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Tidak dapat membuka link: $e')),
-                                        );
-                                      }
-                                    }
-                                  }
-                                },
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: selectedFile != null
+                                        ? const Color(0xFF2E7D32)
+                                        : const Color(0xFFE8F5E9),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    selectedFile != null
+                                        ? Icons.insert_drive_file_rounded
+                                        : Icons.attach_file_rounded,
+                                    color: selectedFile != null
+                                        ? Colors.white
+                                        : const Color(0xFF2E7D32),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Icon(Icons.open_in_new_rounded, size: 14, color: Color(0xFF1A73E8)),
-                                      SizedBox(width: 3),
                                       Text(
-                                        'Tes Link',
+                                        selectedFile != null
+                                            ? selectedFile!.name
+                                            : 'Klik untuk Pilih File dari Folder Lokal...',
                                         style: TextStyle(
-                                          fontSize: 12,
                                           fontWeight: FontWeight.bold,
-                                          color: Color(0xFF1A73E8),
+                                          fontSize: 13,
+                                          color: selectedFile != null
+                                              ? const Color(0xFF1B5E20)
+                                              : Colors.grey.shade700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        selectedFile != null
+                                            ? '${_formatFileSize(selectedFile!.size)} • Siap diupload ($selectedType)'
+                                            : 'Pilih PDF, Word, PPT, Excel, Video, atau Gambar (pilih "All Files" di Explorer bila perlu)',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey.shade600,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                            ],
-                          ],
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: pickFileFromDevice,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: selectedFile != null
+                                        ? Colors.white
+                                        : const Color(0xFF2E7D32),
+                                    foregroundColor: selectedFile != null
+                                        ? const Color(0xFF2E7D32)
+                                        : Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    side: selectedFile != null
+                                        ? const BorderSide(
+                                            color: Color(0xFF2E7D32),
+                                          )
+                                        : null,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    selectedFile != null
+                                        ? Icons.sync_rounded
+                                        : Icons.folder_open_rounded,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    selectedFile != null
+                                        ? 'Ganti'
+                                        : 'Pilih File',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 6),
+                      ] else ...[
+                        // INPUT TAUTAN GOOGLE DRIVE
                         TextFormField(
                           controller: driveUrlCtrl,
                           onChanged: (val) {
                             final lower = val.toLowerCase();
                             if (lower.contains('.pdf')) {
                               selectedType = 'PDF';
-                            } else if (lower.contains('.ppt') || lower.contains('presentation')) {
+                            } else if (lower.contains('.ppt') ||
+                                lower.contains('presentation')) {
                               selectedType = 'PPT';
-                            } else if (lower.contains('.doc') || lower.contains('document')) {
+                            } else if (lower.contains('.doc') ||
+                                lower.contains('document')) {
                               selectedType = 'DOC';
-                            } else if (lower.contains('.xls') || lower.contains('spreadsheet')) {
+                            } else if (lower.contains('.xls') ||
+                                lower.contains('spreadsheet')) {
                               selectedType = 'XLS';
-                            } else if (lower.contains('.mp4') || lower.contains('video')) {
+                            } else if (lower.contains('.mp4') ||
+                                lower.contains('video')) {
                               selectedType = 'VIDEO';
                             }
                             setModalState(() {});
                           },
                           decoration: _inputDecoration(
-                            hint: 'https://drive.google.com/file/d/.../view?usp=sharing',
+                            hint:
+                                'https://drive.google.com/file/d/.../view?usp=sharing',
                             icon: Icons.link_rounded,
+                          ).copyWith(
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Tempel Link dari Clipboard',
+                                  icon: const Icon(
+                                    Icons.content_paste_rounded,
+                                    color: Color(0xFF2E7D32),
+                                    size: 20,
+                                  ),
+                                  onPressed: () async {
+                                    final data = await Clipboard.getData(
+                                      Clipboard.kTextPlain,
+                                    );
+                                    final text = data?.text?.trim() ?? '';
+                                    if (text.isNotEmpty) {
+                                      driveUrlCtrl.text = text;
+                                      setModalState(() {});
+                                    }
+                                  },
+                                ),
+                                IconButton(
+                                  tooltip: 'Buka Google Drive',
+                                  icon: const Icon(
+                                    Icons.open_in_new_rounded,
+                                    color: Color(0xFF1A73E8),
+                                    size: 20,
+                                  ),
+                                  onPressed: () async {
+                                    try {
+                                      await launchUrl(
+                                        Uri.parse('https://drive.google.com'),
+                                        mode: LaunchMode.externalApplication,
+                                      );
+                                    } catch (_) {}
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
                           validator: (val) {
                             if (isGoogleDriveSource) {
@@ -949,63 +1048,23 @@ class _MateriPageState extends State<MateriPage> {
                                 return 'Tautan Google Drive wajib diisi';
                               }
                               final lower = val.trim().toLowerCase();
-                              if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
+                              if (!lower.startsWith('http://') &&
+                                  !lower.startsWith('https://')) {
                                 return 'Awali tautan dengan https://';
                               }
                             }
                             return null;
                           },
                         ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F7FF),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFD0E2FF)),
-                          ),
-                          child: const Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF0043CE)),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Tips: Di Google Drive, klik Bagikan (Share) > Ubah Akses Umum ke "Siapa saja yang memiliki link (Anyone with the link)" agar dapat dibuka pengguna lain.',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF002D9C),
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 6),
+                        Text(
+                          'Pastikan akses file Google Drive disetel ke "Siapa saja yang memiliki link" agar dapat dibuka semua user.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue.shade800,
                           ),
                         ),
-                        const SizedBox(height: 14),
                       ],
-
-                      // Nama Berkas / Dokumen
-                      Text(
-                        isGoogleDriveSource
-                            ? 'Label Nama File (Opsional)'
-                            : 'Nama Berkas yang Terpilih',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        controller: fileNameCtrl,
-                        decoration: _inputDecoration(
-                          hint: isGoogleDriveSource
-                              ? 'Contoh: Materi_PPT_Kelompok_Tani_2026.pptx'
-                              : 'Nama file akan terisi otomatis saat memilih dari File Manager',
-                          icon: Icons.attach_file_rounded,
-                        ),
-                      ),
                       const SizedBox(height: 14),
 
                       // Deskripsi Materi
@@ -1022,7 +1081,8 @@ class _MateriPageState extends State<MateriPage> {
                         controller: descCtrl,
                         maxLines: 3,
                         decoration: _inputDecoration(
-                          hint: 'Jelaskan tujuan edukasi, sasaran penyuluhan, dan isi materi...',
+                          hint:
+                              'Jelaskan tujuan edukasi, sasaran penyuluhan, dan isi materi...',
                           icon: Icons.description_outlined,
                         ),
                         validator: (val) {
@@ -1052,8 +1112,20 @@ class _MateriPageState extends State<MateriPage> {
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
 
+                            if (!isGoogleDriveSource && selectedFile == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Silakan klik "Pilih File" untuk memilih dokumen dari folder lokal terlebih dahulu.',
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              return;
+                            }
+
                             final now = DateTime.now();
-                            final months = [
+                            const months = [
                               '',
                               'Jan',
                               'Feb',
@@ -1071,32 +1143,52 @@ class _MateriPageState extends State<MateriPage> {
                             final timeFormatted =
                                 '${now.day} ${months[now.month]} ${now.year}, ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-                            final driveUrl = isGoogleDriveSource ? driveUrlCtrl.text.trim() : '';
+                            final driveUrl = isGoogleDriveSource
+                                ? driveUrlCtrl.text.trim()
+                                : '';
 
-                            final fallbackName = driveUrl.isNotEmpty
-                                ? '${titleCtrl.text.trim().replaceAll(' ', '_')}.${selectedType.toLowerCase()}'
-                                : '${titleCtrl.text.trim().replaceAll(' ', '_')}.${selectedType.toLowerCase()}';
+                            final fallbackName =
+                                '${titleCtrl.text.trim().replaceAll(' ', '_')}.${selectedType.toLowerCase()}';
 
-                            final resolvedFileName = fileNameCtrl.text.trim().isNotEmpty
-                                ? fileNameCtrl.text.trim()
-                                : fallbackName;
+                            final resolvedFileName = selectedFile != null
+                                ? selectedFile!.name
+                                : (fileNameCtrl.text.trim().isNotEmpty
+                                    ? fileNameCtrl.text.trim()
+                                    : fallbackName);
 
-                            final newMaterial = {
-                              'id': 'MAT-${DateTime.now().millisecondsSinceEpoch}',
+                            final safeLocalPath = _safeFilePath(selectedFile);
+
+                            // Buat Data URI jika file memiliki bytes (agar bisa dibuka langsung di browser/aplikasi)
+                            String fileDataUri = '';
+                            if (selectedFile?.bytes != null &&
+                                selectedFile!.bytes!.isNotEmpty &&
+                                selectedFile!.size <= 5 * 1024 * 1024) {
+                              final ext = resolvedFileName.contains('.')
+                                  ? resolvedFileName.split('.').last
+                                  : selectedType;
+                              final mime = _mimeFromExtension(ext);
+                              final b64 = base64Encode(selectedFile!.bytes!);
+                              fileDataUri = 'data:$mime;base64,$b64';
+                            }
+
+                            final newMaterial = <String, dynamic>{
+                              'id':
+                                  'MAT-${DateTime.now().millisecondsSinceEpoch}',
                               'title': titleCtrl.text.trim(),
                               'category': selectedCat,
                               'type': selectedType,
                               'drive_url': driveUrl,
                               'file_path': driveUrl.isNotEmpty
                                   ? driveUrl
-                                  : (selectedFile?.path != null && selectedFile!.path!.isNotEmpty
-                                      ? selectedFile!.path!
+                                  : (safeLocalPath.isNotEmpty
+                                      ? safeLocalPath
                                       : 'materials/$resolvedFileName'),
                               'file_name': resolvedFileName,
                               'file_size': selectedFile != null
-                                  ? '${(selectedFile!.size / (1024 * 1024)).toStringAsFixed(2)} MB'
+                                  ? _formatFileSize(selectedFile!.size)
                                   : '',
-                              'local_path': selectedFile?.path ?? '',
+                              'local_path': safeLocalPath,
+                              'file_data_uri': fileDataUri,
                               'description': descCtrl.text.trim(),
                               'uploader_name': _currentUserName,
                               'uploader_role': _currentUserRole == 'admin'
@@ -1105,23 +1197,17 @@ class _MateriPageState extends State<MateriPage> {
                               'uploaded_at': timeFormatted,
                             };
 
+                            final pickedFile = selectedFile;
                             Navigator.pop(ctx);
-                            await _saveNewMaterial(newMaterial);
+                            await _saveNewMaterial(
+                              newMaterial,
+                              pickedFile: pickedFile,
+                            );
                           },
-                          icon: Icon(
-                            isGoogleDriveSource
-                                ? Icons.add_to_drive_rounded
-                                : (selectedFile != null
-                                    ? Icons.cloud_upload_rounded
-                                    : Icons.check_circle_outline_rounded),
-                          ),
-                          label: Text(
-                            isGoogleDriveSource
-                                ? 'Simpan & Bagikan dari Google Drive'
-                                : (selectedFile != null
-                                    ? 'Upload Dokumen Terpilih'
-                                    : 'Upload & Publikasikan Materi'),
-                            style: const TextStyle(
+                          icon: const Icon(Icons.check_circle_outline_rounded),
+                          label: const Text(
+                            'Upload & Publikasikan Materi',
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1139,7 +1225,10 @@ class _MateriPageState extends State<MateriPage> {
     );
   }
 
-  Future<void> _saveNewMaterial(Map<String, dynamic> newMaterial) async {
+  Future<void> _saveNewMaterial(
+    Map<String, dynamic> newMaterial, {
+    PlatformFile? pickedFile,
+  }) async {
     setState(() {
       _materials.insert(0, newMaterial);
     });
@@ -1151,40 +1240,83 @@ class _MateriPageState extends State<MateriPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Materi edukasi berhasil diupload oleh $_currentUserName dan terlihat oleh semua user.',
+          'Materi "${newMaterial['title']}" (${newMaterial['file_name']}) berhasil diupload dan terlihat oleh semua user.',
         ),
         backgroundColor: const Color(0xFF2E7D32),
       ),
     );
 
-    // Kirim juga ke server backend secara asinkron
+    // Kirim ke server backend agar terlihat oleh semua user di perangkat lain
     try {
       final token = prefs.getString('token');
-      final headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
-      if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $token';
-      }
+      final uri = Uri.parse('${ApiConstants.baseUrl}/api/materials/public');
 
-      await http
-          .post(
-            Uri.parse('${ApiConstants.baseUrl}/api/materials/public'),
-            headers: headers,
-            body: jsonEncode({
-              'title': newMaterial['title'],
-              'category_name': newMaterial['category'],
-              'file_type': newMaterial['type'],
-              'file_name': newMaterial['file_name'],
-              'file_path': newMaterial['file_path'],
-              'drive_url': newMaterial['drive_url'],
-              'description': newMaterial['description'],
-              'uploader_name': newMaterial['uploader_name'],
-              'uploader_role': newMaterial['uploader_role'],
-            }),
-          )
-          .timeout(const Duration(seconds: 8));
+      if (pickedFile != null && pickedFile.bytes != null) {
+        final request = http.MultipartRequest('POST', uri);
+        request.headers['Accept'] = 'application/json';
+        if (token != null && token.isNotEmpty) {
+          request.headers['Authorization'] = 'Bearer $token';
+        }
+
+        request.fields['title'] = (newMaterial['title'] ?? '').toString();
+        request.fields['category_name'] =
+            (newMaterial['category'] ?? 'Penyuluhan').toString();
+        request.fields['file_type'] =
+            (newMaterial['type'] ?? 'PDF').toString();
+        request.fields['file_name'] =
+            (newMaterial['file_name'] ?? pickedFile.name).toString();
+        request.fields['description'] =
+            (newMaterial['description'] ?? '').toString();
+        request.fields['uploader_name'] =
+            (newMaterial['uploader_name'] ?? _currentUserName).toString();
+        request.fields['uploader_role'] =
+            (newMaterial['uploader_role'] ?? 'Penyuluh Kehutanan').toString();
+
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            pickedFile.bytes!,
+            filename: pickedFile.name,
+          ),
+        );
+
+        final streamed =
+            await request.send().timeout(const Duration(seconds: 15));
+        final response = await http.Response.fromStream(streamed);
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await _fetchLiveMaterialsFromServer(prefs);
+        }
+      } else {
+        final headers = {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        };
+        if (token != null && token.isNotEmpty) {
+          headers['Authorization'] = 'Bearer $token';
+        }
+
+        final response = await http
+            .post(
+              uri,
+              headers: headers,
+              body: jsonEncode({
+                'title': newMaterial['title'],
+                'category_name': newMaterial['category'],
+                'file_type': newMaterial['type'],
+                'file_name': newMaterial['file_name'],
+                'file_path': newMaterial['file_path'],
+                'drive_url': newMaterial['drive_url'],
+                'description': newMaterial['description'],
+                'uploader_name': newMaterial['uploader_name'],
+                'uploader_role': newMaterial['uploader_role'],
+              }),
+            )
+            .timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          await _fetchLiveMaterialsFromServer(prefs);
+        }
+      }
     } catch (e) {
       debugPrint('Background backend upload material: $e');
     }
@@ -1192,21 +1324,29 @@ class _MateriPageState extends State<MateriPage> {
 
   void _showMaterialDetail(Map<String, dynamic> material) {
     final type = (material['type'] ?? 'PDF').toString().toUpperCase();
-    final uploaderName = (material['uploader_name'] ?? 'Penyuluh Kehutanan').toString();
+    final uploaderName =
+        (material['uploader_name'] ?? 'Penyuluh Kehutanan').toString();
     final uploaderRole = (material['uploader_role'] ?? 'Penyuluh').toString();
     final uploadedAt = (material['uploaded_at'] ?? 'Baru saja').toString();
     final title = (material['title'] ?? '').toString();
     final desc = (material['description'] ?? '').toString();
     final category = (material['category'] ?? 'Penyuluhan').toString();
-    final fileName = (material['file_name'] ?? 'Dokumen_Materi.pdf').toString();
-    final driveUrl = (material['drive_url'] ?? material['file_path'] ?? '').toString();
-    final bool isGoogleDrive = driveUrl.contains('drive.google.com') ||
-        driveUrl.contains('docs.google.com') ||
-        (driveUrl.startsWith('http') && driveUrl.contains('drive'));
+    final fileName =
+        (material['file_name'] ?? 'Dokumen_Materi.pdf').toString();
+    final fileSize = (material['file_size'] ?? '').toString();
+    final rawUrl =
+        (material['drive_url'] ?? material['file_path'] ?? '').toString();
+    final dataUri = (material['file_data_uri'] ?? '').toString();
+    final bool isGoogleDrive = rawUrl.contains('drive.google.com') ||
+        rawUrl.contains('docs.google.com') ||
+        (rawUrl.startsWith('http') && rawUrl.contains('drive'));
 
-    final isUploader = uploaderName.toLowerCase() == _currentUserName.toLowerCase() ||
-        (_currentUserEmail.isNotEmpty && uploaderName.toLowerCase() == _currentUserEmail.toLowerCase()) ||
-        _currentUserRole == 'admin';
+    final isUploader =
+        uploaderName.toLowerCase() == _currentUserName.toLowerCase() ||
+            (_currentUserEmail.isNotEmpty &&
+                uploaderName.toLowerCase() ==
+                    _currentUserEmail.toLowerCase()) ||
+            _currentUserRole == 'admin';
 
     showModalBottomSheet(
       context: context,
@@ -1255,7 +1395,9 @@ class _MateriPageState extends State<MateriPage> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -1263,7 +1405,8 @@ class _MateriPageState extends State<MateriPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                                color: const Color(0xFF2E7D32)
+                                    .withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
@@ -1275,7 +1418,6 @@ class _MateriPageState extends State<MateriPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -1318,7 +1460,8 @@ class _MateriPageState extends State<MateriPage> {
                   children: [
                     CircleAvatar(
                       radius: 22,
-                      backgroundColor: const Color(0xFF2E7D32).withValues(alpha: 0.12),
+                      backgroundColor:
+                          const Color(0xFF2E7D32).withValues(alpha: 0.12),
                       child: Text(
                         uploaderName.isNotEmpty
                             ? uploaderName[0].toUpperCase()
@@ -1352,7 +1495,9 @@ class _MateriPageState extends State<MateriPage> {
                                   vertical: 1.5,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: uploaderRole.toLowerCase().contains('admin')
+                                  color: uploaderRole
+                                          .toLowerCase()
+                                          .contains('admin')
                                       ? Colors.deepPurple.shade50
                                       : Colors.green.shade50,
                                   borderRadius: BorderRadius.circular(4),
@@ -1364,7 +1509,9 @@ class _MateriPageState extends State<MateriPage> {
                                   style: TextStyle(
                                     fontSize: 9.5,
                                     fontWeight: FontWeight.bold,
-                                    color: uploaderRole.toLowerCase().contains('admin')
+                                    color: uploaderRole
+                                            .toLowerCase()
+                                            .contains('admin')
                                         ? Colors.deepPurple.shade800
                                         : Colors.green.shade800,
                                   ),
@@ -1422,7 +1569,10 @@ class _MateriPageState extends State<MateriPage> {
               // File attachment / Google Drive row
               if (isGoogleDrive) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F0FE),
                     borderRadius: BorderRadius.circular(12),
@@ -1450,7 +1600,7 @@ class _MateriPageState extends State<MateriPage> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              driveUrl,
+                              rawUrl,
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.blue.shade900,
@@ -1469,10 +1619,12 @@ class _MateriPageState extends State<MateriPage> {
                         ),
                         tooltip: 'Salin Tautan Drive',
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: driveUrl));
+                          Clipboard.setData(ClipboardData(text: rawUrl));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Tautan Google Drive berhasil disalin ke clipboard.'),
+                              content: Text(
+                                'Tautan Google Drive berhasil disalin ke clipboard.',
+                              ),
                               backgroundColor: Color(0xFF1A73E8),
                             ),
                           );
@@ -1483,7 +1635,10 @@ class _MateriPageState extends State<MateriPage> {
                 ),
               ] else ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(10),
@@ -1491,11 +1646,17 @@ class _MateriPageState extends State<MateriPage> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.attach_file, size: 18, color: Colors.grey.shade600),
+                      Icon(
+                        Icons.attach_file,
+                        size: 18,
+                        color: Colors.grey.shade600,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          fileName,
+                          fileSize.isNotEmpty
+                              ? '$fileName ($fileSize)'
+                              : fileName,
                           style: TextStyle(
                             fontSize: 12.5,
                             color: Colors.grey.shade800,
@@ -1529,11 +1690,13 @@ class _MateriPageState extends State<MateriPage> {
                         ),
                         onPressed: () async {
                           Navigator.pop(ctx);
-                          if (isGoogleDrive) {
+                          if (isGoogleDrive || rawUrl.startsWith('http')) {
                             try {
-                              final raw = driveUrl.trim();
+                              final clean = rawUrl.trim();
                               final uri = Uri.parse(
-                                raw.startsWith('http') ? raw : 'https://$raw',
+                                clean.startsWith('http')
+                                    ? clean
+                                    : 'https://$clean',
                               );
                               final launched = await launchUrl(
                                 uri,
@@ -1543,17 +1706,26 @@ class _MateriPageState extends State<MateriPage> {
                                 await launchUrl(uri);
                               }
                             } catch (e) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Gagal membuka link Google Drive: $e')),
-                              );
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Gagal membuka tautan: $e'),
+                                  ),
+                                );
+                              }
+                            }
+                          } else if (dataUri.isNotEmpty) {
+                            try {
+                              final uri = Uri.parse(dataUri);
+                              final launched = await launchUrl(uri);
+                              if (!launched) {
+                                _showDocumentReaderDialog(material);
+                              }
+                            } catch (_) {
+                              _showDocumentReaderDialog(material);
                             }
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Membuka berkas materi: $fileName'),
-                                backgroundColor: const Color(0xFF2E7D32),
-                              ),
-                            );
+                            _showDocumentReaderDialog(material);
                           }
                         },
                         icon: Icon(
@@ -1563,7 +1735,9 @@ class _MateriPageState extends State<MateriPage> {
                           size: 20,
                         ),
                         label: Text(
-                          isGoogleDrive ? 'Buka di Google Drive' : 'Buka / Baca Materi',
+                          isGoogleDrive
+                              ? 'Buka di Google Drive'
+                              : 'Buka / Baca Materi',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
@@ -1596,6 +1770,110 @@ class _MateriPageState extends State<MateriPage> {
     );
   }
 
+  /// Menampilkan pratinjau isi materi jika file dibuka di dalam aplikasi
+  void _showDocumentReaderDialog(Map<String, dynamic> material) {
+    final title = (material['title'] ?? 'Materi Edukasi').toString();
+    final fileName = (material['file_name'] ?? 'Dokumen').toString();
+    final fileSize = (material['file_size'] ?? '').toString();
+    final desc = (material['description'] ?? '').toString();
+    final category = (material['category'] ?? 'Penyuluhan').toString();
+    final uploader = (material['uploader_name'] ?? 'Penyuluh').toString();
+    final type = (material['type'] ?? 'PDF').toString();
+    final dataUri = (material['file_data_uri'] ?? '').toString();
+
+    Uint8List? imageBytes;
+    if (dataUri.startsWith('data:image/') && dataUri.contains(',')) {
+      try {
+        imageBytes = base64Decode(dataUri.split(',').last);
+      } catch (_) {}
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(_getTypeIcon(type), color: _getTypeColor(type)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.insert_drive_file_outlined,
+                      size: 18,
+                      color: Color(0xFF2E7D32),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        fileSize.isNotEmpty
+                            ? '$fileName ($fileSize • $category • Oleh $uploader)'
+                            : '$fileName ($category • Oleh $uploader)',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1B5E20),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (imageBytes != null) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    imageBytes,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              const Text(
+                'Isi / Ringkasan Materi:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                desc,
+                style: const TextStyle(fontSize: 13.5, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _confirmDeleteMaterial(Map<String, dynamic> material) {
     showDialog(
       context: context,
@@ -1621,6 +1899,19 @@ class _MateriPageState extends State<MateriPage> {
               });
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString(_storageKey, jsonEncode(_materials));
+
+              // Hapus juga dari server jika memiliki ID database
+              final idStr = (material['id'] ?? '').toString();
+              if (!idStr.startsWith('MAT-')) {
+                try {
+                  await http.delete(
+                    Uri.parse(
+                      '${ApiConstants.baseUrl}/api/materials/$idStr/public',
+                    ),
+                    headers: {'Accept': 'application/json'},
+                  );
+                } catch (_) {}
+              }
 
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1683,9 +1974,10 @@ class _MateriPageState extends State<MateriPage> {
       hintText: hint,
       hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
       prefixIcon: Icon(icon, color: const Color(0xFF2E7D32), size: 20),
+      prefixIconConstraints: const BoxConstraints(minWidth: 38, minHeight: 38),
       filled: true,
       fillColor: const Color(0xFFF9FBF9),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey.shade300),
@@ -1811,7 +2103,10 @@ class _MateriPageState extends State<MateriPage> {
               decoration: InputDecoration(
                 hintText: 'Cari materi, kategori, atau nama pengunggah...',
                 hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF2E7D32)),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: Color(0xFF2E7D32),
+                ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear, size: 18),
@@ -1820,7 +2115,10 @@ class _MateriPageState extends State<MateriPage> {
                     : null,
                 filled: true,
                 fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide(color: Colors.grey.shade200),
@@ -1831,7 +2129,10 @@ class _MateriPageState extends State<MateriPage> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 1.5),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF2E7D32),
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -1858,7 +2159,8 @@ class _MateriPageState extends State<MateriPage> {
                       backgroundColor: Colors.white,
                       labelStyle: TextStyle(
                         fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
                         color: isSelected ? Colors.white : Colors.grey.shade800,
                       ),
                       shape: RoundedRectangleBorder(
@@ -1891,7 +2193,10 @@ class _MateriPageState extends State<MateriPage> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -1940,7 +2245,10 @@ class _MateriPageState extends State<MateriPage> {
                     const SizedBox(height: 4),
                     Text(
                       'Coba ubah kata kunci pencarian atau kategori filter.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
                     ),
                   ],
                 ),
@@ -1996,11 +2304,13 @@ class _MaterialCard extends StatelessWidget {
     final title = (material['title'] ?? '').toString();
     final type = (material['type'] ?? 'PDF').toString();
     final category = (material['category'] ?? 'Penyuluhan').toString();
-    final uploaderName = (material['uploader_name'] ?? 'Penyuluh Kehutanan').toString();
+    final uploaderName =
+        (material['uploader_name'] ?? 'Penyuluh Kehutanan').toString();
     final uploaderRole = (material['uploader_role'] ?? 'Penyuluh').toString();
     final uploadedAt = (material['uploaded_at'] ?? 'Baru saja').toString();
     final description = (material['description'] ?? '').toString();
-    final driveUrl = (material['drive_url'] ?? material['file_path'] ?? '').toString();
+    final driveUrl =
+        (material['drive_url'] ?? material['file_path'] ?? '').toString();
     final bool isGoogleDrive = driveUrl.contains('drive.google.com') ||
         driveUrl.contains('docs.google.com') ||
         (driveUrl.startsWith('http') && driveUrl.contains('drive'));
@@ -2057,7 +2367,9 @@ class _MaterialCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Row(
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -2065,7 +2377,8 @@ class _MaterialCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                              color: const Color(0xFF2E7D32)
+                                  .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -2077,7 +2390,6 @@ class _MaterialCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 6,
@@ -2096,8 +2408,7 @@ class _MaterialCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (isGoogleDrive) ...[
-                            const SizedBox(width: 6),
+                          if (isGoogleDrive)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
@@ -2106,7 +2417,9 @@ class _MaterialCard extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: const Color(0xFFE8F0FE),
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFBDD7FB)),
+                                border: Border.all(
+                                  color: const Color(0xFFBDD7FB),
+                                ),
                               ),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2128,7 +2441,6 @@ class _MaterialCard extends StatelessWidget {
                                 ],
                               ),
                             ),
-                          ],
                         ],
                       ),
                     ],
