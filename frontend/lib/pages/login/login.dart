@@ -1,8 +1,15 @@
 // ============================================================================
 // [FILE LOGIN - OTOMATIS MASUK SESUAI AKUN (ADMIN vs USER)]
-// Simpan file ini di: lib/pages/login.dart
+// Simpan file ini di: lib/pages/login.dart  (path sesuai project Anda)
 // - Jika login memakai akun Admin (role == 'admin' atau email admin) -> AdminPage()
 // - Jika login memakai akun User biasa -> HomePage()
+//
+// REDESAIN UI: Modern Soft Green (layout ref. #5, palet ref. #4)
+// Seluruh logika autentikasi (API, token, Ingat Saya, Google, fallback offline)
+// TIDAK diubah. Hanya method build() dan beberapa widget pendukung UI.
+//
+// PENTING: logo membutuhkan aset di  assets/images/logo_phonebook.png
+// dan harus didaftarkan di pubspec.yaml (lihat catatan di akhir jawaban).
 // ============================================================================
 
 import 'dart:convert';
@@ -17,6 +24,24 @@ import '../admin/admin_page.dart';
 import '../home/home.dart';
 
 String get baseUrl => ApiConstants.baseUrl;
+
+// ---------------------------------------------------------------------------
+// Palet warna login (hanya dipakai di halaman ini)
+// ---------------------------------------------------------------------------
+class _LoginColors {
+  static const primary = Color(0xFF086B45);
+  static const dark = Color(0xFF064E38);
+  static const secondary = Color(0xFF21834A);
+  static const light = Color(0xFFDCEFE2);
+  static const background = Color(0xFFF7FAF7);
+  static const white = Color(0xFFFFFFFF);
+  static const textPrimary = Color(0xFF26352D);
+  static const textSecondary = Color(0xFF858D88);
+  static const border = Color(0xFFC9D8CE); // hijau keabu-abuan
+  static const divider = Color(0xFFDDE6DF);
+}
+
+const String _logoAsset = 'assets/images/logo_phonebook.png';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -257,232 +282,412 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  // ==========================================================================
+  // UI (REDESAIN)
+  // ==========================================================================
+
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: color, width: width),
+        );
+
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(
+        color: _LoginColors.textSecondary,
+        fontSize: 16,
+      ),
+      prefixIcon: Icon(icon, color: _LoginColors.textPrimary, size: 24),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: _LoginColors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      enabledBorder: border(_LoginColors.border),
+      border: border(_LoginColors.border),
+      focusedBorder: border(_LoginColors.primary, 1.6),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 96,
+          child: Image.asset(
+            _logoAsset,
+            fit: BoxFit.contain,
+            // Cadangan agar halaman tidak error bila aset belum terdaftar.
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.forest,
+              size: 80,
+              color: _LoginColors.primary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'PHONEBOOK',
+          style: TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: _LoginColors.primary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Aplikasi Pelaporan Kehutanan',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 16,
+            color: _LoginColors.textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRememberMe() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        setState(() {
+          rememberMe = !rememberMe;
+        });
+      },
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 26,
+              width: 26,
+              child: Checkbox(
+                value: rememberMe,
+                activeColor: _LoginColors.primary,
+                side: const BorderSide(color: _LoginColors.border, width: 1.6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    rememberMe = val ?? false;
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Ingat Saya',
+              style: TextStyle(
+                fontSize: 15,
+                color: _LoginColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginButton() {
+    final disabled = isLoading;
+    return Opacity(
+      opacity: disabled ? 0.85 : 1,
+      child: Container(
+        width: double.infinity,
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [_LoginColors.primary, _LoginColors.secondary],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33086B45),
+              blurRadius: 12,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            disabledForegroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          onPressed: disabled ? null : login,
+          child: isLoading
+              ? const SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.6,
+                    color: Colors.white,
+                  ),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'MASUK',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(
+      children: const [
+        Expanded(child: Divider(color: _LoginColors.divider, thickness: 1)),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            'ATAU',
+            style: TextStyle(
+              color: _LoginColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        Expanded(child: Divider(color: _LoginColors.divider, thickness: 1)),
+      ],
+    );
+  }
+
+  Widget _buildGoogleButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: OutlinedButton(
+        onPressed: (isLoading || isGoogleLoading) ? null : _handleGoogleSignIn,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          side: BorderSide(
+            color: isGoogleLoading ? _LoginColors.primary : _LoginColors.border,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+        child: isGoogleLoading
+            ? const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: _LoginColors.primary,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      'Menghubungkan Akun Google...',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _LoginColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GoogleLogoWidget(size: 24),
+                  SizedBox(width: 12),
+                  Text(
+                    'Masuk dengan Google',
+                    style: TextStyle(
+                      color: _LoginColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _circle(double size, Color color) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+    );
+  }
+
+  /// Dekorasi abstrak: lingkaran/lengkungan hijau muda transparan.
+  Widget _buildBackgroundDecoration() {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            top: -90,
+            left: -80,
+            child: _circle(250, const Color(0x66DCEFE2)),
+          ),
+          Positioned(
+            top: 40,
+            right: -70,
+            child: _circle(190, const Color(0x4D21834A)),
+          ),
+          Positioned(
+            top: 70,
+            right: 34,
+            child: _circle(18, const Color(0x6621834A)),
+          ),
+          Positioned(
+            bottom: -110,
+            left: -90,
+            child: _circle(290, const Color(0x59DCEFE2)),
+          ),
+          Positioned(
+            bottom: -60,
+            right: -70,
+            child: _circle(210, const Color(0x40086B45)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              elevation: 6,
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.forest,
-                      size: 70,
-                      color: Color(0xFF2E7D32),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'PHONEBOOK',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D32),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Aplikasi Pelaporan Kehutanan',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 30),
-                    TextField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: passwordController,
-                      obscureText: obscurePassword,
-                      onSubmitted: (_) {
-                        if (!isLoading) login();
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            obscurePassword
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              obscurePassword = !obscurePassword;
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        SizedBox(
-                          height: 24,
-                          width: 24,
-                          child: Checkbox(
-                            value: rememberMe,
-                            activeColor: const Color(0xFF2E7D32),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            onChanged: (val) {
-                              setState(() {
-                                rememberMe = val ?? false;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              rememberMe = !rememberMe;
-                            });
-                          },
-                          child: const Text(
-                            'Ingat Saya',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF2E7D32),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+      backgroundColor: _LoginColors.background,
+      resizeToAvoidBottomInset: true,
+      body: Stack(
+        children: [
+          Positioned.fill(child: _buildBackgroundDecoration()),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
+                    decoration: BoxDecoration(
+                      color: _LoginColors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1A064E38),
+                          blurRadius: 28,
+                          offset: Offset(0, 12),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D32),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                        onPressed: isLoading ? null : login,
-                        child: isLoading
-                            ? const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'MASUK',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Text(
-                            'ATAU',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
+                        _buildHeader(),
+                        const SizedBox(height: 28),
+                        TextField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: _LoginColors.textPrimary,
+                          ),
+                          decoration: _inputDecoration(
+                            hint: 'Email',
+                            icon: Icons.email_outlined,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: passwordController,
+                          obscureText: obscurePassword,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: _LoginColors.textPrimary,
+                          ),
+                          onSubmitted: (_) {
+                            if (!isLoading) login();
+                          },
+                          decoration: _inputDecoration(
+                            hint: 'Password',
+                            icon: Icons.lock_outline,
+                            suffix: IconButton(
+                              tooltip: obscurePassword
+                                  ? 'Tampilkan password'
+                                  : 'Sembunyikan password',
+                              icon: Icon(
+                                obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: _LoginColors.textSecondary,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  obscurePassword = !obscurePassword;
+                                });
+                              },
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _buildRememberMe(),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildLoginButton(),
+                        const SizedBox(height: 22),
+                        _buildDivider(),
+                        const SizedBox(height: 22),
+                        _buildGoogleButton(),
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton(
-                        onPressed: (isLoading || isGoogleLoading)
-                            ? null
-                            : _handleGoogleSignIn,
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          side: BorderSide(
-                            color: isGoogleLoading
-                                ? const Color(0xFF2E7D32)
-                                : Colors.grey.shade300,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: isGoogleLoading
-                            ? const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF2E7D32),
-                                    ),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Menghubungkan Akun Google...',
-                                    style: TextStyle(
-                                      color: Color(0xFF2E7D32),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  GoogleLogoWidget(size: 22),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Masuk dengan Google',
-                                    style: TextStyle(
-                                      color: Color(0xFF1E2923),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
