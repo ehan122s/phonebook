@@ -9,14 +9,25 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'pages/admin/admin_page.dart';
 import 'pages/home/home.dart';
 import 'pages/login/login.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inisialisasi driver SQLite FFI saat aplikasi dijalankan di Desktop (Linux, Windows, macOS)
+  if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
   runApp(const PhonebookApp());
 }
 

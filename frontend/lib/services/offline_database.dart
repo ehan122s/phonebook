@@ -1,5 +1,9 @@
-import 'package:sqflite/sqflite.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// SQLite database helper for storing reports offline.
 ///
@@ -21,6 +25,11 @@ class OfflineDatabase {
   }
 
   Future<Database> _initDatabase() async {
+    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'phonebook_offline.db');
 
@@ -79,22 +88,30 @@ class OfflineDatabase {
 
   /// Returns all reports whose [sync_status] is `pending` or `failed`.
   Future<List<Map<String, dynamic>>> getPendingReports() async {
-    final db = await database;
-    return db.query(
-      'offline_reports',
-      where: "sync_status = ? OR sync_status = ?",
-      whereArgs: ['pending', 'failed'],
-      orderBy: 'created_at DESC',
-    );
+    try {
+      final db = await database;
+      return await db.query(
+        'offline_reports',
+        where: "sync_status = ? OR sync_status = ?",
+        whereArgs: ['pending', 'failed'],
+        orderBy: 'created_at DESC',
+      );
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Returns every report stored locally regardless of sync status.
   Future<List<Map<String, dynamic>>> getAllLocalReports() async {
-    final db = await database;
-    return db.query(
-      'offline_reports',
-      orderBy: 'created_at DESC',
-    );
+    try {
+      final db = await database;
+      return await db.query(
+        'offline_reports',
+        orderBy: 'created_at DESC',
+      );
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Updates the [sync_status] of a local report identified by
@@ -136,12 +153,16 @@ class OfflineDatabase {
   /// Returns the number of reports that still need to be synced
   /// (`pending` or `failed`).
   Future<int> getPendingCount() async {
-    final db = await database;
-    final result = await db.rawQuery(
-      "SELECT COUNT(*) as cnt FROM offline_reports "
-      "WHERE sync_status = 'pending' OR sync_status = 'failed'",
-    );
-    return Sqflite.firstIntValue(result) ?? 0;
+    try {
+      final db = await database;
+      final result = await db.rawQuery(
+        "SELECT COUNT(*) as cnt FROM offline_reports "
+        "WHERE sync_status = 'pending' OR sync_status = 'failed'",
+      );
+      return Sqflite.firstIntValue(result) ?? 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// Deletes all reports that have already been synced successfully.
