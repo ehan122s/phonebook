@@ -15,18 +15,28 @@ class GoogleAuthService {
   static String get baseUrl => ApiConstants.baseUrl;
 
   /// Instance GoogleSignIn dari package google_sign_in.
-  /// - Pada Android: scopes 'email' dan 'profile' langsung menggunakan native Google Play Services.
-  ///   Tanpa memaksakan serverClientId di Android agar tidak memicu developer error 10 / SHA-1 mismatch.
-  /// - Pada Web: clientId diambil dari Web Client ID.
-  /// - Pada iOS: clientId langsung dari ApiConstants.
+  /// - scopes: 'email', 'profile', 'openid' untuk otentikasi standar Google OAuth 2.0.
+  /// - serverClientId: Menggunakan Web Client ID agar Google Play Services di Android
+  ///   menerbitkan ID Token resmi yang dapat diverifikasi oleh backend Laravel.
+  /// - clientId: Diisi untuk Web dan iOS sesuai rekomendasi package google_sign_in.
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
+    scopes: ['email', 'profile', 'openid'],
+    serverClientId: ApiConstants.googleClientIdWeb,
     clientId: kIsWeb
         ? ApiConstants.googleClientIdWeb
         : (defaultTargetPlatform == TargetPlatform.iOS
             ? ApiConstants.googleClientIdIos
             : null),
   );
+
+  /// Memutuskan sesi akun Google lokal (agar pengguna dapat berganti akun saat login berikutnya)
+  static Future<void> signOut() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('GoogleAuthService signOut error: $e');
+    }
+  }
 
   /// Cek apakah email memiliki hak akses administrator
   static bool isAdminAccount(String email) {
@@ -77,8 +87,13 @@ class GoogleAuthService {
     BuildContext context,
   ) async {
     try {
+      // Pastikan cache akun sebelumnya di-reset agar Google Account Chooser selalu muncul
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+
       final GoogleSignInAccount? account = await _googleSignIn.signIn().timeout(
-        const Duration(seconds: 20),
+        const Duration(seconds: 35),
         onTimeout: () {
           debugPrint('Google Sign-In timeout');
           return null;
@@ -90,16 +105,20 @@ class GoogleAuthService {
         return null;
       }
 
+      // Ambil autentikasi dan ID Token kriptografis resmi dari Google
+      final GoogleSignInAuthentication auth = await account.authentication;
+
       return {
         'email': account.email,
         'name': account.displayName ?? account.email.split('@').first,
         'google_id': account.id,
         'avatar': account.photoUrl ?? '',
+        'id_token': auth.idToken ?? '',
       };
     } on PlatformException catch (e) {
       debugPrint('Google Sign-In PlatformException: ${e.code} - ${e.message}');
       if (context.mounted) {
-        // Tampilkan dialog masuk instan / fallback agar tidak stuck sama sekali
+        // Tampilkan dialog masuk instan / fallback jika terjadi error platform
         await _showGoogleAuthFallbackDialog(context);
       }
       return null;
@@ -322,6 +341,7 @@ class GoogleAuthService {
     final name = (googleProfile['name'] ?? email.split('@').first).toString().trim();
     final googleId = (googleProfile['google_id'] ?? '').toString();
     final avatar = (googleProfile['avatar'] ?? '').toString();
+    final idToken = (googleProfile['id_token'] ?? '').toString();
 
     // Dialog loading aman dengan referensi BuildContext internal dialog
     BuildContext? dialogCtx;
@@ -392,33 +412,81 @@ class GoogleAuthService {
       bool isRegistered = false;
       Map<String, dynamic>? userRecord;
       String? token;
+      String userRole = isAdminAccount(email) ? 'admin' : 'user';
 
-      // 1. Coba verifikasi dengan backend (timeout responsif 2.5 detik)
-      try {
-        final response = await http
-            .post(
-              Uri.parse('$baseUrl/api/google-check'),
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-              },
-              body: jsonEncode({'email': email}),
-            )
-            .timeout(const Duration(milliseconds: 2500));
+      // 1. Verifikasi ID Token langsung ke backend Laravel (/api/auth/google)
+      if (idToken.isNotEmpty) {
+        try {
+          final authResponse = await http
+              .post(
+                Uri.parse('$baseUrl/api/auth/google'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({
+                  'id_token': idToken,
+                }),
+              )
+              .timeout(const Duration(seconds: 8));
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['success'] == true && data['is_registered'] == true) {
-            isRegistered = true;
-            userRecord = data['data']?['user'] as Map<String, dynamic>?;
-            token = data['data']?['token'];
+          final authBody = jsonDecode(authResponse.body);
+          if (authResponse.statusCode == 200 || authResponse.statusCode == 201) {
+            if (authBody['success'] == true && authBody['data'] != null) {
+              isRegistered = true;
+              userRecord = authBody['data']['user'] as Map<String, dynamic>?;
+              token = authBody['data']['token'];
+              if (userRecord != null && userRecord['role'] != null) {
+                userRole = userRecord['role'].toString();
+              }
+            }
+          } else if (authResponse.statusCode == 401 || authResponse.statusCode == 403) {
+            safelyCloseDialog();
+            final msg = authBody['message'] ?? 'Otentikasi Google tidak diizinkan.';
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(msg),
+                  backgroundColor: const Color(0xFFC62828),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+            return;
           }
+        } catch (e) {
+          debugPrint('Backend /api/auth/google error: $e');
         }
-      } catch (e) {
-        debugPrint('Backend google-check: $e');
       }
 
-      // 2. Cek cache lokal SharedPreferences
+      // 2. Fallback cek endpoint /api/google-check jika idToken kosong atau jaringan offline
+      if (!isRegistered) {
+        try {
+          final response = await http
+              .post(
+                Uri.parse('$baseUrl/api/google-check'),
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode({'email': email}),
+              )
+              .timeout(const Duration(milliseconds: 3000));
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            if (data['success'] == true && data['is_registered'] == true) {
+              isRegistered = true;
+              userRecord = data['data']?['user'] as Map<String, dynamic>?;
+              token = data['data']?['token'];
+            }
+          }
+        } catch (e) {
+          debugPrint('Backend google-check: $e');
+        }
+      }
+
+      // 3. Cek cache lokal SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       if (!isRegistered) {
         final cachedEmail = (prefs.getString('email') ?? '').trim().toLowerCase();
@@ -432,8 +500,7 @@ class GoogleAuthService {
         }
       }
 
-      // 3. Jika belum terdaftar, coba registrasi ke backend (timeout 2.5 detik)
-      String userRole = isAdminAccount(email) ? 'admin' : 'user';
+      // 4. Jika belum terdaftar di fallback, coba registrasi ke backend
       if (!isRegistered) {
         try {
           final regResponse = await http
@@ -454,7 +521,7 @@ class GoogleAuthService {
                   'avatar': avatar,
                 }),
               )
-              .timeout(const Duration(milliseconds: 2500));
+              .timeout(const Duration(milliseconds: 3000));
 
           if (regResponse.statusCode == 200 || regResponse.statusCode == 201) {
             final resData = jsonDecode(regResponse.body);
@@ -571,43 +638,82 @@ class GoogleAuthService {
     final wa = (data['whatsapp_number'] ?? '').toString().trim();
     final googleId = (data['google_id'] ?? '').toString();
     final avatar = (data['avatar'] ?? '').toString();
+    final idToken = (data['id_token'] ?? '').toString();
 
     String? token;
     String userRole = isAdminAccount(email) ? 'admin' : 'user';
 
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/api/google-register'),
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'email': email,
-              'name': name,
-              'nip': nip,
-              'jabatan': jabatan,
-              'wilayah': wilayah,
-              'whatsapp_number': wa,
-              'google_id': googleId,
-              'avatar': avatar,
-            }),
-          )
-          .timeout(const Duration(seconds: 4));
+    // 1. Coba daftarkan via Google ID Token resmi
+    if (idToken.isNotEmpty) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/api/auth/google'),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'id_token': idToken,
+                'nip': nip,
+                'jabatan': jabatan,
+                'wilayah': wilayah,
+                'whatsapp_number': wa,
+              }),
+            )
+            .timeout(const Duration(seconds: 8));
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final resData = jsonDecode(response.body);
-        if (resData['success'] == true) {
-          token = resData['data']?['token'];
-          final user = resData['data']?['user'];
-          if (user != null && user['role'] != null) {
-            userRole = user['role'].toString();
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final resData = jsonDecode(response.body);
+          if (resData['success'] == true) {
+            token = resData['data']?['token'];
+            final user = resData['data']?['user'];
+            if (user != null && user['role'] != null) {
+              userRole = user['role'].toString();
+            }
           }
         }
+      } catch (e) {
+        debugPrint('registerAndEnterDashboard /api/auth/google error: $e');
       }
-    } catch (e) {
-      debugPrint('Backend google-register error/timeout: $e');
+    }
+
+    // 2. Fallback jika ID token kosong
+    if (token == null) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/api/google-register'),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({
+                'email': email,
+                'name': name,
+                'nip': nip,
+                'jabatan': jabatan,
+                'wilayah': wilayah,
+                'whatsapp_number': wa,
+                'google_id': googleId,
+                'avatar': avatar,
+              }),
+            )
+            .timeout(const Duration(seconds: 4));
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final resData = jsonDecode(response.body);
+          if (resData['success'] == true) {
+            token = resData['data']?['token'];
+            final user = resData['data']?['user'];
+            if (user != null && user['role'] != null) {
+              userRole = user['role'].toString();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Backend google-register error/timeout: $e');
+      }
     }
 
     token ??= 'google_reg_${DateTime.now().millisecondsSinceEpoch}';

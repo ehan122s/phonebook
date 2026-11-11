@@ -64,6 +64,7 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
       'whatsapp_number': _waCtrl.text.trim(),
       'google_id': widget.googleData['google_id'] ?? '',
       'avatar': widget.googleData['avatar'] ?? '',
+      'id_token': widget.googleData['id_token'] ?? '',
     };
 
     try {

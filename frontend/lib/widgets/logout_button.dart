@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/api_constants.dart';
 import '../pages/login/login.dart';
+import '../services/google_auth_service.dart';
 
 class LogoutButton extends StatelessWidget {
   const LogoutButton({super.key});
@@ -13,7 +16,7 @@ class LogoutButton extends StatelessWidget {
         return AlertDialog(
           title: const Text('Keluar Aplikasi'),
           content: const Text(
-            'Apakah kamu yakin ingin keluar?',
+            'Apakah kamu yakin ingin keluar dari akun?',
           ),
           actions: [
             TextButton(
@@ -40,6 +43,23 @@ class LogoutButton extends StatelessWidget {
     if (confirm != true) return;
 
     final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token') ?? '';
+
+    // 1. Cabut token Sanctum resmi di server backend (jika ada dan online)
+    if (token.isNotEmpty && !token.startsWith('offline_') && !token.startsWith('google_session_')) {
+      try {
+        await http.post(
+          Uri.parse('${ApiConstants.baseUrl}/api/logout'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        ).timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
+
+    // 2. Putuskan sesi Google Sign-In agar Account Chooser muncul lagi di login berikutnya
+    await GoogleAuthService.signOut();
 
     bool isRemember = false;
     try {

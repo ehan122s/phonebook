@@ -166,6 +166,7 @@ Future<Map<String, dynamic>?> performDesktopGoogleOAuth(
       'name': name,
       'google_id': id,
       'avatar': picture,
+      'id_token': (tokenData['id_token'] ?? '').toString(),
     };
   } catch (e) {
     debugPrint('Desktop Google OAuth error: $e');

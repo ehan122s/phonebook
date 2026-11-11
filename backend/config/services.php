@@ -5,6 +5,14 @@ return [
     'token' => env('FONNTE_TOKEN'),
 ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID', '52603373586-iv996p86tugj1e4nnldh994p3cec4j7n.apps.googleusercontent.com'),
+        'allowed_client_ids' => array_filter(array_map('trim', explode(',', env(
+            'GOOGLE_ALLOWED_CLIENT_IDS',
+            '52603373586-iv996p86tugj1e4nnldh994p3cec4j7n.apps.googleusercontent.com,52603373586-50s66kj1332j7mu6o4ilv0dk1sga1jjt.apps.googleusercontent.com,52603373586-tma5jfqqsv3m21on71c8k482i5pap8ti.apps.googleusercontent.com'
+        )))),
+    ],
+
 
 
     /*

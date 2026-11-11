@@ -99,6 +99,7 @@ Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/google', [AuthController::class, 'googleAuth']);
 Route::post('/google-check', [AuthController::class, 'googleCheck']);
 Route::post('/google-register', [AuthController::class, 'googleRegister']);
 Route::post('/google-login', [AuthController::class, 'googleLogin']);
