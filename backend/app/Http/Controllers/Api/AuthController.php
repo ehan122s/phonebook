@@ -233,4 +233,59 @@ class AuthController extends Controller
             'data' => $request->user(),
         ]);
     }
+
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'whatsapp_number' => 'nullable|string|max:25',
+            'wilayah' => 'nullable|string|max:150',
+            'avatar' => 'nullable|string|max:2000',
+        ]);
+
+        $user->name = trim($validated['name']);
+        if (array_key_exists('whatsapp_number', $validated)) {
+            $user->whatsapp_number = $validated['whatsapp_number'] ?? '';
+        }
+        if (array_key_exists('wilayah', $validated)) {
+            $user->wilayah = $validated['wilayah'] ?? '';
+        }
+        if (array_key_exists('avatar', $validated)) {
+            $user->avatar = $validated['avatar'] ?? '';
+        }
+
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profil berhasil diperbarui',
+            'data' => $user,
+        ]);
+    }
+
+    public function changePassword(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:8|confirmed',
+        ]);
+
+        if (!Hash::check($validated['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Password saat ini tidak sesuai.'],
+            ]);
+        }
+
+        $user->password = Hash::make($validated['new_password']);
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password berhasil diubah',
+        ]);
+    }
 }
