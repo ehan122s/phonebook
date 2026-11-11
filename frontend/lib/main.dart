@@ -15,11 +15,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'services/app_settings_service.dart';
 import 'pages/admin/admin_page.dart';
 import 'pages/home/home.dart';
 import 'pages/login/login.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Inisialisasi driver SQLite FFI saat aplikasi dijalankan di Desktop (Linux, Windows, macOS)
@@ -27,6 +28,9 @@ void main() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
+
+  // Inisialisasi pengaturan tema dan ukuran font global
+  await AppSettingsService.instance.init();
 
   runApp(const PhonebookApp());
 }
@@ -36,41 +40,120 @@ class PhonebookApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Phonebook',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Arial',
-        scaffoldBackgroundColor: const Color(0xFFF8FAF8),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2E7D32),
-        ),
-        pageTransitionsTheme: const PageTransitionsTheme(
-          builders: {
-            TargetPlatform.android: _SmoothCihuyPageTransitionBuilder(),
-            TargetPlatform.iOS: _SmoothCihuyPageTransitionBuilder(),
-            TargetPlatform.windows: _SmoothCihuyPageTransitionBuilder(),
-            TargetPlatform.macOS: _SmoothCihuyPageTransitionBuilder(),
-            TargetPlatform.linux: _SmoothCihuyPageTransitionBuilder(),
-            TargetPlatform.fuchsia: _SmoothCihuyPageTransitionBuilder(),
+    return ListenableBuilder(
+      listenable: AppSettingsService.instance,
+      builder: (context, _) {
+        final settings = AppSettingsService.instance;
+
+        return MaterialApp(
+          title: 'Phonebook',
+          debugShowCheckedModeBanner: false,
+          themeMode: settings.themeMode,
+          theme: _buildLightTheme(),
+          darkTheme: _buildDarkTheme(),
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(settings.textScaleFactor),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
           },
+          home: const SplashScreen(),
+        );
+      },
+    );
+  }
+
+  ThemeData _buildLightTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      fontFamily: 'Arial',
+      scaffoldBackgroundColor: const Color(0xFFF8FAF8),
+      cardColor: Colors.white,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF2E7D32),
+        brightness: Brightness.light,
+        primary: const Color(0xFF285C2E),
+        secondary: const Color(0xFF3B7A42),
+        surface: Colors.white,
+      ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.iOS: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.windows: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.macOS: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.linux: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.fuchsia: _SmoothCihuyPageTransitionBuilder(),
+        },
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF1E3F24),
+        contentTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
         ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1E3F24),
-          contentTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-          ),
-          elevation: 8,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
-      home: const SplashScreen(),
+    );
+  }
+
+  ThemeData _buildDarkTheme() {
+    const darkBg = Color(0xFF121814);
+    const darkCard = Color(0xFF1E2822);
+    const darkSurface = Color(0xFF18211B);
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      fontFamily: 'Arial',
+      scaffoldBackgroundColor: darkBg,
+      cardColor: darkCard,
+      dialogTheme: const DialogThemeData(
+        backgroundColor: darkCard,
+        surfaceTintColor: Colors.transparent,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: darkCard,
+        surfaceTintColor: Colors.transparent,
+      ),
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF81C784),
+        brightness: Brightness.dark,
+        primary: const Color(0xFF81C784),
+        secondary: const Color(0xFFA5D6A7),
+        surface: darkSurface,
+      ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.iOS: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.windows: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.macOS: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.linux: _SmoothCihuyPageTransitionBuilder(),
+          TargetPlatform.fuchsia: _SmoothCihuyPageTransitionBuilder(),
+        },
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF26332A),
+        contentTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+        ),
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
     );
   }
 }

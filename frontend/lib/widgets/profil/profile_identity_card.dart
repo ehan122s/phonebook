@@ -25,7 +25,13 @@ class ProfileIdentityCard extends StatelessWidget {
     required this.onChangeAvatar,
   });
 
-  Widget _buildAvatar() {
+  Widget _buildAvatar(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final avatarOuterBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final avatarInnerBg = isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9);
+    final textInitialColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final cameraBtnBg = isDark ? const Color(0xFF2E7D32) : const Color(0xFF285C2E);
+
     ImageProvider? imageProvider;
     if (avatar.isNotEmpty) {
       if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
@@ -56,10 +62,10 @@ class ProfileIdentityCard extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white,
+              color: avatarOuterBg,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
+                  color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.12),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -67,15 +73,15 @@ class ProfileIdentityCard extends StatelessWidget {
             ),
             child: CircleAvatar(
               radius: 46,
-              backgroundColor: const Color(0xFFE8F5E9),
+              backgroundColor: avatarInnerBg,
               backgroundImage: imageProvider,
               child: imageProvider == null
                   ? Text(
                       initials,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF285C2E),
+                        color: textInitialColor,
                         letterSpacing: 1.0,
                       ),
                     )
@@ -86,9 +92,9 @@ class ProfileIdentityCard extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFF285C2E),
+              color: cameraBtnBg,
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: avatarOuterBg, width: 2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.15),
@@ -110,18 +116,25 @@ class ProfileIdentityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final jabatanColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
+    final btnBg = isDark ? const Color(0xFF2E7D32) : const Color(0xFF285C2E);
     final isAdmin = role.toLowerCase() == 'admin';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0E7E1)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -130,17 +143,17 @@ class ProfileIdentityCard extends StatelessWidget {
       child: Column(
         children: [
           // Foto Profil & Avatar
-          _buildAvatar(),
+          _buildAvatar(context),
           const SizedBox(height: 14),
 
           // Nama Lengkap (Ukuran jelas untuk usia 40-60 tahun)
           Text(
             nama,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 19,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1E2923),
+              color: titleColor,
               height: 1.25,
             ),
           ),
@@ -150,10 +163,10 @@ class ProfileIdentityCard extends StatelessWidget {
           Text(
             jabatan.isNotEmpty ? jabatan : 'Penyuluh Kehutanan',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF285C2E),
+              color: jabatanColor,
             ),
           ),
           const SizedBox(height: 2),
@@ -163,7 +176,7 @@ class ProfileIdentityCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,
-              color: Colors.grey.shade600,
+              color: subColor,
             ),
           ),
           const SizedBox(height: 12),
@@ -178,9 +191,11 @@ class ProfileIdentityCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFC8E6C9)),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF2E3D34) : const Color(0xFFC8E6C9),
+                  ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -188,18 +203,18 @@ class ProfileIdentityCard extends StatelessWidget {
                     Container(
                       width: 7,
                       height: 7,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2E7D32),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'Status: $status',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D32),
+                        color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                       ),
                     ),
                   ],
@@ -210,10 +225,14 @@ class ProfileIdentityCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isAdmin ? const Color(0xFFFFF3E0) : const Color(0xFFE3F2FD),
+                  color: isAdmin
+                      ? (isDark ? const Color(0xFF3B2716) : const Color(0xFFFFF3E0))
+                      : (isDark ? const Color(0xFF1B2B3A) : const Color(0xFFE3F2FD)),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isAdmin ? const Color(0xFFFFCC80) : const Color(0xFFBBDEFB),
+                    color: isAdmin
+                        ? (isDark ? const Color(0xFF5C3C1E) : const Color(0xFFFFCC80))
+                        : (isDark ? const Color(0xFF244360) : const Color(0xFFBBDEFB)),
                   ),
                 ),
                 child: Row(
@@ -222,7 +241,9 @@ class ProfileIdentityCard extends StatelessWidget {
                     Icon(
                       isAdmin ? Icons.admin_panel_settings_rounded : Icons.person_outline_rounded,
                       size: 13,
-                      color: isAdmin ? const Color(0xFFE65100) : const Color(0xFF1565C0),
+                      color: isAdmin
+                          ? (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100))
+                          : (isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0)),
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -230,7 +251,9 @@ class ProfileIdentityCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: isAdmin ? const Color(0xFFE65100) : const Color(0xFF1565C0),
+                        color: isAdmin
+                            ? (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100))
+                            : (isDark ? const Color(0xFF90CAF9) : const Color(0xFF1565C0)),
                       ),
                     ),
                   ],
@@ -256,7 +279,7 @@ class ProfileIdentityCard extends StatelessWidget {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF285C2E),
+                backgroundColor: btnBg,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(

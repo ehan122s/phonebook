@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: IndexedStack(
         index: selectedIndex,
         sizing: StackFit.expand,

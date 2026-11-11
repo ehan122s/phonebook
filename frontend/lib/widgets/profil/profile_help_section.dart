@@ -19,11 +19,19 @@ class ProfileHelpSection extends StatelessWidget {
   });
 
   Widget _buildItem({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconBg = isDark ? const Color(0xFF26352B) : const Color(0xFFF1F8E9);
+    final iconColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white60 : Colors.grey.shade600;
+    final chevronColor = isDark ? Colors.white38 : Colors.grey;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -34,10 +42,10 @@ class ProfileHelpSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F8E9),
+                color: iconBg,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(icon, size: 18, color: const Color(0xFF285C2E)),
+              child: Icon(icon, size: 18, color: iconColor),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -46,24 +54,24 @@ class ProfileHelpSection extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E2923),
+                      color: titleColor,
                     ),
                   ),
                   const SizedBox(height: 1),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 11.5, color: subColor),
                   ),
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
               size: 20,
-              color: Colors.grey,
+              color: chevronColor,
             ),
           ],
         ),
@@ -73,16 +81,25 @@ class ProfileHelpSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1);
+    final headerBg = isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9);
+    final primaryGreen = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white60 : Colors.grey;
+    final dividerColor = isDark ? const Color(0xFF2E3D34) : const Color(0xFFEDF2EE);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0E7E1)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -96,17 +113,17 @@ class ProfileHelpSection extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: headerBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.help_outline_rounded,
                   size: 20,
-                  color: Color(0xFF285C2E),
+                  color: primaryGreen,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -115,12 +132,12 @@ class ProfileHelpSection extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E2923),
+                        color: titleColor,
                       ),
                     ),
                     Text(
                       'Panduan, kontak bantuan, dan pelaporan kendala',
-                      style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                      style: TextStyle(fontSize: 11.5, color: subColor),
                     ),
                   ],
                 ),
@@ -128,50 +145,56 @@ class ProfileHelpSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFEDF2EE)),
+          Divider(height: 1, color: dividerColor),
           const SizedBox(height: 6),
 
           _buildItem(
+            context: context,
             icon: Icons.menu_book_rounded,
             title: 'Panduan Penggunaan Aplikasi',
             subtitle: 'Tata cara input laporan offline, jadwal & materi',
             onTap: onUserGuide,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildItem(
+            context: context,
             icon: Icons.quiz_outlined,
             title: 'Pertanyaan Umum (FAQ)',
             subtitle: 'Solusi cepat untuk kendala yang sering dialami',
             onTap: onFaq,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildItem(
+            context: context,
             icon: Icons.support_agent_rounded,
             title: 'Hubungi Administrator CDK V',
             subtitle: 'Bantuan teknis via WhatsApp & Telepon dinas',
             onTap: onContactAdmin,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildItem(
+            context: context,
             icon: Icons.bug_report_outlined,
             title: 'Laporkan Kendala / Masalah',
             subtitle: 'Kirim keluhan atau bug sistem kepada tim IT',
             onTap: onReportIssue,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildItem(
+            context: context,
             icon: Icons.policy_outlined,
             title: 'Kebijakan Privasi & Data ASN',
             subtitle: 'Perlindungan kerahasiaan data kepegawaian',
             onTap: onPrivacyPolicy,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildItem(
+            context: context,
             icon: Icons.info_outline_rounded,
             title: 'Tentang Aplikasi Phonebook',
             subtitle: 'Informasi versi, lisensi, dan pengembang CDK V',

@@ -88,6 +88,7 @@ class LogoutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -99,11 +100,14 @@ class LogoutButton extends StatelessWidget {
             vertical: 11,
           ),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? const Color(0xFF1E2822) : Colors.white,
             borderRadius: BorderRadius.circular(15),
+            border: Border.all(
+              color: isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.08),
                 blurRadius: 9,
                 offset: const Offset(0, 4),
               ),

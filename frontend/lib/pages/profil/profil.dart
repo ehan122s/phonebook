@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/api_constants.dart';
+import '../../services/app_settings_service.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/jadwal_service.dart';
 import '../../services/offline_database.dart';
@@ -236,8 +237,8 @@ class _ProfilPageState extends State<ProfilPage> {
       _notifPengumuman = prefs.getBool('notif_pengumuman') ?? true;
       _reminderTime = prefs.getString('notif_reminder_time') ?? '30 Menit Sebelumnya';
 
-      _currentTheme = prefs.getString('app_theme_mode') ?? 'Sistem';
-      _textScale = prefs.getString('app_text_scale') ?? 'Normal';
+      _currentTheme = AppSettingsService.instance.themeString;
+      _textScale = AppSettingsService.instance.textScaleString;
     });
   }
 
@@ -831,15 +832,14 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _updateTheme(String theme) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_theme_mode', theme);
+    await AppSettingsService.instance.setTheme(theme);
     if (!mounted) return;
     setState(() {
-      _currentTheme = theme;
+      _currentTheme = AppSettingsService.instance.themeString;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Tema tampilan diubah ke: $theme'),
+        content: Text('Tema tampilan diubah ke: ${AppSettingsService.instance.themeString}'),
         backgroundColor: const Color(0xFF285C2E),
         behavior: SnackBarBehavior.floating,
       ),
@@ -847,15 +847,14 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _updateTextScale(String scale) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_text_scale', scale);
+    await AppSettingsService.instance.setTextScale(scale);
     if (!mounted) return;
     setState(() {
-      _textScale = scale;
+      _textScale = AppSettingsService.instance.textScaleString;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Ukuran teks diatur ke: $scale'),
+        content: Text('Ukuran teks diatur ke: ${AppSettingsService.instance.textScaleString}'),
         backgroundColor: const Color(0xFF285C2E),
         behavior: SnackBarBehavior.floating,
       ),
@@ -1328,8 +1327,9 @@ class _ProfilPageState extends State<ProfilPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 110),
         child: Column(
@@ -1515,12 +1515,15 @@ class _ProfilPageState extends State<ProfilPage> {
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFFD32F2F),
-                          side: const BorderSide(color: Color(0xFFEF9A9A), width: 1.5),
+                          foregroundColor: isDark ? const Color(0xFFEF9A9A) : const Color(0xFFD32F2F),
+                          side: BorderSide(
+                            color: isDark ? const Color(0xFF5C2D32) : const Color(0xFFEF9A9A),
+                            width: 1.5,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
-                          backgroundColor: const Color(0xFFFFF5F5),
+                          backgroundColor: isDark ? const Color(0xFF3C1F22) : const Color(0xFFFFF5F5),
                         ),
                       ),
                     ),
@@ -1529,18 +1532,21 @@ class _ProfilPageState extends State<ProfilPage> {
                     // 10. FOOTER APLIKASI
                     Column(
                       children: [
-                        const Text(
+                        Text(
                           'Phonebook CDK Wilayah V Garut',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF285C2E),
+                            color: isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E),
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'Dinas Kehutanan Provinsi Jawa Barat • Versi 1.0.0 (Build 1)',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white60 : Colors.grey.shade600,
+                          ),
                         ),
                         const SizedBox(height: 8),
                       ],

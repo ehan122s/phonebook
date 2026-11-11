@@ -27,6 +27,11 @@ class ProfileActivitySummary extends StatelessWidget {
     required Color borderColor,
     VoidCallback? onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconBoxBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white60 : Colors.grey.shade600;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -46,11 +51,11 @@ class ProfileActivitySummary extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: iconBoxBg,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: iconColor.withValues(alpha: 0.15),
+                        color: iconColor.withValues(alpha: isDark ? 0.3 : 0.15),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -71,10 +76,10 @@ class ProfileActivitySummary extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E2923),
+                color: titleColor,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -84,7 +89,7 @@ class ProfileActivitySummary extends StatelessWidget {
               subtitle,
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.grey.shade600,
+                color: subColor,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -97,16 +102,24 @@ class ProfileActivitySummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1);
+    final headerBg = isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9);
+    final headerIconColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white60 : Colors.grey;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0E7E1)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -120,17 +133,17 @@ class ProfileActivitySummary extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: headerBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.insights_rounded,
                   size: 20,
-                  color: Color(0xFF285C2E),
+                  color: headerIconColor,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -139,12 +152,12 @@ class ProfileActivitySummary extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E2923),
+                        color: titleColor,
                       ),
                     ),
                     Text(
                       'Data riil kinerja di CDK Wilayah V',
-                      style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                      style: TextStyle(fontSize: 11.5, color: subColor),
                     ),
                   ],
                 ),
@@ -163,9 +176,9 @@ class ProfileActivitySummary extends StatelessWidget {
                   value: '$totalLaporan',
                   subtitle: 'Tersimpan lokal & awan',
                   icon: Icons.assignment_outlined,
-                  iconColor: const Color(0xFF2E7D32),
-                  bgColor: const Color(0xFFF1F8E9),
-                  borderColor: const Color(0xFFC8E6C9),
+                  iconColor: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                  bgColor: isDark ? const Color(0xFF1C2B21) : const Color(0xFFF1F8E9),
+                  borderColor: isDark ? const Color(0xFF2D4433) : const Color(0xFFC8E6C9),
                 ),
               ),
               const SizedBox(width: 12),
@@ -176,9 +189,9 @@ class ProfileActivitySummary extends StatelessWidget {
                   value: '$totalJadwal',
                   subtitle: 'Agenda penyuluhan',
                   icon: Icons.calendar_month_outlined,
-                  iconColor: const Color(0xFF1565C0),
-                  bgColor: const Color(0xFFE3F2FD),
-                  borderColor: const Color(0xFFBBDEFB),
+                  iconColor: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0),
+                  bgColor: isDark ? const Color(0xFF162534) : const Color(0xFFE3F2FD),
+                  borderColor: isDark ? const Color(0xFF233B52) : const Color(0xFFBBDEFB),
                 ),
               ),
             ],
@@ -193,9 +206,9 @@ class ProfileActivitySummary extends StatelessWidget {
                   value: '$totalMateri',
                   subtitle: 'PDF, PPT & modul',
                   icon: Icons.auto_stories_outlined,
-                  iconColor: const Color(0xFFE65100),
-                  bgColor: const Color(0xFFFFF3E0),
-                  borderColor: const Color(0xFFFFCC80),
+                  iconColor: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100),
+                  bgColor: isDark ? const Color(0xFF2F2417) : const Color(0xFFFFF3E0),
+                  borderColor: isDark ? const Color(0xFF4C3A25) : const Color(0xFFFFCC80),
                 ),
               ),
               const SizedBox(width: 12),
@@ -211,14 +224,14 @@ class ProfileActivitySummary extends StatelessWidget {
                       ? Icons.cloud_done_rounded
                       : Icons.cloud_upload_outlined,
                   iconColor: totalPendingSync == 0
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFC2185B),
+                      ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
+                      : (isDark ? const Color(0xFFF48FB1) : const Color(0xFFC2185B)),
                   bgColor: totalPendingSync == 0
-                      ? const Color(0xFFE8F5E9)
-                      : const Color(0xFFFCE4EC),
+                      ? (isDark ? const Color(0xFF1C2B21) : const Color(0xFFE8F5E9))
+                      : (isDark ? const Color(0xFF2D1822) : const Color(0xFFFCE4EC)),
                   borderColor: totalPendingSync == 0
-                      ? const Color(0xFFC8E6C9)
-                      : const Color(0xFFF8BBD0),
+                      ? (isDark ? const Color(0xFF2D4433) : const Color(0xFFC8E6C9))
+                      : (isDark ? const Color(0xFF4B2839) : const Color(0xFFF8BBD0)),
                   onTap: onSyncTap,
                 ),
               ),

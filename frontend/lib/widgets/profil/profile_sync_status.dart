@@ -18,25 +18,33 @@ class ProfileSyncStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final btnBg = isDark ? const Color(0xFF2E7D32) : const Color(0xFF285C2E);
+
     Color statusColor;
     String statusTitle;
     String statusSubtitle;
     IconData statusIcon;
 
     if (isSyncing) {
-      statusColor = const Color(0xFF1565C0);
+      statusColor = isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0);
       statusTitle = 'Sedang Menyinkronkan...';
       statusSubtitle = 'Mengirim data laporan lokal ke server CDK V';
       statusIcon = Icons.sync_rounded;
     } else if (pendingCount == 0) {
-      statusColor = const Color(0xFF2E7D32);
+      statusColor = isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
       statusTitle = 'Semua Laporan Tersinkronisasi';
       statusSubtitle = isOnline
           ? 'Data di HP dan server pusat CDK V sudah cocok'
           : 'Semua draft lokal telah terkirim sebelum offline';
       statusIcon = Icons.cloud_done_rounded;
     } else {
-      statusColor = isOnline ? const Color(0xFFE65100) : const Color(0xFFC62828);
+      statusColor = isOnline
+          ? (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100))
+          : (isDark ? const Color(0xFFE57373) : const Color(0xFFC62828));
       statusTitle = '$pendingCount Laporan Belum Disinkronkan';
       statusSubtitle = isOnline
           ? 'Ketuk tombol di bawah untuk kirim ke server'
@@ -48,12 +56,12 @@ class ProfileSyncStatus extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0E7E1)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -69,16 +77,16 @@ class ProfileSyncStatus extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isOnline
-                      ? const Color(0xFFE8F5E9)
-                      : const Color(0xFFFFF3E0),
+                      ? (isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9))
+                      : (isDark ? const Color(0xFF3B2716) : const Color(0xFFFFF3E0)),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
                   size: 20,
                   color: isOnline
-                      ? const Color(0xFF285C2E)
-                      : const Color(0xFFE65100),
+                      ? (isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E))
+                      : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -86,12 +94,12 @@ class ProfileSyncStatus extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Status Koneksi & Sinkronisasi',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E2923),
+                        color: titleColor,
                       ),
                     ),
                     Text(
@@ -101,8 +109,8 @@ class ProfileSyncStatus extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         color: isOnline
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE65100),
+                            ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
+                            : (isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100)),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -113,10 +121,14 @@ class ProfileSyncStatus extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isOnline ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE),
+                  color: isOnline
+                      ? (isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9))
+                      : (isDark ? const Color(0xFF3C1F22) : const Color(0xFFFFEBEE)),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isOnline ? const Color(0xFFC8E6C9) : const Color(0xFFFFCDD2),
+                    color: isOnline
+                        ? (isDark ? const Color(0xFF2E3D34) : const Color(0xFFC8E6C9))
+                        : (isDark ? const Color(0xFF5C2D32) : const Color(0xFFFFCDD2)),
                   ),
                 ),
                 child: Text(
@@ -125,7 +137,9 @@ class ProfileSyncStatus extends StatelessWidget {
                     fontSize: 10.5,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
-                    color: isOnline ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                    color: isOnline
+                        ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
+                        : (isDark ? const Color(0xFFEF9A9A) : const Color(0xFFC62828)),
                   ),
                 ),
               ),
@@ -137,9 +151,9 @@ class ProfileSyncStatus extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.06),
+              color: statusColor.withValues(alpha: isDark ? 0.12 : 0.06),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: statusColor.withValues(alpha: 0.25)),
+              border: Border.all(color: statusColor.withValues(alpha: isDark ? 0.4 : 0.25)),
             ),
             child: Row(
               children: [
@@ -171,7 +185,7 @@ class ProfileSyncStatus extends StatelessWidget {
                         statusSubtitle,
                         style: TextStyle(
                           fontSize: 11.5,
-                          color: Colors.grey.shade700,
+                          color: isDark ? Colors.white70 : Colors.grey.shade700,
                           height: 1.3,
                         ),
                       ),
@@ -186,19 +200,26 @@ class ProfileSyncStatus extends StatelessWidget {
           // Waktu Sinkronisasi Terakhir
           Row(
             children: [
-              Icon(Icons.history_rounded, size: 15, color: Colors.grey.shade600),
+              Icon(
+                Icons.history_rounded,
+                size: 15,
+                color: isDark ? Colors.white60 : Colors.grey.shade600,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Sinkronisasi Terakhir: ',
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: isDark ? Colors.white60 : Colors.grey.shade600,
+                ),
               ),
               Expanded(
                 child: Text(
                   lastSyncTime.isNotEmpty ? lastSyncTime : 'Belum pernah sinkron',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E2923),
+                    color: titleColor,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -236,9 +257,9 @@ class ProfileSyncStatus extends StatelessWidget {
                 ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF285C2E),
+                backgroundColor: btnBg,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: Colors.grey.shade300,
+                disabledBackgroundColor: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

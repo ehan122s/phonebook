@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 class BottomNav extends StatelessWidget {
@@ -11,10 +10,11 @@ class BottomNav extends StatelessWidget {
     required this.onChanged,
   });
 
-  static const green = Color(0xFF2E7D32);
-
-  Widget _item(int index, IconData icon, String label) {
+  Widget _item(BuildContext context, int index, IconData icon, String label) {
     final active = selectedIndex == index;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
+    final inactiveColor = isDark ? Colors.white60 : Colors.grey.shade600;
 
     return Expanded(
       child: InkWell(
@@ -27,14 +27,14 @@ class BottomNav extends StatelessWidget {
               Icon(
                 icon,
                 size: 23,
-                color: active ? green : Colors.grey.shade600,
+                color: active ? activeColor : inactiveColor,
               ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
-                  color: active ? green : Colors.grey.shade600,
+                  color: active ? activeColor : inactiveColor,
                   fontWeight:
                       active ? FontWeight.bold : FontWeight.normal,
                 ),
@@ -48,16 +48,21 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barBg = isDark ? const Color(0xFF18221B) : const Color(0xFFF1F3EA);
+    final activeGreen = isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
+    final inactiveCenterBg = isDark ? const Color(0xFF26352B) : const Color(0xFFDCE8D8);
+
     return Container(
-      color: const Color(0xFFF1F3EA),
+      color: barBg,
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
           child: Row(
             children: [
-              _item(1, Icons.description_outlined, 'Laporan'),
-              _item(2, Icons.calendar_month_outlined, 'Jadwal'),
+              _item(context, 1, Icons.description_outlined, 'Laporan'),
+              _item(context, 2, Icons.calendar_month_outlined, 'Jadwal'),
 
               Expanded(
                 child: Center(
@@ -70,24 +75,24 @@ class BottomNav extends StatelessWidget {
                       height: 54,
                       decoration: BoxDecoration(
                         color: selectedIndex == 0
-                            ? green
-                            : const Color(0xFFDCE8D8),
+                            ? activeGreen
+                            : inactiveCenterBg,
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         Icons.home_rounded,
                         size: 27,
                         color: selectedIndex == 0
-                            ? Colors.white
-                            : green,
+                            ? (isDark ? const Color(0xFF121814) : Colors.white)
+                            : activeGreen,
                       ),
                     ),
                   ),
                 ),
               ),
 
-              _item(3, Icons.menu_book_outlined, 'Materi'),
-              _item(4, Icons.person_outline_rounded, 'Profil'),
+              _item(context, 3, Icons.menu_book_outlined, 'Materi'),
+              _item(context, 4, Icons.person_outline_rounded, 'Profil'),
             ],
           ),
         ),

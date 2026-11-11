@@ -17,12 +17,20 @@ class ProfileAccountSettings extends StatelessWidget {
   });
 
   Widget _buildMenuItem({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
     Widget? trailing,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconBg = isDark ? const Color(0xFF26352B) : const Color(0xFFF1F8E9);
+    final iconColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white60 : Colors.grey.shade600;
+    final chevronColor = isDark ? Colors.white38 : Colors.grey;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -33,10 +41,10 @@ class ProfileAccountSettings extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(9),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F8E9),
+                color: iconBg,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, size: 20, color: const Color(0xFF285C2E)),
+              child: Icon(icon, size: 20, color: iconColor),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -45,10 +53,10 @@ class ProfileAccountSettings extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E2923),
+                      color: titleColor,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -56,16 +64,16 @@ class ProfileAccountSettings extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: subColor,
                     ),
                   ),
                 ],
               ),
             ),
             trailing ??
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: Colors.grey,
+                  color: chevronColor,
                   size: 22,
                 ),
           ],
@@ -76,18 +84,25 @@ class ProfileAccountSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1);
+    final headerBg = isDark ? const Color(0xFF26352B) : const Color(0xFFE8F5E9);
+    final headerIconColor = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+    final titleColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final dividerColor = isDark ? const Color(0xFF2E3D34) : const Color(0xFFEDF2EE);
     final isGoogle = loginMethod.toLowerCase() == 'google';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE0E7E1)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -101,49 +116,52 @@ class ProfileAccountSettings extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: headerBg,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.manage_accounts_rounded,
                   size: 20,
-                  color: Color(0xFF285C2E),
+                  color: headerIconColor,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Pengaturan Akun & Keamanan',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E2923),
+                    color: titleColor,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFEDF2EE)),
+          Divider(height: 1, color: dividerColor),
           const SizedBox(height: 6),
 
           _buildMenuItem(
+            context: context,
             icon: Icons.person_outline_rounded,
             title: 'Edit Informasi Profil',
             subtitle: 'Ubah nama, nomor WhatsApp, dan wilayah kerja',
             onTap: onEditProfile,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildMenuItem(
+            context: context,
             icon: Icons.add_a_photo_outlined,
             title: 'Kelola Foto Profil',
             subtitle: 'Unggah foto resmi dari galeri atau kamera HP',
             onTap: onManagePhoto,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildMenuItem(
+            context: context,
             icon: Icons.lock_outline_rounded,
             title: 'Ubah Kata Sandi (Password)',
             subtitle: isGoogle
@@ -154,23 +172,24 @@ class ProfileAccountSettings extends StatelessWidget {
                 ? Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE8F0FE),
+                      color: isDark ? const Color(0xFF1B2B3A) : const Color(0xFFE8F0FE),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Google',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Color(0xFF1A73E8),
+                        color: isDark ? const Color(0xFF90CAF9) : const Color(0xFF1A73E8),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   )
                 : null,
           ),
-          const Divider(height: 1, indent: 48, color: Color(0xFFF1F5F2)),
+          Divider(height: 1, indent: 48, color: dividerColor),
 
           _buildMenuItem(
+            context: context,
             icon: Icons.security_rounded,
             title: 'Informasi Keamanan & Sesi',
             subtitle: 'Cek metode autentikasi dan status token',
