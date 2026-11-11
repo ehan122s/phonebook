@@ -1265,13 +1265,24 @@ class _ProfilPageState extends State<ProfilPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE8F5E9),
-                shape: BoxShape.circle,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                'assets/images/logo_phonebook.jpeg',
+                width: 72,
+                height: 72,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 72,
+                  height: 72,
+                  padding: const EdgeInsets.all(14),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.forest_rounded, size: 44, color: Color(0xFF285C2E)),
+                ),
               ),
-              child: const Icon(Icons.forest_rounded, size: 44, color: Color(0xFF285C2E)),
             ),
             const SizedBox(height: 14),
             const Text(
