@@ -1,15 +1,18 @@
 // ============================================================================
-// [FILE LOGIN - OTOMATIS MASUK SESUAI AKUN (ADMIN vs USER)]
-// Simpan file ini di: lib/pages/login.dart  (path sesuai project Anda)
-// - Jika login memakai akun Admin (role == 'admin' atau email admin) -> AdminPage()
-// - Jika login memakai akun User biasa -> HomePage()
+// [HALAMAN LOGIN - REDESIGN UI "MODERN SOFT GREEN"]
+// File: lib/pages/login.dart
 //
-// REDESAIN UI: Modern Soft Green (layout ref. #5, palet ref. #4)
-// Seluruh logika autentikasi (API, token, Ingat Saya, Google, fallback offline)
-// TIDAK diubah. Hanya method build() dan beberapa widget pendukung UI.
+// DESAIN:
+// - Layout referensi nomor 5 : Modern Soft Green (minimalis, dekorasi abstrak
+//   berupa lingkaran & lengkungan transparan, card putih rounded, shadow lembut)
+// - Palet warna referensi nomor 4 : hijau tua / hijau sedang / putih (split green)
+// - Logo pohon resmi aplikasi (assets/images/logo_phonebook.jpeg)
 //
-// PENTING: logo membutuhkan aset di  assets/images/logo_phonebook.png
-// dan harus didaftarkan di pubspec.yaml (lihat catatan di akhir jawaban).
+// CATATAN PENTING:
+// - Seluruh logika autentikasi dipertahankan 100% dari versi sebelumnya:
+//   login API Laravel, validasi, token SharedPreferences, Ingat Saya,
+//   login Google, fallback offline, dan routing Admin/User.
+// - Perubahan hanya pada tampilan (UI/UX).
 // ============================================================================
 
 import 'dart:convert';
@@ -25,23 +28,16 @@ import '../home/home.dart';
 
 String get baseUrl => ApiConstants.baseUrl;
 
-// ---------------------------------------------------------------------------
-// Palet warna login (hanya dipakai di halaman ini)
-// ---------------------------------------------------------------------------
-class _LoginColors {
-  static const primary = Color(0xFF086B45);
-  static const dark = Color(0xFF064E38);
-  static const secondary = Color(0xFF21834A);
-  static const light = Color(0xFFDCEFE2);
-  static const background = Color(0xFFF7FAF7);
-  static const white = Color(0xFFFFFFFF);
-  static const textPrimary = Color(0xFF26352D);
-  static const textSecondary = Color(0xFF858D88);
-  static const border = Color(0xFFC9D8CE); // hijau keabu-abuan
-  static const divider = Color(0xFFDDE6DF);
-}
-
-const String _logoAsset = 'assets/images/logo_phonebook.png';
+// ----------------------------------------------------------------------------
+// PALET WARNA (referensi desain nomor 4 - Split Green)
+// ----------------------------------------------------------------------------
+const Color kPrimaryGreen = Color(0xFF086B45); // Hijau utama
+const Color kDarkGreen = Color(0xFF064E38); // Hijau gelap
+const Color kSecondaryGreen = Color(0xFF21834A); // Hijau sekunder
+const Color kLightGreen = Color(0xFFDCEFE2); // Hijau muda
+const Color kBackground = Color(0xFFF7FAF7); // Background putih kehijauan
+const Color kTextMain = Color(0xFF26352D); // Teks utama
+const Color kTextSecondary = Color(0xFF858D88); // Teks sekunder
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -282,208 +278,337 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ==========================================================================
-  // UI (REDESAIN)
-  // ==========================================================================
+  // --------------------------------------------------------------------------
+  // ============================ BUILD UI ====================================
+  // --------------------------------------------------------------------------
 
-  InputDecoration _inputDecoration({
-    required String hint,
-    required IconData icon,
-    Widget? suffix,
-  }) {
-    OutlineInputBorder border(Color color, [double width = 1]) =>
-        OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: color, width: width),
-        );
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kBackground,
+      // resizeToAvoidBottomInset default true: form otomatis naik saat keyboard muncul
+      body: Stack(
+        children: [
+          // Dekorasi abstrak latar belakang (lingkaran & lengkungan transparan)
+          const _SoftGreenDecoration(),
 
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(
-        color: _LoginColors.textSecondary,
-        fontSize: 16,
+          // Konten utama (bisa di-scroll pada layar kecil)
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: _buildLoginCard(),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      prefixIcon: Icon(icon, color: _LoginColors.textPrimary, size: 24),
-      suffixIcon: suffix,
-      filled: true,
-      fillColor: _LoginColors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      enabledBorder: border(_LoginColors.border),
-      border: border(_LoginColors.border),
-      focusedBorder: border(_LoginColors.primary, 1.6),
     );
   }
 
+  /// Card putih utama berisi seluruh elemen form login
+  Widget _buildLoginCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(26, 34, 26, 30),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          // Shadow lembut kehijauan, tidak berlebihan
+          BoxShadow(
+            color: kPrimaryGreen.withOpacity(0.10),
+            blurRadius: 32,
+            spreadRadius: 0,
+            offset: const Offset(0, 14),
+          ),
+        ],
+        border: Border.all(color: kLightGreen.withOpacity(0.6), width: 1),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildHeader(),
+          const SizedBox(height: 30),
+          _buildEmailField(),
+          const SizedBox(height: 18),
+          _buildPasswordField(),
+          const SizedBox(height: 14),
+          _buildRememberMe(),
+          const SizedBox(height: 26),
+          _buildLoginButton(),
+          const SizedBox(height: 24),
+          _buildOrDivider(),
+          const SizedBox(height: 24),
+          _buildGoogleButton(),
+        ],
+      ),
+    );
+  }
+
+  /// A. Bagian Header : logo pohon, judul PHONEBOOK, dan subtitle
   Widget _buildHeader() {
     return Column(
       children: [
-        SizedBox(
-          height: 96,
+        // Logo pohon resmi aplikasi (tidak diubah / tidak diganti).
+        // errorBuilder memakai ikon cadangan agar aplikasi tetap aman
+        // bila asset belum ditambahkan ke pubspec.yaml.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
           child: Image.asset(
-            _logoAsset,
+            'assets/images/logo_phonebook.jpeg',
+            width: 104,
+            height: 104,
             fit: BoxFit.contain,
-            // Cadangan agar halaman tidak error bila aset belum terdaftar.
-            errorBuilder: (_, __, ___) => const Icon(
-              Icons.forest,
-              size: 80,
-              color: _LoginColors.primary,
-            ),
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 104,
+                height: 104,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: kLightGreen.withOpacity(0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.forest_outlined,
+                  size: 56,
+                  color: kPrimaryGreen,
+                ),
+              );
+            },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
         const Text(
           'PHONEBOOK',
-          style: TextStyle(
-            fontSize: 30,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: _LoginColors.primary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Aplikasi Pelaporan Kehutanan',
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 16,
-            color: _LoginColors.textPrimary,
-            fontWeight: FontWeight.w500,
+            fontSize: 27,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 3,
+            color: kDarkGreen,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: kLightGreen.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            'Aplikasi Pelaporan Kehutanan',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: kSecondaryGreen,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildRememberMe() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        setState(() {
-          rememberMe = !rememberMe;
-        });
+  /// Input Email dengan ikon email
+  Widget _buildEmailField() {
+    return TextField(
+      controller: emailController,
+      keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.next,
+      style: const TextStyle(fontSize: 16, color: kTextMain),
+      decoration: _inputDecoration(
+        label: 'Email',
+        icon: Icons.email_outlined,
+      ),
+    );
+  }
+
+  /// Input Password dengan ikon gembok + tombol lihat/sembunyikan password
+  Widget _buildPasswordField() {
+    return TextField(
+      controller: passwordController,
+      obscureText: obscurePassword,
+      textInputAction: TextInputAction.done,
+      style: const TextStyle(fontSize: 16, color: kTextMain),
+      onSubmitted: (_) {
+        if (!isLoading) login();
       },
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              height: 26,
-              width: 26,
-              child: Checkbox(
-                value: rememberMe,
-                activeColor: _LoginColors.primary,
-                side: const BorderSide(color: _LoginColors.border, width: 1.6),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                onChanged: (val) {
-                  setState(() {
-                    rememberMe = val ?? false;
-                  });
-                },
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              'Ingat Saya',
-              style: TextStyle(
-                fontSize: 15,
-                color: _LoginColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+      decoration: _inputDecoration(
+        label: 'Password',
+        icon: Icons.lock_outline,
+        suffix: IconButton(
+          tooltip: obscurePassword ? 'Tampilkan password' : 'Sembunyikan password',
+          icon: Icon(
+            obscurePassword
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
+            color: kSecondaryGreen,
+            size: 24,
+          ),
+          onPressed: () {
+            setState(() {
+              obscurePassword = !obscurePassword;
+            });
+          },
         ),
       ),
     );
   }
 
-  Widget _buildLoginButton() {
-    final disabled = isLoading;
-    return Opacity(
-      opacity: disabled ? 0.85 : 1,
-      child: Container(
-        width: double.infinity,
-        height: 56,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [_LoginColors.primary, _LoginColors.secondary],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33086B45),
-              blurRadius: 12,
-              offset: Offset(0, 5),
-            ),
-          ],
-        ),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            disabledBackgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            foregroundColor: Colors.white,
-            disabledForegroundColor: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          onPressed: disabled ? null : login,
-          child: isLoading
-              ? const SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.6,
-                    color: Colors.white,
+  /// Gaya input standar: border tipis hijau keabu-abuan, fokus hijau utama
+  InputDecoration _inputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    OutlineInputBorder border(Color color, {double width = 1}) {
+      return OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: color, width: width),
+      );
+    }
+
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(fontSize: 15.5, color: kTextSecondary),
+      floatingLabelStyle: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: kPrimaryGreen,
+      ),
+      prefixIcon: Icon(icon, color: kSecondaryGreen, size: 24),
+      prefixIconColor: kSecondaryGreen,
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      border: border(kLightGreen),
+      enabledBorder: border(kLightGreen),
+      focusedBorder: border(kPrimaryGreen, width: 1.6),
+      errorBorder: border(Colors.red.shade300),
+      focusedErrorBorder: border(Colors.red.shade400, width: 1.4),
+    );
+  }
+
+  /// Checkbox "Ingat Saya" dengan area sentuh yang besar
+  Widget _buildRememberMe() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            rememberMe = !rememberMe;
+          });
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 26,
+                width: 26,
+                child: Checkbox(
+                  value: rememberMe,
+                  activeColor: kPrimaryGreen,
+                  checkColor: Colors.white,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                )
-              : const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'MASUK',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 17,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  ],
+                  side: const BorderSide(color: kLightGreen, width: 1.6),
+                  onChanged: (val) {
+                    setState(() {
+                      rememberMe = val ?? false;
+                    });
+                  },
                 ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Ingat Saya',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: kTextMain,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDivider() {
+  /// Tombol MASUK - hijau utama, tinggi nyaman ditekan (56)
+  Widget _buildLoginButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: kPrimaryGreen,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: kPrimaryGreen.withOpacity(0.6),
+          disabledForegroundColor: Colors.white70,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 2,
+          shadowColor: kPrimaryGreen.withOpacity(0.35),
+        ),
+        onPressed: isLoading ? null : login,
+        child: isLoading
+            ? const SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'MASUK',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16.5,
+                  letterSpacing: 1.2,
+                ),
+              ),
+      ),
+    );
+  }
+
+  /// Pemisah dengan tulisan "ATAU"
+  Widget _buildOrDivider() {
     return Row(
-      children: const [
-        Expanded(child: Divider(color: _LoginColors.divider, thickness: 1)),
+      children: [
+        Expanded(child: Divider(color: kLightGreen, thickness: 1)),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'ATAU',
             style: TextStyle(
-              color: _LoginColors.textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
+              color: kTextSecondary,
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.4,
             ),
           ),
         ),
-        Expanded(child: Divider(color: _LoginColors.divider, thickness: 1)),
+        Expanded(child: Divider(color: kLightGreen, thickness: 1)),
       ],
     );
   }
 
+  /// C. Tombol "Masuk dengan Google" (ikon Google resmi dari project)
   Widget _buildGoogleButton() {
     return SizedBox(
       width: double.infinity,
@@ -492,8 +617,10 @@ class _LoginPageState extends State<LoginPage> {
         onPressed: (isLoading || isGoogleLoading) ? null : _handleGoogleSignIn,
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
+          foregroundColor: kTextMain,
           side: BorderSide(
-            color: isGoogleLoading ? _LoginColors.primary : _LoginColors.border,
+            color: isGoogleLoading ? kPrimaryGreen : kLightGreen,
+            width: 1.2,
           ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -509,19 +636,16 @@ class _LoginPageState extends State<LoginPage> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      color: _LoginColors.primary,
+                      color: kPrimaryGreen,
                     ),
                   ),
                   SizedBox(width: 12),
-                  Flexible(
-                    child: Text(
-                      'Menghubungkan Akun Google...',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _LoginColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                  Text(
+                    'Menghubungkan Akun Google...',
+                    style: TextStyle(
+                      color: kPrimaryGreen,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14.5,
                     ),
                   ),
                 ],
@@ -534,9 +658,9 @@ class _LoginPageState extends State<LoginPage> {
                   Text(
                     'Masuk dengan Google',
                     style: TextStyle(
-                      color: _LoginColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
+                      color: kTextMain,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15.5,
                     ),
                   ),
                 ],
@@ -544,151 +668,204 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+}
 
-  Widget _circle(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-    );
-  }
-
-  /// Dekorasi abstrak: lingkaran/lengkungan hijau muda transparan.
-  Widget _buildBackgroundDecoration() {
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            top: -90,
-            left: -80,
-            child: _circle(250, const Color(0x66DCEFE2)),
-          ),
-          Positioned(
-            top: 40,
-            right: -70,
-            child: _circle(190, const Color(0x4D21834A)),
-          ),
-          Positioned(
-            top: 70,
-            right: 34,
-            child: _circle(18, const Color(0x6621834A)),
-          ),
-          Positioned(
-            bottom: -110,
-            left: -90,
-            child: _circle(290, const Color(0x59DCEFE2)),
-          ),
-          Positioned(
-            bottom: -60,
-            right: -70,
-            child: _circle(210, const Color(0x40086B45)),
-          ),
-        ],
-      ),
-    );
-  }
+// ============================================================================
+// DEKORASI LATAR BELAKANG - Modern Soft Green
+// Lingkaran & lengkungan transparan berwarna hijau muda.
+// Semua elemen diposisikan "overflow" ke luar tepi layar dan otomatis
+// terpotong oleh Stack, sehingga aman untuk semua ukuran layar.
+// ============================================================================
+class _SoftGreenDecoration extends StatelessWidget {
+  const _SoftGreenDecoration();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _LoginColors.background,
-      resizeToAvoidBottomInset: true,
-      body: Stack(
-        children: [
-          Positioned.fill(child: _buildBackgroundDecoration()),
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
-                    decoration: BoxDecoration(
-                      color: _LoginColors.white,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x1A064E38),
-                          blurRadius: 28,
-                          offset: Offset(0, 12),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildHeader(),
-                        const SizedBox(height: 28),
-                        TextField(
-                          controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: _LoginColors.textPrimary,
-                          ),
-                          decoration: _inputDecoration(
-                            hint: 'Email',
-                            icon: Icons.email_outlined,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: passwordController,
-                          obscureText: obscurePassword,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            color: _LoginColors.textPrimary,
-                          ),
-                          onSubmitted: (_) {
-                            if (!isLoading) login();
-                          },
-                          decoration: _inputDecoration(
-                            hint: 'Password',
-                            icon: Icons.lock_outline,
-                            suffix: IconButton(
-                              tooltip: obscurePassword
-                                  ? 'Tampilkan password'
-                                  : 'Sembunyikan password',
-                              icon: Icon(
-                                obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                                color: _LoginColors.textSecondary,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  obscurePassword = !obscurePassword;
-                                });
-                              },
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: _buildRememberMe(),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildLoginButton(),
-                        const SizedBox(height: 22),
-                        _buildDivider(),
-                        const SizedBox(height: 22),
-                        _buildGoogleButton(),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+    return const Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        // Lingkaran besar transparan kanan atas (hijau muda)
+        Positioned(
+          top: -110,
+          right: -80,
+          child: _Circle(
+            size: 260,
+            color: kLightGreen,
+            opacity: 0.85,
           ),
-        ],
+        ),
+        // Cincin (ring) kecil kanan atas
+        Positioned(
+          top: 92,
+          right: 34,
+          child: _Ring(size: 46, color: kSecondaryGreen, opacity: 0.22),
+        ),
+        // Titik hijau sekunder kecil
+        Positioned(
+          top: 170,
+          right: 78,
+          child: _Circle(size: 14, color: kSecondaryGreen, opacity: 0.30),
+        ),
+        // Lengkungan gelombang halus di bagian atas layar
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 190,
+          child: _TopWavePainter(),
+        ),
+        // Lingkaran besar transparan kiri bawah (hijau muda)
+        Positioned(
+          bottom: -120,
+          left: -90,
+          child: _Circle(
+            size: 300,
+            color: kLightGreen,
+            opacity: 0.7,
+          ),
+        ),
+        // Cincin kecil kiri bawah
+        Positioned(
+          bottom: 150,
+          left: 30,
+          child: _Ring(size: 34, color: kPrimaryGreen, opacity: 0.16),
+        ),
+        // Titik kecil kanan bawah
+        Positioned(
+          bottom: 90,
+          right: 46,
+          child: _Circle(size: 18, color: kLightGreen, opacity: 0.9),
+        ),
+        // Lingkaran sedikit lebih gelap kanan bawah
+        Positioned(
+          bottom: -40,
+          right: -60,
+          child: _Circle(
+            size: 160,
+            color: kSecondaryGreen,
+            opacity: 0.10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Lingkaran solid transparan
+class _Circle extends StatelessWidget {
+  const _Circle({
+    required this.size,
+    required this.color,
+    required this.opacity,
+  });
+
+  final double size;
+  final Color color;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withOpacity(opacity),
+        shape: BoxShape.circle,
       ),
     );
   }
+}
+
+/// Cincin / outline lingkaran transparan
+class _Ring extends StatelessWidget {
+  const _Ring({
+    required this.size,
+    required this.color,
+    required this.opacity,
+  });
+
+  final double size;
+  final Color color;
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: color.withOpacity(opacity),
+          width: 2.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// Lengkungan halus (dua kurva bezier) sebagai aksen bagian atas layar
+class _TopWavePainter extends StatelessWidget {
+  const _TopWavePainter();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(double.infinity, 190),
+      painter: _WavePainter(),
+    );
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint1 = Paint()
+      ..color = kSecondaryGreen.withOpacity(0.10)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4;
+
+    final paint2 = Paint()
+      ..color = kPrimaryGreen.withOpacity(0.10)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Kurva pertama
+    final path1 = Path();
+    path1.moveTo(0, size.height * 0.38);
+    path1.quadraticBezierTo(
+      size.width * 0.28,
+      size.height * 0.10,
+      size.width * 0.55,
+      size.height * 0.34,
+    );
+    path1.quadraticBezierTo(
+      size.width * 0.80,
+      size.height * 0.56,
+      size.width,
+      size.height * 0.30,
+    );
+
+    // Kurva kedua, sedikit di bawah kurva pertama
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.52);
+    path2.quadraticBezierTo(
+      size.width * 0.30,
+      size.height * 0.24,
+      size.width * 0.58,
+      size.height * 0.48,
+    );
+    path2.quadraticBezierTo(
+      size.width * 0.82,
+      size.height * 0.68,
+      size.width,
+      size.height * 0.44,
+    );
+
+    canvas.drawPath(path1, paint1);
+    canvas.drawPath(path2, paint2);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
