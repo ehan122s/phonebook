@@ -22,7 +22,6 @@ class _JadwalPageState extends State<JadwalPage> {
   bool isLoading = false;
 
   static const green = Color(0xFF287D3C);
-  static const background = Color(0xFFF6F8F5);
 
   static const monthNames = [
     'Januari', 'Februari', 'Maret', 'April',
@@ -521,8 +520,14 @@ class _JadwalPageState extends State<JadwalPage> {
         DateTime(displayedMonth.year, displayedMonth.month + 1, 0).day;
     final today = DateTime.now();
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subColor = isDark ? Colors.white70 : Colors.grey;
+
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -532,33 +537,37 @@ class _JadwalPageState extends State<JadwalPage> {
               child: Row(
                 children: [
                   Material(
-                    color: Colors.white,
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(13),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(13),
                       onTap: () {
                         Navigator.maybePop(context);
                       },
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 46,
                         height: 46,
-                        child: Icon(Icons.arrow_back_rounded),
+                        child: Icon(Icons.arrow_back_rounded, color: textColor),
                       ),
                     ),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Jadwal Kegiatan',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
+                        color: textColor,
                       ),
                     ),
                   ),
                   IconButton(
                     onPressed: _loadData,
-                    icon: const Icon(Icons.refresh_rounded, color: green),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      color: isDark ? const Color(0xFF81C784) : green,
+                    ),
                     tooltip: 'Muat ulang jadwal',
                   ),
                 ],
@@ -570,15 +579,24 @@ class _JadwalPageState extends State<JadwalPage> {
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: TextField(
                 controller: searchController,
+                style: TextStyle(color: textColor),
                 onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
                   hintText: 'Cari kegiatan, kategori, atau lokasi...',
-                  prefixIcon: const Icon(Icons.search),
+                  hintStyle: TextStyle(color: isDark ? Colors.white38 : null),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: isDark ? const Color(0xFF81C784) : Colors.grey,
+                  ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: cardBg,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
+                    borderSide: BorderSide(color: cardBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide(color: cardBorder),
                   ),
                 ),
               ),
@@ -594,8 +612,18 @@ class _JadwalPageState extends State<JadwalPage> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cardBg,
                       borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: cardBorder),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: isDark ? 0.2 : 0.04,
+                          ),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [
@@ -603,22 +631,23 @@ class _JadwalPageState extends State<JadwalPage> {
                           children: [
                             IconButton(
                               onPressed: () => changeMonth(-1),
-                              icon: const Icon(Icons.chevron_left),
+                              icon: Icon(Icons.chevron_left, color: textColor),
                               tooltip: 'Bulan sebelumnya',
                             ),
                             Expanded(
                               child: Text(
                                 '${monthNames[displayedMonth.month - 1]} ${displayedMonth.year}',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.bold,
+                                  color: textColor,
                                 ),
                               ),
                             ),
                             IconButton(
                               onPressed: () => changeMonth(1),
-                              icon: const Icon(Icons.chevron_right),
+                              icon: Icon(Icons.chevron_right, color: textColor),
                               tooltip: 'Bulan selanjutnya',
                             ),
                           ],
@@ -632,8 +661,8 @@ class _JadwalPageState extends State<JadwalPage> {
                               child: Center(
                                 child: Text(
                                   name,
-                                  style: const TextStyle(
-                                    color: Colors.grey,
+                                  style: TextStyle(
+                                    color: subColor,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -703,7 +732,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                               style: TextStyle(
                                                 color: selected
                                                     ? Colors.white
-                                                    : Colors.black87,
+                                                    : textColor,
                                                 fontWeight:
                                                     selected || isToday
                                                         ? FontWeight.bold
@@ -717,7 +746,9 @@ class _JadwalPageState extends State<JadwalPage> {
                                                 decoration: BoxDecoration(
                                                   color: selected
                                                       ? Colors.white
-                                                      : green,
+                                                      : (isDark
+                                                          ? const Color(0xFF81C784)
+                                                          : green),
                                                   shape: BoxShape.circle,
                                                 ),
                                               ),
@@ -758,19 +789,20 @@ class _JadwalPageState extends State<JadwalPage> {
 
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Riwayat Jadwal',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: textColor,
                           ),
                         ),
                       ),
                       Text(
                         formatDate(selectedDate),
-                        style: const TextStyle(
-                          color: green,
+                        style: TextStyle(
+                          color: isDark ? const Color(0xFF81C784) : green,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -791,21 +823,22 @@ class _JadwalPageState extends State<JadwalPage> {
                     Container(
                       padding: const EdgeInsets.all(26),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: cardBg,
                         borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: cardBorder),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
                           Icon(
                             Icons.event_note_outlined,
                             size: 42,
-                            color: Colors.grey,
+                            color: isDark ? const Color(0xFF81C784) : Colors.grey,
                           ),
-                          SizedBox(height: 10),
+                          const SizedBox(height: 10),
                           Text(
                             'Belum ada jadwal pada tanggal ini',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey),
+                            style: TextStyle(color: subColor),
                           ),
                         ],
                       ),
@@ -819,11 +852,12 @@ class _JadwalPageState extends State<JadwalPage> {
                         final isCompleted = item['isCompleted'] == true;
 
                         return Card(
-                          color: Colors.white,
+                          color: cardBg,
                           elevation: 0,
                           margin: const EdgeInsets.only(bottom: 10),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: cardBorder),
                           ),
                           child: ListTile(
                             onTap: () => showScheduleDetail(item),
@@ -832,15 +866,19 @@ class _JadwalPageState extends State<JadwalPage> {
                               height: 46,
                               decoration: BoxDecoration(
                                 color: isCompleted
-                                    ? Colors.green.shade50
-                                    : const Color(0xFFE8F5E9),
+                                    ? (isDark
+                                        ? const Color(0xFF1B3B22)
+                                        : Colors.green.shade50)
+                                    : (isDark
+                                        ? const Color(0xFF26352B)
+                                        : const Color(0xFFE8F5E9)),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Icon(
                                 isCompleted
                                     ? Icons.check_circle_rounded
                                     : Icons.event_note_outlined,
-                                color: green,
+                                color: isDark ? const Color(0xFF81C784) : green,
                               ),
                             ),
                             title: Text(
@@ -850,13 +888,14 @@ class _JadwalPageState extends State<JadwalPage> {
                                 decoration: isCompleted
                                     ? TextDecoration.lineThrough
                                     : null,
-                                color: isCompleted ? Colors.grey : Colors.black87,
+                                color: isCompleted ? Colors.grey : textColor,
                               ),
                             ),
                             subtitle: Text(
                               '$time • $location',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: subColor),
                             ),
                             trailing: const Icon(
                               Icons.chevron_right,

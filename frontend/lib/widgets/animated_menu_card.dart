@@ -28,6 +28,13 @@ class _AnimatedMenuCardState extends State<AnimatedMenuCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : widget.background;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+    final titleColor = isDark ? Colors.white : const Color(0xFF202520);
+    final subtitleColor = isDark ? Colors.white70 : const Color(0xFF617064);
+    final arrowColor = isDark ? const Color(0xFF81C784) : widget.color;
+
     return GestureDetector(
       onTapDown: (_) {
         setState(() {
@@ -52,8 +59,16 @@ class _AnimatedMenuCardState extends State<AnimatedMenuCard> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: widget.background,
+            color: cardBg,
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: cardBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -83,10 +98,10 @@ class _AnimatedMenuCardState extends State<AnimatedMenuCard> {
                 textAlign: TextAlign.center,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF202520),
+                  color: titleColor,
                 ),
               ),
 
@@ -100,10 +115,10 @@ class _AnimatedMenuCardState extends State<AnimatedMenuCard> {
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       height: 1.35,
-                      color: Color(0xFF617064),
+                      color: subtitleColor,
                     ),
                   ),
                 ),
@@ -115,7 +130,7 @@ class _AnimatedMenuCardState extends State<AnimatedMenuCard> {
                 child: Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 16,
-                  color: widget.color,
+                  color: arrowColor,
                 ),
               ),
             ],

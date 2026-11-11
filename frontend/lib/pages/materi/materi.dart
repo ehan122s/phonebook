@@ -417,7 +417,7 @@ class _MateriPageState extends State<MateriPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1351,7 +1351,7 @@ class _MateriPageState extends State<MateriPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
@@ -1996,23 +1996,27 @@ class _MateriPageState extends State<MateriPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredMaterials;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Materi Edukasi Kehutanan',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 18,
-            color: Color(0xFF1E2923),
+            color: isDark ? Colors.white : const Color(0xFF1E2923),
           ),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? const Color(0xFF18221B) : Colors.white,
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF2E7D32)),
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+            ),
             tooltip: 'Segarkan Materi',
             onPressed: () async {
               setState(() => _isLoading = true);
@@ -2100,12 +2104,16 @@ class _MateriPageState extends State<MateriPage> {
               onChanged: (val) {
                 setState(() => _searchQuery = val);
               },
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               decoration: InputDecoration(
                 hintText: 'Cari materi, kategori, atau nama pengunggah...',
-                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-                prefixIcon: const Icon(
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.grey.shade400,
+                  fontSize: 13,
+                ),
+                prefixIcon: Icon(
                   Icons.search_rounded,
-                  color: Color(0xFF2E7D32),
+                  color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                 ),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -2114,23 +2122,27 @@ class _MateriPageState extends State<MateriPage> {
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: isDark ? const Color(0xFF1E2822) : Colors.white,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 12,
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: BorderSide(
+                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: BorderSide(
+                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF2E7D32),
+                  borderSide: BorderSide(
+                    color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                     width: 1.5,
                   ),
                 ),
@@ -2155,20 +2167,22 @@ class _MateriPageState extends State<MateriPage> {
                           _selectedCategory = cat;
                         });
                       },
-                      selectedColor: const Color(0xFF2E7D32),
-                      backgroundColor: Colors.white,
+                      selectedColor: isDark ? const Color(0xFF26352B) : const Color(0xFF2E7D32),
+                      backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
                       labelStyle: TextStyle(
                         fontSize: 12,
                         fontWeight:
                             isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? Colors.white : Colors.grey.shade800,
+                        color: isSelected
+                            ? (isDark ? const Color(0xFF81C784) : Colors.white)
+                            : (isDark ? Colors.white70 : Colors.grey.shade800),
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                         side: BorderSide(
                           color: isSelected
-                              ? const Color(0xFF2E7D32)
-                              : Colors.grey.shade300,
+                              ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
+                              : (isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300),
                         ),
                       ),
                       showCheckmark: false,
@@ -2316,6 +2330,7 @@ class _MaterialCard extends StatelessWidget {
         (driveUrl.startsWith('http') && driveUrl.contains('drive'));
 
     final isAdmin = uploaderRole.toLowerCase().contains('admin');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return InkWell(
       onTap: onTap,
@@ -2323,12 +2338,14 @@ class _MaterialCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E2822) : Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -2345,7 +2362,7 @@ class _MaterialCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: typeColor.withValues(alpha: 0.12),
+                    color: typeColor.withValues(alpha: isDark ? 0.22 : 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(typeIcon, color: typeColor, size: 26),
@@ -2359,10 +2376,10 @@ class _MaterialCard extends StatelessWidget {
                         title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
+                          color: isDark ? Colors.white : const Color(0xFF1E2923),
                           height: 1.3,
                         ),
                       ),
@@ -2377,14 +2394,17 @@ class _MaterialCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2E7D32)
-                                  .withValues(alpha: 0.1),
+                              color: isDark
+                                  ? const Color(0xFF1B3B22)
+                                  : const Color(0xFF2E7D32).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               category,
-                              style: const TextStyle(
-                                color: Color(0xFF2E7D32),
+                              style: TextStyle(
+                                color: isDark
+                                    ? const Color(0xFF81C784)
+                                    : const Color(0xFF2E7D32),
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -2396,13 +2416,13 @@ class _MaterialCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: isDark ? const Color(0xFF2D3530) : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               type,
                               style: TextStyle(
-                                color: Colors.grey.shade700,
+                                color: isDark ? Colors.white70 : Colors.grey.shade700,
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -2415,25 +2435,29 @@ class _MaterialCard extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F0FE),
+                                color: isDark
+                                    ? const Color(0xFF0F2537)
+                                    : const Color(0xFFE8F0FE),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: const Color(0xFFBDD7FB),
+                                  color: isDark
+                                      ? const Color(0xFF1E496D)
+                                      : const Color(0xFFBDD7FB),
                                 ),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
                                     Icons.cloud_done_rounded,
                                     size: 11,
-                                    color: Color(0xFF1A73E8),
+                                    color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1A73E8),
                                   ),
-                                  SizedBox(width: 3),
+                                  const SizedBox(width: 3),
                                   Text(
                                     'Google Drive',
                                     style: TextStyle(
-                                      color: Color(0xFF1A73E8),
+                                      color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1A73E8),
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -2457,7 +2481,7 @@ class _MaterialCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
-                  color: Colors.grey.shade600,
+                  color: isDark ? Colors.white70 : Colors.grey.shade600,
                   height: 1.4,
                 ),
               ),

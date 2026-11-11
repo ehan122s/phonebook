@@ -110,6 +110,7 @@ class _LaporanPageState extends State<LaporanPage> {
       if (result.synced > 0) {
         // Clean up synced reports from local DB
         await OfflineDatabase.instance.clearSyncedReports();
+        if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -177,8 +178,13 @@ class _LaporanPageState extends State<LaporanPage> {
 
       final List<Map<String, dynamic>> allReports = [];
 
-      // Load offline/pending reports from local DB
-      final localReports = await OfflineDatabase.instance.getPendingReports();
+      final isOfflineToken =
+          token.startsWith('offline_') || token.startsWith('google_session_');
+
+      // Load offline/local reports from local DB
+      final localReports = isOfflineToken
+          ? await OfflineDatabase.instance.getAllLocalReports()
+          : await OfflineDatabase.instance.getPendingReports();
       for (final local in localReports) {
         final String activityDate =
             local['activity_date']?.toString() ?? '';
@@ -205,21 +211,30 @@ class _LaporanPageState extends State<LaporanPage> {
         });
       }
 
-      // Load server reports if online
+      // Load server reports only if online and using a real authenticated server token
       final online = await ConnectivityService.instance.isOnline();
-      if (online) {
+      if (online && !isOfflineToken) {
         try {
           final serverReports =
               await LaporanService.fetchReports(token);
           allReports.addAll(serverReports);
-        } catch (e) {
+        } on UnauthorizedException catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Gagal mengambil data server: $e'),
+                content: Text(e.message),
+                action: SnackBarAction(
+                  label: 'Login Ulang',
+                  textColor: Colors.amberAccent,
+                  onPressed: () {
+                    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                  },
+                ),
               ),
             );
           }
+        } catch (e) {
+          debugPrint('LaporanService fetch reports warning: $e');
         }
       }
 
@@ -439,22 +454,27 @@ class _LaporanPageState extends State<LaporanPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final appBarBg = isDark ? const Color(0xFF18221B) : Colors.white;
+    final titleColor = isDark ? Colors.white : LaporanColors.textDark;
+    final primaryGreen = isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+
     return Scaffold(
-      backgroundColor: LaporanColors.pageBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: appBarBg,
         elevation: 0,
         centerTitle: false,
-        title: const Text(
+        title: Text(
           'Laporan',
           style: TextStyle(
-            color: LaporanColors.textDark,
+            color: titleColor,
             fontSize: 24,
             fontWeight: FontWeight.bold,
           ),
         ),
-        iconTheme: const IconThemeData(
-          color: Color(0xFF285C2E),
+        iconTheme: IconThemeData(
+          color: primaryGreen,
         ),
         actions: [
           if (_pendingSyncCount > 0)
@@ -466,19 +486,19 @@ class _LaporanPageState extends State<LaporanPage> {
                     ? 'Tidak ada koneksi'
                     : 'Sinkronkan $_pendingSyncCount laporan',
                 icon: _isSyncing
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: LaporanColors.primary,
+                          color: primaryGreen,
                         ),
                       )
                     : Badge(
                         label: Text('$_pendingSyncCount'),
-                        child: const Icon(
+                        child: Icon(
                           Icons.sync_rounded,
-                          color: LaporanColors.primary,
+                          color: primaryGreen,
                         ),
                       ),
               ),
@@ -514,7 +534,7 @@ class _LaporanPageState extends State<LaporanPage> {
               const SizedBox(height: 28),
 
               // Section title
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -522,15 +542,15 @@ class _LaporanPageState extends State<LaporanPage> {
                     style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.bold,
-                      color: LaporanColors.textDark,
+                      color: titleColor,
                     ),
                   ),
-                  SizedBox(height: 5),
+                  const SizedBox(height: 5),
                   Text(
                     'Draft yang masih bisa diedit dan arsip '
                     'laporan yang sudah selesai.',
                     style: TextStyle(
-                      color: Colors.grey,
+                      color: isDark ? Colors.white70 : Colors.grey,
                       fontSize: 14,
                     ),
                   ),
@@ -566,18 +586,25 @@ class _LaporanPageState extends State<LaporanPage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildOfflineBanner() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: isDark ? const Color(0xFF332005) : Colors.orange.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(
+          color: isDark ? const Color(0xFF66440A) : Colors.orange.shade200,
+        ),
       ),
       child: Row(
         children: [
-          Icon(Icons.wifi_off_rounded, color: Colors.orange.shade700, size: 22),
+          Icon(
+            Icons.wifi_off_rounded,
+            color: isDark ? const Color(0xFFFFB74D) : Colors.orange.shade700,
+            size: 22,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -587,7 +614,7 @@ class _LaporanPageState extends State<LaporanPage> {
                   'Mode Offline',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange.shade800,
+                    color: isDark ? const Color(0xFFFFB74D) : Colors.orange.shade800,
                     fontSize: 14,
                   ),
                 ),
@@ -597,7 +624,7 @@ class _LaporanPageState extends State<LaporanPage> {
                   'disimpan di perangkat dan otomatis dikirim '
                   'saat koneksi kembali.',
                   style: TextStyle(
-                    color: Colors.orange.shade700,
+                    color: isDark ? Colors.white70 : Colors.orange.shade700,
                     fontSize: 12,
                   ),
                 ),
@@ -610,25 +637,31 @@ class _LaporanPageState extends State<LaporanPage> {
   }
 
   Widget _buildPendingSyncBanner() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFE3F2FD),
+        color: isDark ? const Color(0xFF0F2537) : const Color(0xFFE3F2FD),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF90CAF9)),
+        border: Border.all(
+          color: isDark ? const Color(0xFF1E496D) : const Color(0xFF90CAF9),
+        ),
       ),
       child: Row(
         children: [
-          Icon(Icons.cloud_upload_outlined, color: Colors.blue.shade700,
-              size: 22),
+          Icon(
+            Icons.cloud_upload_outlined,
+            color: isDark ? const Color(0xFF64B5F6) : Colors.blue.shade700,
+            size: 22,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               '$_pendingSyncCount laporan menunggu sinkronisasi.',
               style: TextStyle(
-                color: Colors.blue.shade800,
+                color: isDark ? Colors.white : Colors.blue.shade800,
                 fontSize: 13,
               ),
             ),
@@ -639,7 +672,7 @@ class _LaporanPageState extends State<LaporanPage> {
             child: ElevatedButton(
               onPressed: _isSyncing ? null : _autoSync,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
+                backgroundColor: isDark ? const Color(0xFF1976D2) : Colors.blue.shade700,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(horizontal: 12),

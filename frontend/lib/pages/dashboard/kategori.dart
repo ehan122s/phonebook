@@ -51,6 +51,17 @@ class _KategoriPageState extends State<KategoriPage> {
   /// Jika tidak null, berarti sedang membuka salah satu folder kategori
   String? _openedCategoryFolder;
 
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+  Color get _bg => _isDark ? const Color(0xFF121814) : kBackground;
+  Color get _cardBg => _isDark ? const Color(0xFF1E2822) : kCard;
+  Color get _appBarBg => _isDark ? const Color(0xFF18221B) : Colors.white;
+  Color get _borderCol => _isDark ? const Color(0xFF2E3D34) : kBorder;
+  Color get _textPrimaryCol => _isDark ? Colors.white : kTextPrimary;
+  Color get _textSecondaryCol => _isDark ? Colors.white70 : kTextSecondary;
+  Color get _softGreenCol => _isDark ? const Color(0xFF26352B) : kSoftGreen;
+  Color get _lightGreenCol => _isDark ? const Color(0xFF1B3B22) : kLightGreen;
+  Color get _primaryCol => _isDark ? const Color(0xFF81C784) : kPrimary;
+
   final List<String> _categories = [
     'Penyuluhan',
     'Monitoring & Patroli',
@@ -204,7 +215,7 @@ class _KategoriPageState extends State<KategoriPage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -246,14 +257,14 @@ class _KategoriPageState extends State<KategoriPage> {
                     color: kSecondary,
                   ),
                   filled: true,
-                  fillColor: kSoftGreen,
+                  fillColor: _softGreenCol,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 15,
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: kBorder),
+                    borderSide: BorderSide(color: _borderCol),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -334,7 +345,7 @@ class _KategoriPageState extends State<KategoriPage> {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -351,14 +362,14 @@ class _KategoriPageState extends State<KategoriPage> {
                     width: 52,
                     height: 52,
                     decoration: BoxDecoration(
-                      color: isLaporan ? kLightGreen : kSoftGreen,
+                      color: isLaporan ? _lightGreenCol : _softGreenCol,
                       borderRadius: BorderRadius.circular(15),
                     ),
                     child: Icon(
                       isLaporan
                           ? Icons.description_outlined
                           : Icons.event_available_rounded,
-                      color: isLaporan ? kPrimary : kSecondary,
+                      color: _primaryCol,
                       size: 26,
                     ),
                   ),
@@ -369,19 +380,19 @@ class _KategoriPageState extends State<KategoriPage> {
                       children: [
                         Text(
                           (item['judul'] ?? '-').toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 17.5,
                             fontWeight: FontWeight.bold,
-                            color: kTextPrimary,
+                            color: _textPrimaryCol,
                             height: 1.3,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${item['tipe']} • Folder ${item['kategori']}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: kTextSecondary,
+                            color: _textSecondaryCol,
                           ),
                         ),
                       ],
@@ -395,7 +406,7 @@ class _KategoriPageState extends State<KategoriPage> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: kSoftGreen,
+                  color: _softGreenCol,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Column(
@@ -417,10 +428,10 @@ class _KategoriPageState extends State<KategoriPage> {
               const SizedBox(height: 14),
               Text(
                 (item['deskripsi'] ?? '-').toString(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.5,
-                  color: kTextPrimary,
+                  color: _textPrimaryCol,
                 ),
               ),
               const SizedBox(height: 20),
@@ -454,20 +465,20 @@ class _KategoriPageState extends State<KategoriPage> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: kSecondary),
+        Icon(icon, size: 18, color: _primaryCol),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w600,
-            color: kTextPrimary,
+            color: _textPrimaryCol,
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(fontSize: 13.5, color: kTextSecondary),
+            style: TextStyle(fontSize: 13.5, color: _textSecondaryCol),
           ),
         ),
       ],
@@ -485,10 +496,10 @@ class _KategoriPageState extends State<KategoriPage> {
         _myItems.where((e) => e['tipe'] == 'Arsip Jadwal').length;
 
     return Scaffold(
-      backgroundColor: kBackground,
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: _appBarBg,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0.5,
         toolbarHeight: 64,
@@ -496,9 +507,9 @@ class _KategoriPageState extends State<KategoriPage> {
         leading: _openedCategoryFolder != null
             ? IconButton(
                 onPressed: () => setState(() => _openedCategoryFolder = null),
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back_rounded,
-                  color: kPrimary,
+                  color: _primaryCol,
                 ),
               )
             : null,
@@ -506,8 +517,8 @@ class _KategoriPageState extends State<KategoriPage> {
           _openedCategoryFolder != null
               ? 'Folder $_openedCategoryFolder'
               : 'Folder Laporan & Arsip Saya',
-          style: const TextStyle(
-            color: kTextPrimary,
+          style: TextStyle(
+            color: _textPrimaryCol,
             fontWeight: FontWeight.bold,
             fontSize: 20,
           ),
@@ -591,15 +602,17 @@ floatingActionButton: DecoratedBox(
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 12, 20),
       decoration: BoxDecoration(
-        // Gradasi soft green yang sangat halus
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF5F9F2), kSoftGreen, kLightGreen],
-          stops: [0.0, 0.55, 1.0],
-        ),
+        color: _isDark ? const Color(0xFF1E2822) : null,
+        gradient: _isDark
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFF5F9F2), kSoftGreen, kLightGreen],
+                stops: [0.0, 0.55, 1.0],
+              ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBorder),
+        border: Border.all(color: _borderCol),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -614,7 +627,7 @@ floatingActionButton: DecoratedBox(
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: kPrimary,
+                        color: _primaryCol,
                         borderRadius: BorderRadius.circular(13),
                       ),
                       child: const Icon(
@@ -624,14 +637,14 @@ floatingActionButton: DecoratedBox(
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Flexible(
+                    Flexible(
                       child: Text(
                         'Arsip Laporan & Kegiatan Saya',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.bold,
                           height: 1.3,
-                          color: kTextPrimary,
+                          color: _textPrimaryCol,
                         ),
                       ),
                     ),
@@ -670,23 +683,23 @@ floatingActionButton: DecoratedBox(
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardBg,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: kBorder),
+        border: Border.all(color: _borderCol),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 15, color: kPrimary),
+          Icon(icon, size: 15, color: _primaryCol),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
               label,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: kTextPrimary,
+                color: _textPrimaryCol,
               ),
             ),
           ),
@@ -701,40 +714,40 @@ floatingActionButton: DecoratedBox(
       height: 54,
       child: TextField(
         onChanged: (val) => setState(() => _searchQuery = val),
-        style: const TextStyle(fontSize: 15, color: kTextPrimary),
+        style: TextStyle(fontSize: 15, color: _textPrimaryCol),
         decoration: InputDecoration(
           hintText: 'Cari folder, judul laporan, atau nama...',
-          hintStyle: const TextStyle(fontSize: 14, color: kTextSecondary),
-          prefixIcon: const Icon(
+          hintStyle: TextStyle(fontSize: 14, color: _textSecondaryCol),
+          prefixIcon: Icon(
             Icons.search_rounded,
-            color: kPrimary,
+            color: _primaryCol,
             size: 24,
           ),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   tooltip: 'Bersihkan pencarian',
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.close_rounded,
-                    color: kTextSecondary,
+                    color: _textSecondaryCol,
                     size: 20,
                   ),
                   onPressed: () => setState(() => _searchQuery = ''),
                 )
               : null,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: _cardBg,
           contentPadding: const EdgeInsets.symmetric(vertical: 14),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: kBorder),
+            borderSide: BorderSide(color: _borderCol),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: kBorder),
+            borderSide: BorderSide(color: _borderCol),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: kPrimary, width: 1.6),
+            borderSide: BorderSide(color: _primaryCol, width: 1.6),
           ),
         ),
       ),
@@ -750,17 +763,18 @@ floatingActionButton: DecoratedBox(
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: kCard,
+        color: _cardBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kBorder),
-        boxShadow: [
-          // Shadow sangat tipis
-          BoxShadow(
-            color: kPrimary.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: _borderCol),
+        boxShadow: _isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: kPrimary.withOpacity(0.05),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -777,12 +791,12 @@ floatingActionButton: DecoratedBox(
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: kLightGreen,
+                    color: _lightGreenCol,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     _categoryIcon(cat),
-                    color: kPrimary,
+                    color: _primaryCol,
                     size: 26,
                   ),
                 ),
@@ -793,18 +807,18 @@ floatingActionButton: DecoratedBox(
                     children: [
                       Text(
                         cat,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16.5,
                           fontWeight: FontWeight.w600,
-                          color: kTextPrimary,
+                          color: _textPrimaryCol,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '$cLap Laporan • $cJad Arsip Jadwal',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13.5,
-                          color: kTextSecondary,
+                          color: _textSecondaryCol,
                         ),
                       ),
                     ],
@@ -814,22 +828,22 @@ floatingActionButton: DecoratedBox(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: kSoftGreen,
+                    color: _softGreenCol,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '${cLap + cJad} berkas',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
-                      color: kSecondary,
+                      color: _primaryCol,
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: kSecondary,
+                  color: _textSecondaryCol,
                   size: 26,
                 ),
               ],
@@ -857,10 +871,14 @@ floatingActionButton: DecoratedBox(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected ? kPrimary : Colors.white,
+                  color: selected
+                      ? (_isDark ? const Color(0xFF26352B) : kPrimary)
+                      : _cardBg,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: selected ? kPrimary : kBorder,
+                    color: selected
+                        ? (_isDark ? const Color(0xFF81C784) : kPrimary)
+                        : _borderCol,
                     width: 1.2,
                   ),
                 ),
@@ -869,7 +887,9 @@ floatingActionButton: DecoratedBox(
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : kTextPrimary,
+                    color: selected
+                        ? (_isDark ? const Color(0xFF81C784) : Colors.white)
+                        : _textPrimaryCol,
                   ),
                 ),
               ),
@@ -903,42 +923,42 @@ floatingActionButton: DecoratedBox(
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 34),
           decoration: BoxDecoration(
-            color: kCard,
+            color: _cardBg,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: kBorder),
+            border: Border.all(color: _borderCol),
           ),
           child: Column(
             children: [
               Container(
                 width: 62,
                 height: 62,
-                decoration: const BoxDecoration(
-                  color: kLightGreen,
+                decoration: BoxDecoration(
+                  color: _lightGreenCol,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.folder_open_rounded,
                   size: 30,
-                  color: kSecondary,
+                  color: _primaryCol,
                 ),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Belum ada berkas di sini',
                 style: TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.bold,
-                  color: kTextPrimary,
+                  color: _textPrimaryCol,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Laporan dan arsip jadwal kegiatan yang\ntersimpan akan tampil pada folder ini.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.5,
-                  color: kTextSecondary,
+                  color: _textSecondaryCol,
                 ),
               ),
             ],
@@ -953,16 +973,18 @@ floatingActionButton: DecoratedBox(
       return Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: kCard,
+          color: _cardBg,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kBorder),
-          boxShadow: [
-            BoxShadow(
-              color: kPrimary.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          border: Border.all(color: _borderCol),
+          boxShadow: _isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: kPrimary.withOpacity(0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
         ),
         child: Material(
           color: Colors.transparent,
@@ -979,14 +1001,14 @@ floatingActionButton: DecoratedBox(
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: isLaporan ? kLightGreen : kSoftGreen,
+                      color: isLaporan ? _lightGreenCol : _softGreenCol,
                       borderRadius: BorderRadius.circular(13),
                     ),
                     child: Icon(
                       isLaporan
                           ? Icons.description_outlined
                           : Icons.event_available_rounded,
-                      color: isLaporan ? kPrimary : kSecondary,
+                      color: _primaryCol,
                       size: 24,
                     ),
                   ),
@@ -997,10 +1019,10 @@ floatingActionButton: DecoratedBox(
                       children: [
                         Text(
                           (item['judul'] ?? '-').toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: kTextPrimary,
+                            color: _textPrimaryCol,
                             height: 1.35,
                           ),
                         ),
@@ -1040,9 +1062,11 @@ floatingActionButton: DecoratedBox(
                         });
                         _persistUserItems();
                       },
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.delete_outline_rounded,
-                        color: Color(0xFFB2472D),
+                        color: _isDark
+                            ? const Color(0xFFEF9A9A)
+                            : const Color(0xFFB2472D),
                         size: 21,
                       ),
                     ),
@@ -1061,13 +1085,13 @@ floatingActionButton: DecoratedBox(
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: kTextSecondary),
+        Icon(icon, size: 13, color: _textSecondaryCol),
         const SizedBox(width: 4),
         Flexible(
           child: Text(
             text,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5, color: kTextSecondary),
+            style: TextStyle(fontSize: 12.5, color: _textSecondaryCol),
           ),
         ),
         const SizedBox(width: 6),

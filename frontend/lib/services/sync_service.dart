@@ -30,6 +30,13 @@ class SyncService {
   /// Each report is processed independently so that a single failure
   /// does not prevent the remaining reports from being synced.
   static Future<SyncResult> syncAll(String token) async {
+    // Mode offline / mock token tidak bisa disinkronkan ke server online
+    if (token.isEmpty ||
+        token.startsWith('offline_') ||
+        token.startsWith('google_session_')) {
+      return const SyncResult(total: 0, synced: 0, failed: 0);
+    }
+
     try {
       final db = OfflineDatabase.instance;
       final pending = await db.getPendingReports();

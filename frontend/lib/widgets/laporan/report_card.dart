@@ -20,36 +20,45 @@ class ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final String status = laporan['status'];
     final bool isOffline = laporan['isOffline'] == true;
     final String? syncStatus = laporan['syncStatus']?.toString();
 
     final (Color statusColor, Color statusBg) = switch (status) {
       'Selesai' => (
-        LaporanColors.statusComplete,
-        LaporanColors.statusCompleteBg,
+        isDark ? const Color(0xFF81C784) : LaporanColors.statusComplete,
+        isDark ? const Color(0xFF1B3B22) : LaporanColors.statusCompleteBg,
       ),
       'Diproses' => (
-        LaporanColors.statusProcess,
-        LaporanColors.statusProcessBg,
+        isDark ? const Color(0xFFFFB74D) : LaporanColors.statusProcess,
+        isDark ? const Color(0xFF3B2B11) : LaporanColors.statusProcessBg,
       ),
       _ => (
-        LaporanColors.statusDraft,
-        LaporanColors.statusDraftBg,
+        isDark ? Colors.white70 : LaporanColors.statusDraft,
+        isDark ? const Color(0xFF2D3530) : LaporanColors.statusDraftBg,
       ),
     };
+
+    final cardBg = isDark ? const Color(0xFF1E2822) : LaporanColors.cardBackground;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderCard;
+    final iconBg = isDark ? const Color(0xFF26352B) : LaporanColors.greenBackground;
+    final primaryGreen = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final titleColor = isDark ? Colors.white : LaporanColors.textCard;
+    final mutedColor = isDark ? Colors.white70 : LaporanColors.textMuted;
+    final dividerColor = isDark ? const Color(0xFF2E3D34) : LaporanColors.divider;
 
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: LaporanColors.cardBackground,
+        color: cardBg,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: LaporanColors.borderCard),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.035),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -66,12 +75,12 @@ class ReportCard extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: LaporanColors.greenBackground,
+                  color: iconBg,
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.description_outlined,
-                  color: LaporanColors.primary,
+                  color: primaryGreen,
                   size: 25,
                 ),
               ),
@@ -82,18 +91,18 @@ class ReportCard extends StatelessWidget {
                   children: [
                     Text(
                       laporan['judul'],
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: LaporanColors.textCard,
+                        color: titleColor,
                       ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       laporan['jenis'],
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: LaporanColors.textMuted,
+                        color: mutedColor,
                       ),
                     ),
                   ],
@@ -111,8 +120,8 @@ class ReportCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: syncStatus == 'failed'
-                            ? Colors.red.shade50
-                            : Colors.orange.shade50,
+                            ? (isDark ? const Color(0xFF3B1515) : Colors.red.shade50)
+                            : (isDark ? const Color(0xFF332005) : Colors.orange.shade50),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -124,8 +133,8 @@ class ReportCard extends StatelessWidget {
                                 : Icons.cloud_off_rounded,
                             size: 13,
                             color: syncStatus == 'failed'
-                                ? Colors.red.shade600
-                                : Colors.orange.shade700,
+                                ? (isDark ? const Color(0xFFEF9A9A) : Colors.red.shade600)
+                                : (isDark ? const Color(0xFFFFB74D) : Colors.orange.shade700),
                           ),
                           const SizedBox(width: 3),
                           Text(
@@ -136,8 +145,8 @@ class ReportCard extends StatelessWidget {
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                               color: syncStatus == 'failed'
-                                  ? Colors.red.shade600
-                                  : Colors.orange.shade700,
+                                  ? (isDark ? const Color(0xFFEF9A9A) : Colors.red.shade600)
+                                  : (isDark ? const Color(0xFFFFB74D) : Colors.orange.shade700),
                             ),
                           ),
                         ],
@@ -154,7 +163,7 @@ class ReportCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 16),
-          const Divider(height: 1, color: LaporanColors.divider),
+          Divider(height: 1, color: dividerColor),
           const SizedBox(height: 13),
 
           // Date row
@@ -235,16 +244,21 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
-        Icon(icon, size: iconSize, color: LaporanColors.textIcon),
+        Icon(
+          icon,
+          size: iconSize,
+          color: isDark ? const Color(0xFF81C784) : LaporanColors.textIcon,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: LaporanColors.textSubtle,
+              color: isDark ? Colors.white70 : LaporanColors.textSubtle,
             ),
           ),
         ),
@@ -270,6 +284,7 @@ class _ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -279,8 +294,8 @@ class _ActionButtons extends StatelessWidget {
           icon: const Icon(Icons.visibility_outlined, size: 18),
           label: const Text('Lihat'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: LaporanColors.primary,
-            side: const BorderSide(color: LaporanColors.outlineGreen),
+            foregroundColor: isDark ? const Color(0xFF81C784) : LaporanColors.primary,
+            side: BorderSide(color: isDark ? const Color(0xFF388E3C) : LaporanColors.outlineGreen),
             padding: const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 12,
@@ -296,9 +311,9 @@ class _ActionButtons extends StatelessWidget {
             icon: const Icon(Icons.edit_outlined, size: 18),
             label: const Text('Lanjutkan / Edit'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: LaporanColors.statusProcess,
-              side: const BorderSide(
-                color: LaporanColors.statusProcessBorder,
+              foregroundColor: isDark ? const Color(0xFFFFB74D) : LaporanColors.statusProcess,
+              side: BorderSide(
+                color: isDark ? const Color(0xFF8D6E63) : LaporanColors.statusProcessBorder,
               ),
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
@@ -315,7 +330,7 @@ class _ActionButtons extends StatelessWidget {
             icon: const Icon(Icons.download_rounded, size: 18),
             label: const Text('Unduh'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: LaporanColors.primary,
+              backgroundColor: isDark ? const Color(0xFF285C2E) : LaporanColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
               padding: const EdgeInsets.symmetric(
@@ -333,8 +348,8 @@ class _ActionButtons extends StatelessWidget {
             icon: const Icon(Icons.delete_outline, size: 18),
             label: const Text('Hapus'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red.shade700,
-              side: BorderSide(color: Colors.red.shade200),
+              foregroundColor: isDark ? const Color(0xFFEF9A9A) : Colors.red.shade700,
+              side: BorderSide(color: isDark ? const Color(0xFF5C2D32) : Colors.red.shade200),
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
                 vertical: 12,

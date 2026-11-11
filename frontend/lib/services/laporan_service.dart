@@ -9,6 +9,14 @@ import 'offline_database.dart';
 /// Base URL for the Laravel API (mengacu ke [ApiConstants.baseUrl]).
 String get baseUrl => ApiConstants.baseUrl;
 
+/// Exception thrown when authentication fails or token has expired (HTTP 401).
+class UnauthorizedException implements Exception {
+  final String message;
+  const UnauthorizedException([this.message = 'Sesi login telah berakhir.']);
+  @override
+  String toString() => message;
+}
+
 /// Service class that handles all report-related API calls.
 class LaporanService {
   /// Fetches all reports from the API and returns them as a
@@ -16,6 +24,13 @@ class LaporanService {
   static Future<List<Map<String, dynamic>>> fetchReports(
     String token,
   ) async {
+    // Mode offline / mock token tidak perlu menghubungi server
+    if (token.isEmpty ||
+        token.startsWith('offline_') ||
+        token.startsWith('google_session_')) {
+      return [];
+    }
+
     final response = await http.get(
       Uri.parse('$baseUrl/api/reports'),
       headers: {
@@ -23,6 +38,12 @@ class LaporanService {
         'Authorization': 'Bearer $token',
       },
     );
+
+    if (response.statusCode == 401) {
+      throw const UnauthorizedException(
+        'Sesi login telah berakhir. Silakan login kembali.',
+      );
+    }
 
     if (response.statusCode != 200) {
       final body = response.body;

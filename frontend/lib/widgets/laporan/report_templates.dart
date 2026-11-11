@@ -38,19 +38,27 @@ class ReportTemplates extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: _templates.map(_buildTemplateCard).toList(),
+      children: _templates.map((t) => _buildTemplateCard(context, t)).toList(),
     );
   }
 
-  Widget _buildTemplateCard(Map<String, dynamic> template) {
+  Widget _buildTemplateCard(BuildContext context, Map<String, dynamic> template) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : LaporanColors.cardBackground;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderTemplate;
+    final iconBg = isDark ? const Color(0xFF26352B) : LaporanColors.greenBackground;
+    final primaryGreen = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final titleColor = isDark ? Colors.white : Colors.black87;
+    final subColor = isDark ? Colors.white70 : Colors.grey;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: LaporanColors.cardBackground,
+        color: cardBg,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: LaporanColors.borderTemplate),
+        border: Border.all(color: cardBorder),
       ),
       child: Row(
         children: [
@@ -58,12 +66,12 @@ class ReportTemplates extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: LaporanColors.greenBackground,
+              color: iconBg,
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
               template['icon'] as IconData,
-              color: LaporanColors.primary,
+              color: primaryGreen,
               size: 25,
             ),
           ),
@@ -74,17 +82,18 @@ class ReportTemplates extends StatelessWidget {
               children: [
                 Text(
                   template['title'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
+                    color: titleColor,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   template['description'] as String,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey,
+                    color: subColor,
                     height: 1.4,
                   ),
                 ),
@@ -99,7 +108,7 @@ class ReportTemplates extends StatelessWidget {
               Icons.arrow_forward_ios_rounded,
               size: 18,
             ),
-            color: LaporanColors.primary,
+            color: primaryGreen,
           ),
         ],
       ),

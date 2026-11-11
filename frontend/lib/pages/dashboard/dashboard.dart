@@ -26,6 +26,8 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
@@ -94,11 +96,12 @@ class DashboardPage extends StatelessWidget {
             // =========================
             // RINGKASAN
             // =========================
-            const Text(
+            Text(
               'Ringkasan',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
               ),
             ),
 
@@ -131,11 +134,12 @@ class DashboardPage extends StatelessWidget {
             // =========================
             // MENU UTAMA
             // =========================
-            const Text(
+            Text(
               'Menu Utama',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
               ),
             ),
 
@@ -204,7 +208,11 @@ class DashboardPage extends StatelessWidget {
                   'Lihat Seluruh Folder Laporan & Arsip Saya',
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF285C2E),
+                  foregroundColor: isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E),
+                  side: BorderSide(
+                    color: isDark ? const Color(0xFF388E3C) : const Color(0xFF285C2E),
+                  ),
+                  backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
                   padding: const EdgeInsets.symmetric(
                     vertical: 15,
                   ),
@@ -236,15 +244,22 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+    final titleColor = isDark ? Colors.white70 : Colors.grey;
+    final valueColor = isDark ? Colors.white : Colors.black87;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(
-              alpha: 0.05,
+              alpha: isDark ? 0.2 : 0.05,
             ),
             blurRadius: 10,
             offset: const Offset(0, 4),
@@ -257,13 +272,17 @@ class _StatCard extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: color.withValues(
-                alpha: 0.1,
+                alpha: isDark ? 0.22 : 0.1,
               ),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
-              color: color,
+              color: isDark
+                  ? (color == const Color(0xFF2E7D32)
+                      ? const Color(0xFF81C784)
+                      : const Color(0xFF64B5F6))
+                  : color,
             ),
           ),
           const SizedBox(width: 10),
@@ -273,16 +292,17 @@ class _StatCard extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Colors.grey,
+                    color: titleColor,
                   ),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
+                    color: valueColor,
                   ),
                 ),
               ],

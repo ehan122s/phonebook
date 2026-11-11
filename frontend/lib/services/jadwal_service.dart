@@ -102,8 +102,12 @@ class JadwalService {
     // Try fetching from backend if token exists and online
     final token = prefs.getString('token');
     final isOnline = await ConnectivityService.instance.isOnline();
+    final isValidServerToken = token != null &&
+        token.isNotEmpty &&
+        !token.startsWith('offline_') &&
+        !token.startsWith('google_session_');
 
-    if (token != null && token.isNotEmpty && isOnline) {
+    if (isValidServerToken && isOnline) {
       try {
         final response = await http.get(
           Uri.parse('$baseUrl/api/schedules'),
@@ -161,8 +165,12 @@ class JadwalService {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     final isOnline = await ConnectivityService.instance.isOnline();
+    final isValidServerToken = token != null &&
+        token.isNotEmpty &&
+        !token.startsWith('offline_') &&
+        !token.startsWith('google_session_');
 
-    if (token != null && token.isNotEmpty && isOnline) {
+    if (isValidServerToken && isOnline) {
       try {
         final payload = {
           'title': item['judul'],
@@ -218,7 +226,12 @@ class JadwalService {
     final token = prefs.getString('token');
     final isOnline = await ConnectivityService.instance.isOnline();
 
-    if (token != null && token.isNotEmpty && isOnline && int.tryParse(id.toString()) != null) {
+    final isValidServerToken = token != null &&
+        token.isNotEmpty &&
+        !token.startsWith('offline_') &&
+        !token.startsWith('google_session_');
+
+    if (isValidServerToken && isOnline && int.tryParse(id.toString()) != null) {
       try {
         await http.delete(
           Uri.parse('$baseUrl/api/schedules/$id'),

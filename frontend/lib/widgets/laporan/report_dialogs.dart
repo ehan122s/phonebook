@@ -25,7 +25,7 @@
   }) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
@@ -124,7 +124,7 @@
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
@@ -296,7 +296,7 @@
             Future<void> pickPhoto() async {
               final source = await showModalBottomSheet<ImageSource>(
                 context: sheetContext,
-                backgroundColor: Colors.white,
+                backgroundColor: Theme.of(sheetContext).cardColor,
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                 ),
@@ -744,7 +744,7 @@
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
@@ -1107,6 +1107,12 @@
 
     @override
     Widget build(BuildContext context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final cardBg = isDark ? const Color(0xFF26352B) : LaporanColors.templateBackground;
+      final cardBorder = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderDetail;
+      final primaryColor = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+      final titleColor = isDark ? Colors.white : Colors.black87;
+
       return InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
@@ -1115,24 +1121,24 @@
           margin: const EdgeInsets.only(bottom: 9),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: LaporanColors.templateBackground,
+            color: cardBg,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: LaporanColors.borderDetail),
+            border: Border.all(color: cardBorder),
           ),
           child: Row(
             children: [
-              Icon(icon, color: LaporanColors.primary, size: 25),
+              Icon(icon, color: primaryColor, size: 25),
               const SizedBox(width: 13),
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: titleColor),
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 15,
-                color: Colors.grey,
+                color: isDark ? Colors.white38 : Colors.grey,
               ),
             ],
           ),
@@ -1159,32 +1165,41 @@
 
     @override
     Widget build(BuildContext context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final fill = isDark ? const Color(0xFF18221B) : LaporanColors.fieldFill;
+      final borderCol = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderField;
+      final iconCol = isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon;
+      final primaryColor = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+
       return TextField(
         controller: controller,
         maxLines: maxLines,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
         decoration: InputDecoration(
           labelText: label,
+          labelStyle: TextStyle(color: isDark ? Colors.white70 : null),
           hintText: hint,
+          hintStyle: TextStyle(color: isDark ? Colors.white38 : null),
           prefixIcon: Padding(
             padding: EdgeInsets.only(
               bottom: maxLines > 1 ? 70 : 0,
             ),
-            child: Icon(icon, color: LaporanColors.textFieldIcon),
+            child: Icon(icon, color: iconCol),
           ),
           filled: true,
-          fillColor: LaporanColors.fieldFill,
+          fillColor: fill,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(color: LaporanColors.borderField),
+            borderSide: BorderSide(color: borderCol),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(color: LaporanColors.borderField),
+            borderSide: BorderSide(color: borderCol),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(13),
-            borderSide: const BorderSide(
-              color: LaporanColors.primary,
+            borderSide: BorderSide(
+              color: primaryColor,
               width: 1.5,
             ),
           ),
@@ -1200,6 +1215,11 @@
 
     @override
     Widget build(BuildContext context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final fill = isDark ? const Color(0xFF18221B) : LaporanColors.fieldFill;
+      final borderCol = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderField;
+      final primaryColor = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+
       return InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
@@ -1210,31 +1230,34 @@
             horizontal: 15,
           ),
           decoration: BoxDecoration(
-            color: LaporanColors.fieldFill,
+            color: fill,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: LaporanColors.borderField),
+            border: Border.all(color: borderCol),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(
                 Icons.camera_alt_outlined,
-                color: LaporanColors.primary,
+                color: primaryColor,
                 size: 25,
               ),
-              SizedBox(width: 13),
+              const SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Foto Lokasi / Kegiatan',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Ambil dari kamera atau galeri sebagai bukti kegiatan.',
                       style: TextStyle(
-                        color: Colors.grey,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Ambil foto langsung atau pilih dari galeri',
+                      style: TextStyle(
+                        color: isDark ? Colors.white60 : Colors.grey,
                         fontSize: 12,
                       ),
                     ),
@@ -1242,8 +1265,9 @@
                 ),
               ),
               Icon(
-                Icons.add_a_photo_outlined,
-                color: LaporanColors.primary,
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: isDark ? Colors.white38 : Colors.grey,
               ),
             ],
           ),
@@ -1266,19 +1290,20 @@
 
     @override
     Widget build(BuildContext context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       return Padding(
         padding: const EdgeInsets.only(bottom: 13),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 20, color: LaporanColors.textFieldIcon),
+            Icon(icon, size: 20, color: isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon),
             const SizedBox(width: 12),
             SizedBox(
               width: 65,
               child: Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.grey,
+                style: TextStyle(
+                  color: isDark ? Colors.white60 : Colors.grey,
                   fontSize: 13,
                 ),
               ),
@@ -1287,9 +1312,10 @@
             Expanded(
               child: Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
             ),

@@ -9,6 +9,14 @@ class CreateReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1E2822) : LaporanColors.cardBackground;
+    final cardBorder = isDark ? const Color(0xFF2E3D34) : LaporanColors.borderLight;
+    final iconBg = isDark ? const Color(0xFF26352B) : LaporanColors.greenBackgroundLight;
+    final primaryColor = isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final titleColor = isDark ? Colors.white : LaporanColors.textTitle;
+    final subColor = isDark ? Colors.white70 : Colors.grey;
+
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: onTap,
@@ -16,12 +24,12 @@ class CreateReportCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: LaporanColors.cardBackground,
+          color: cardBg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: LaporanColors.borderLight),
+          border: Border.all(color: cardBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -33,17 +41,17 @@ class CreateReportCard extends StatelessWidget {
               width: 58,
               height: 58,
               decoration: BoxDecoration(
-                color: LaporanColors.greenBackgroundLight,
+                color: iconBg,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.add_rounded,
-                color: LaporanColors.primary,
+                color: primaryColor,
                 size: 34,
               ),
             ),
             const SizedBox(width: 16),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -52,26 +60,26 @@ class CreateReportCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: LaporanColors.textTitle,
+                      color: titleColor,
                     ),
                   ),
-                  SizedBox(height: 5),
+                  const SizedBox(height: 5),
                   Text(
                     'Isi laporan berdasarkan jenis kegiatan '
                     'yang dilakukan.',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey,
+                      color: subColor,
                       height: 1.4,
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.arrow_forward_ios_rounded,
               size: 18,
-              color: LaporanColors.primary,
+              color: primaryColor,
             ),
           ],
         ),
