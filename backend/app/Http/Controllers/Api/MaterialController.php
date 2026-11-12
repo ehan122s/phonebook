@@ -49,6 +49,63 @@ class MaterialController extends Controller
     }
 
     /**
+     * Download or serve an educational material file.
+     */
+    public function download($id)
+    {
+        $material = Material::find($id);
+
+        if (!$material) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Materi tidak ditemukan',
+            ], 404);
+        }
+
+        $filePath = $material->file_path;
+        $fileName = $material->file_name ?: ($material->title . '.' . strtolower($material->file_type ?: 'pdf'));
+
+        // If file_path is a direct external URL (Google Drive, HTTPS, etc.)
+        if (filter_var($filePath, FILTER_VALIDATE_URL)) {
+            return redirect($filePath);
+        }
+
+        // If stored in public storage disk
+        if ($filePath && Storage::disk('public')->exists($filePath)) {
+            return Storage::disk('public')->download($filePath, $fileName);
+        }
+
+        // Check in default storage
+        if ($filePath && Storage::exists($filePath)) {
+            return Storage::download($filePath, $fileName);
+        }
+
+        // Fallback: Generate an official formatted summary document for download
+        $content = "DINAS KEHUTANAN PROVINSI JAWA BARAT\n";
+        $content .= "CABANG DINAS KEHUTANAN (CDK) WILAYAH V GARUT\n";
+        $content .= "=========================================================\n\n";
+        $content .= "DOKUMEN MATERI EDUKASI KEHUTANAN\n\n";
+        $content .= "JUDUL MATERI: " . $material->title . "\n";
+        $content .= "KATEGORI    : " . ($material->category_name ?: 'Penyuluhan') . "\n";
+        $content .= "PENGUNGGAH  : " . ($material->uploader_name ?: 'Administrator Kehutanan') . " (" . ($material->uploader_role ?: 'Penyuluh') . ")\n";
+        $content .= "TANGGAL     : " . ($material->created_at ? $material->created_at->format('d F Y, H:i') : date('d F Y')) . "\n";
+        $content .= "TIPE BERKAS : " . ($material->file_type ?: 'PDF') . "\n\n";
+        $content .= "RINGKASAN & DESKRIPSI MATERI:\n";
+        $content .= "---------------------------------------------------------\n";
+        $content .= ($material->description ?: 'Tidak ada deskripsi tambahan.') . "\n\n";
+        $content .= "---------------------------------------------------------\n";
+        $content .= "Dokumen ini diunduh melalui Aplikasi Phonebook CDK Wilayah V.\n";
+
+        $cleanTitle = preg_replace('/[^A-Za-z0-9_\-]/', '_', $material->title);
+        $safeFileName = ($cleanTitle ?: 'Materi_Kehutanan') . '.txt';
+
+        return response($content, 200, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="' . $safeFileName . '"',
+        ]);
+    }
+
+    /**
      * Store a newly created educational material.
      * Records uploader details so it can show "uploaded by [who]".
      */

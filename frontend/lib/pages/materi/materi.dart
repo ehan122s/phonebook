@@ -7,8 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../../constants/api_constants.dart';
+import '../../services/material_download_service.dart';
 
 class MateriPage extends StatefulWidget {
   const MateriPage({super.key});
@@ -21,6 +23,7 @@ class _MateriPageState extends State<MateriPage> {
   static const String _storageKey = 'phonebook_shared_materials_v2';
 
   List<Map<String, dynamic>> _materials = [];
+  final Set<String> _downloadingIds = {};
   bool _isLoading = true;
   String _searchQuery = '';
   String _selectedCategory = 'Semua';
@@ -1322,6 +1325,141 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
+  /// Mengunduh materi dan menyimpannya ke penyimpanan HP user
+  Future<void> _handleDownloadMaterial(Map<String, dynamic> material) async {
+    final id =
+        (material['id'] ?? material['title'] ?? 'MAT-${DateTime.now().millisecondsSinceEpoch}')
+            .toString();
+    if (_downloadingIds.contains(id)) return;
+
+    setState(() {
+      _downloadingIds.add(id);
+    });
+
+    final fileName = (material['file_name'] ?? material['title'] ?? 'Materi Kehutanan').toString();
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Mengunduh $fileName...',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    try {
+      final result =
+          await MaterialDownloadService.instance.downloadMaterial(material);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      if (result.success && result.filePath != null) {
+        final filePath = result.filePath!;
+        final dirName = filePath.contains('Phonebook_Materi')
+            ? 'Download/Phonebook_Materi'
+            : 'Download';
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF1E3F24),
+            duration: const Duration(seconds: 8),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: Color(0xFF81C784), size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Berhasil Diunduh!',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${result.fileName}${result.formattedSize.isNotEmpty ? ' (${result.formattedSize})' : ''}\nTersimpan di: $dirName',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+            action: SnackBarAction(
+              label: 'Buka Berkas',
+              textColor: const Color(0xFF81C784),
+              onPressed: () async {
+                final openResult =
+                    await MaterialDownloadService.instance.openFile(filePath);
+                if (openResult.type != ResultType.done && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Tidak dapat membuka berkas: ${openResult.message}. Berkas tersimpan di folder Download HP.',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red.shade700,
+            content: Text(result.message),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red.shade700,
+            content: Text('Gagal mengunduh: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _downloadingIds.remove(id);
+        });
+      }
+    }
+  }
+
   void _showMaterialDetail(Map<String, dynamic> material) {
     final type = (material['type'] ?? 'PDF').toString().toUpperCase();
     final uploaderName =
@@ -1348,6 +1486,11 @@ class _MateriPageState extends State<MateriPage> {
                     _currentUserEmail.toLowerCase()) ||
             _currentUserRole == 'admin';
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDownloading = _downloadingIds.contains(
+      (material['id'] ?? material['title'] ?? '').toString(),
+    );
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1371,7 +1514,7 @@ class _MateriPageState extends State<MateriPage> {
                     width: 54,
                     height: 54,
                     decoration: BoxDecoration(
-                      color: _getTypeColor(type).withValues(alpha: 0.12),
+                      color: _getTypeColor(type).withValues(alpha: isDark ? 0.22 : 0.12),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
@@ -1387,10 +1530,10 @@ class _MateriPageState extends State<MateriPage> {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
+                            color: isDark ? Colors.white : const Color(0xFF1E2923),
                             height: 1.3,
                           ),
                         ),
@@ -1405,14 +1548,17 @@ class _MateriPageState extends State<MateriPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF2E7D32)
-                                    .withValues(alpha: 0.1),
+                                color: isDark
+                                    ? const Color(0xFF1B3B22)
+                                    : const Color(0xFF2E7D32).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 category,
-                                style: const TextStyle(
-                                  color: Color(0xFF2E7D32),
+                                style: TextStyle(
+                                  color: isDark
+                                      ? const Color(0xFF81C784)
+                                      : const Color(0xFF2E7D32),
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1424,13 +1570,17 @@ class _MateriPageState extends State<MateriPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
+                                color: isDark
+                                    ? const Color(0xFF2D3530)
+                                    : Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 type,
                                 style: TextStyle(
-                                  color: Colors.grey.shade800,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.grey.shade800,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1452,22 +1602,24 @@ class _MateriPageState extends State<MateriPage> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF9FBF9),
+                  color: isDark ? const Color(0xFF1E2822) : const Color(0xFFF9FBF9),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
+                  ),
                 ),
                 child: Row(
                   children: [
                     CircleAvatar(
                       radius: 22,
                       backgroundColor:
-                          const Color(0xFF2E7D32).withValues(alpha: 0.12),
+                          const Color(0xFF2E7D32).withValues(alpha: isDark ? 0.25 : 0.12),
                       child: Text(
                         uploaderName.isNotEmpty
                             ? uploaderName[0].toUpperCase()
                             : 'U',
-                        style: const TextStyle(
-                          color: Color(0xFF2E7D32),
+                        style: TextStyle(
+                          color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
@@ -1484,7 +1636,7 @@ class _MateriPageState extends State<MateriPage> {
                                 'Diupload oleh',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.grey.shade600,
+                                  color: isDark ? Colors.white60 : Colors.grey.shade600,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1498,8 +1650,8 @@ class _MateriPageState extends State<MateriPage> {
                                   color: uploaderRole
                                           .toLowerCase()
                                           .contains('admin')
-                                      ? Colors.deepPurple.shade50
-                                      : Colors.green.shade50,
+                                      ? (isDark ? const Color(0xFF351D4A) : Colors.deepPurple.shade50)
+                                      : (isDark ? const Color(0xFF1B3B22) : Colors.green.shade50),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -1512,8 +1664,8 @@ class _MateriPageState extends State<MateriPage> {
                                     color: uploaderRole
                                             .toLowerCase()
                                             .contains('admin')
-                                        ? Colors.deepPurple.shade800
-                                        : Colors.green.shade800,
+                                        ? (isDark ? const Color(0xFFCE93D8) : Colors.deepPurple.shade800)
+                                        : (isDark ? const Color(0xFF81C784) : Colors.green.shade800),
                                   ),
                                 ),
                               ),
@@ -1522,10 +1674,10 @@ class _MateriPageState extends State<MateriPage> {
                           const SizedBox(height: 2),
                           Text(
                             uploaderName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E2923),
+                              color: isDark ? Colors.white : const Color(0xFF1E2923),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -1533,7 +1685,7 @@ class _MateriPageState extends State<MateriPage> {
                             uploadedAt,
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey.shade600,
+                              color: isDark ? Colors.white60 : Colors.grey.shade600,
                             ),
                           ),
                         ],
@@ -1546,21 +1698,21 @@ class _MateriPageState extends State<MateriPage> {
               const SizedBox(height: 16),
 
               // Deskripsi
-              const Text(
+              Text(
                 'Deskripsi Materi:',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E2923),
+                  color: isDark ? Colors.white : const Color(0xFF1E2923),
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 desc,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.5,
-                  color: Color(0xFF374151),
+                  color: isDark ? Colors.white70 : const Color(0xFF374151),
                 ),
               ),
 
@@ -1574,9 +1726,11 @@ class _MateriPageState extends State<MateriPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F0FE),
+                    color: isDark ? const Color(0xFF0F2537) : const Color(0xFFE8F0FE),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFBDD7FB)),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF1E496D) : const Color(0xFFBDD7FB),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -1590,12 +1744,12 @@ class _MateriPageState extends State<MateriPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Dokumen Tersedia di Google Drive',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
-                                color: Color(0xFF174EA6),
+                                color: isDark ? const Color(0xFF90CAF9) : const Color(0xFF174EA6),
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -1603,7 +1757,7 @@ class _MateriPageState extends State<MateriPage> {
                               rawUrl,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.blue.shade900,
+                                color: isDark ? Colors.white70 : Colors.blue.shade900,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1640,16 +1794,18 @@ class _MateriPageState extends State<MateriPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
+                    color: isDark ? const Color(0xFF1E2822) : Colors.grey.shade50,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
+                    ),
                   ),
                   child: Row(
                     children: [
                       Icon(
                         Icons.attach_file,
                         size: 18,
-                        color: Colors.grey.shade600,
+                        color: isDark ? Colors.white60 : Colors.grey.shade600,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1659,7 +1815,7 @@ class _MateriPageState extends State<MateriPage> {
                               : fileName,
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: Colors.grey.shade800,
+                            color: isDark ? Colors.white70 : Colors.grey.shade800,
                             fontWeight: FontWeight.w500,
                           ),
                           overflow: TextOverflow.ellipsis,
@@ -1670,97 +1826,150 @@ class _MateriPageState extends State<MateriPage> {
                 ),
               ],
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
 
-              // Tombol Buka Materi & Hapus
-              Row(
+              // ACTION BUTTONS: UNDUH KE HP & BUKA MATERI
+              Column(
                 children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isGoogleDrive
-                              ? const Color(0xFF1A73E8)
-                              : const Color(0xFF2E7D32),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                  // Tombol UTAMA: Unduh Materi ke Penyimpanan HP
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E7D32),
+                        foregroundColor: Colors.white,
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        onPressed: () async {
-                          Navigator.pop(ctx);
-                          if (isGoogleDrive || rawUrl.startsWith('http')) {
-                            try {
-                              final clean = rawUrl.trim();
-                              final uri = Uri.parse(
-                                clean.startsWith('http')
-                                    ? clean
-                                    : 'https://$clean',
-                              );
-                              final launched = await launchUrl(
-                                uri,
-                                mode: LaunchMode.externalApplication,
-                              );
-                              if (!launched) {
-                                await launchUrl(uri);
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Gagal membuka tautan: $e'),
-                                  ),
-                                );
-                              }
-                            }
-                          } else if (dataUri.isNotEmpty) {
-                            try {
-                              final uri = Uri.parse(dataUri);
-                              final launched = await launchUrl(uri);
-                              if (!launched) {
-                                _showDocumentReaderDialog(material);
-                              }
-                            } catch (_) {
-                              _showDocumentReaderDialog(material);
-                            }
-                          } else {
-                            _showDocumentReaderDialog(material);
-                          }
-                        },
-                        icon: Icon(
-                          isGoogleDrive
-                              ? Icons.open_in_browser_rounded
-                              : Icons.visibility_outlined,
-                          size: 20,
-                        ),
-                        label: Text(
-                          isGoogleDrive
-                              ? 'Buka di Google Drive'
-                              : 'Buka / Baca Materi',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: isDownloading
+                          ? null
+                          : () {
+                              Navigator.pop(ctx);
+                              _handleDownloadMaterial(material);
+                            },
+                      icon: isDownloading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.download_rounded, size: 22),
+                      label: Text(
+                        isDownloading
+                            ? 'Sedang Mengunduh...'
+                            : (fileSize.isNotEmpty
+                                ? 'Unduh ke Penyimpanan HP ($fileSize)'
+                                : 'Unduh ke Penyimpanan HP'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ),
                   ),
-                  if (isUploader) ...[
-                    const SizedBox(width: 10),
-                    IconButton(
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.red.shade50,
-                        foregroundColor: Colors.red.shade700,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: isDark
+                                  ? const Color(0xFF81C784)
+                                  : const Color(0xFF2E7D32),
+                              side: BorderSide(
+                                color: isDark
+                                    ? const Color(0xFF2E3D34)
+                                    : const Color(0xFFC8E6C9),
+                                width: 1.2,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              if (isGoogleDrive || rawUrl.startsWith('http')) {
+                                try {
+                                  final clean = rawUrl.trim();
+                                  final uri = Uri.parse(
+                                    clean.startsWith('http')
+                                        ? clean
+                                        : 'https://$clean',
+                                  );
+                                  final launched = await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                  if (!launched) {
+                                    await launchUrl(uri);
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Gagal membuka tautan: $e'),
+                                      ),
+                                    );
+                                  }
+                                }
+                              } else if (dataUri.isNotEmpty) {
+                                try {
+                                  final uri = Uri.parse(dataUri);
+                                  final launched = await launchUrl(uri);
+                                  if (!launched) {
+                                    _showDocumentReaderDialog(material);
+                                  }
+                                } catch (_) {
+                                  _showDocumentReaderDialog(material);
+                                }
+                              } else {
+                                _showDocumentReaderDialog(material);
+                              }
+                            },
+                            icon: Icon(
+                              isGoogleDrive
+                                  ? Icons.open_in_browser_rounded
+                                  : Icons.visibility_outlined,
+                              size: 19,
+                            ),
+                            label: Text(
+                              isGoogleDrive
+                                  ? 'Buka di Google Drive'
+                                  : 'Baca / Pratinjau',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ),
                       ),
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      tooltip: 'Hapus Materi Ini',
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _confirmDeleteMaterial(material);
-                      },
-                    ),
-                  ],
+                      if (isUploader) ...[
+                        const SizedBox(width: 10),
+                        IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.shade50,
+                            foregroundColor: Colors.red.shade700,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          tooltip: 'Hapus Materi Ini',
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _confirmDeleteMaterial(material);
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ],
@@ -1865,6 +2074,18 @@ class _MateriPageState extends State<MateriPage> {
           ),
         ),
         actions: [
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _handleDownloadMaterial(material);
+            },
+            icon: const Icon(Icons.download_rounded, size: 18),
+            label: const Text('Unduh ke HP'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Tutup'),
@@ -2273,6 +2494,10 @@ class _MateriPageState extends State<MateriPage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _MaterialCard(
                     material: material,
+                    isDownloading: _downloadingIds.contains(
+                      (material['id'] ?? material['title'] ?? '').toString(),
+                    ),
+                    onDownload: () => _handleDownloadMaterial(material),
                     typeColor: _getTypeColor(
                       (material['type'] ?? 'PDF').toString(),
                     ),
@@ -2304,12 +2529,16 @@ class _MaterialCard extends StatelessWidget {
   final Map<String, dynamic> material;
   final Color typeColor;
   final IconData typeIcon;
+  final bool isDownloading;
+  final VoidCallback onDownload;
   final VoidCallback onTap;
 
   const _MaterialCard({
     required this.material,
     required this.typeColor,
     required this.typeIcon,
+    required this.isDownloading,
+    required this.onDownload,
     required this.onTap,
   });
 
@@ -2519,15 +2748,15 @@ class _MaterialCard extends StatelessWidget {
                     text: TextSpan(
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade700,
+                        color: isDark ? Colors.white60 : Colors.grey.shade700,
                       ),
                       children: [
                         const TextSpan(text: 'Diupload oleh: '),
                         TextSpan(
                           text: uploaderName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
+                            color: isDark ? Colors.white : const Color(0xFF1E2923),
                           ),
                         ),
                       ],
@@ -2538,8 +2767,33 @@ class _MaterialCard extends StatelessWidget {
                   uploadedAt,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.grey.shade500,
+                    color: isDark ? Colors.white54 : Colors.grey.shade500,
                   ),
+                ),
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Unduh ke Penyimpanan HP',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  icon: isDownloading
+                      ? SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: isDark
+                                ? const Color(0xFF81C784)
+                                : const Color(0xFF2E7D32),
+                          ),
+                        )
+                      : Icon(
+                          Icons.download_rounded,
+                          size: 20,
+                          color: isDark
+                              ? const Color(0xFF81C784)
+                              : const Color(0xFF2E7D32),
+                        ),
+                  onPressed: isDownloading ? null : onDownload,
                 ),
               ],
             ),

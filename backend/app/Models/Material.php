@@ -24,6 +24,7 @@ class Material extends Model
 
     protected $appends = [
         'uploader',
+        'download_url',
     ];
 
     public function user()
@@ -47,5 +48,14 @@ class Material extends Model
         }
 
         return 'Administrator Kehutanan';
+    }
+
+    public function getDownloadUrlAttribute(): string
+    {
+        if (filter_var($this->file_path, FILTER_VALIDATE_URL)) {
+            return $this->file_path;
+        }
+
+        return url('/api/materials/' . $this->id . '/download');
     }
 }

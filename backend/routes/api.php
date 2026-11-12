@@ -58,6 +58,7 @@ Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
 Route::get('/materials', [MaterialController::class, 'index']);
 Route::get('/materials/{id}', [MaterialController::class, 'show']);
+Route::get('/materials/{id}/download', [MaterialController::class, 'download']);
 Route::post('/materials/public', [MaterialController::class, 'store']);
 Route::delete('/materials/{id}/public', [MaterialController::class, 'destroy']);
 
