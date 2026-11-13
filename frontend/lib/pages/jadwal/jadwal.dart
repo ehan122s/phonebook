@@ -1,5 +1,5 @@
 // ============================================================================
-// Simpan file ini di: lib/pages/jadwal.dart
+// Simpan file ini di: lib/pages/jadwal/jadwal.dart
 // ============================================================================
 
 import 'dart:async';
@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 
 import '../../constants/jadwal_constants.dart';
 import '../../services/jadwal_service.dart';
+import '../../services/notification_service.dart';
+import '../notifikasi/notifikasi_page.dart';
+import 'history_reminder_page.dart';
 
 class JadwalPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -23,15 +26,14 @@ class JadwalPage extends StatefulWidget {
 }
 
 class _JadwalPageState extends State<JadwalPage> {
-  DateTime selectedDate = DateTime.now();
+  DateTime selectedDate = JadwalDateUtils.nowWib();
   DateTime displayedMonth = DateTime(
-    DateTime.now().year,
-    DateTime.now().month,
+    JadwalDateUtils.nowWib().year,
+    JadwalDateUtils.nowWib().month,
   );
 
   final searchController = TextEditingController();
   final List<Map<String, dynamic>> schedules = [];
-  final Set<String> _triggeredReminders = {};
   Timer? _reminderTimer;
 
   bool isLoading = false;
@@ -62,7 +64,9 @@ class _JadwalPageState extends State<JadwalPage> {
     {'label': 'Sosialisasi Masyarakat', 'icon': Icons.record_voice_over_rounded},
   ];
 
+  /// Pilihan interval reminder lengkap termasuk 5 menit, 10 menit, dan 30 menit sebelumnya
   static const List<Map<String, dynamic>> reminderOptions = [
+    {'label': '5 Menit sebelum', 'minutes': 5},
     {'label': '10 Menit sebelum', 'minutes': 10},
     {'label': '15 Menit sebelum', 'minutes': 15},
     {'label': '30 Menit sebelum', 'minutes': 30},
@@ -74,9 +78,9 @@ class _JadwalPageState extends State<JadwalPage> {
   void initState() {
     super.initState();
     _loadData();
-    // Cek pengingat jadwal setiap 30 detik selama aplikasi aktif
+    // Sinkronkan dengan global NotificationService setiap 15 detik
     _reminderTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 15),
       (_) => _checkUpcomingReminders(),
     );
   }
@@ -88,29 +92,45 @@ class _JadwalPageState extends State<JadwalPage> {
     super.dispose();
   }
 
+  /// Perbaikan Tombol Kembali:
+  /// - Jika dibuka via Navigator.push (canPop == true), kembali ke halaman sebelumnya.
+  /// - Jika memiliki callback onBack dari HomePage/AdminPage, panggil onBack!().
+  /// - Jika memiliki callback onNavigate dari HomePage, arahkan ke Beranda (index 0).
   void _handleBackButton() {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
-    } else if (widget.onBack != null) {
+      return;
+    }
+    if (widget.onBack != null) {
       widget.onBack!();
-    } else if (widget.onNavigate != null) {
-      // Kembali ke tab Beranda (biasanya index 2 atau 0)
-      widget.onNavigate!(2);
-    } else {
-      // Jika tidak ada route untuk di-pop dan tidak ada callback,
-      // kembalikan fokus ke tanggal hari ini & tampilkan semua jadwal
+      return;
+    }
+    if (widget.onNavigate != null) {
+      // Index 0 adalah Beranda / Dashboard pada HomePage
+      widget.onNavigate!(0);
+      return;
+    }
+    if (!showAllHistory) {
       setState(() {
-        selectedDate = DateTime.now();
-        displayedMonth = DateTime(DateTime.now().year, DateTime.now().month);
         showAllHistory = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Menampilkan seluruh jadwal kegiatan'),
-          duration: Duration(seconds: 1),
-        ),
-      );
     }
+  }
+
+  void _openHistoryReminderPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const HistoryReminderPage(),
+      ),
+    );
+  }
+
+  void _openNotificationPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationPage(),
+      ),
+    );
   }
 
   Future<void> _loadData() async {
@@ -119,11 +139,12 @@ class _JadwalPageState extends State<JadwalPage> {
       final list = await JadwalService.loadSchedules();
       if (mounted) {
         setState(() {
-          schedules.clear();
-          schedules.addAll(list);
+          schedules
+            ..clear()
+            ..addAll(list);
           isLoading = false;
         });
-        _checkUpcomingReminders();
+        await NotificationService.instance.checkDueRemindersNow();
       }
     } catch (_) {
       if (mounted) {
@@ -132,68 +153,10 @@ class _JadwalPageState extends State<JadwalPage> {
     }
   }
 
-  /// Mengecek apakah ada jadwal yang memasuki waktu pengingat (misal H-30 menit)
-  void _checkUpcomingReminders() {
+  /// Mengecek apakah ada jadwal yang sudah memasuki waktu pengingat (Asia/Jakarta)
+  Future<void> _checkUpcomingReminders() async {
     if (!mounted) return;
-    final now = DateTime.now();
-
-    for (final item in schedules) {
-      if (item['isCompleted'] == true) continue;
-
-      final id = (item['id'] ?? item['judul'] ?? '').toString();
-      if (_triggeredReminders.contains(id)) continue;
-
-      final itemDate = _getItemDate(item);
-      final timeStr = (item['time'] ?? item['waktu'] ?? '08:00').toString();
-      final parts = timeStr.split(':');
-      final hour = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 8 : 8;
-      final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-
-      final scheduleDateTime = DateTime(
-        itemDate.year,
-        itemDate.month,
-        itemDate.day,
-        hour,
-        minute,
-      );
-
-      final reminderMinutes =
-          int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
-      final diffMinutes = scheduleDateTime.difference(now).inMinutes;
-
-      if (diffMinutes >= 0 && diffMinutes <= reminderMinutes) {
-        _triggeredReminders.add(id);
-        final title = (item['title'] ?? item['judul'] ?? 'Kegiatan').toString();
-        final location = (item['location'] ?? item['lokasi'] ?? '-').toString();
-
-        ScaffoldMessenger.of(context).showMaterialBanner(
-          MaterialBanner(
-            backgroundColor: lightGreen,
-            leading: const CircleAvatar(
-              backgroundColor: green,
-              child: Icon(Icons.notifications_active_rounded, color: Colors.white),
-            ),
-            content: Text(
-              'Pengingat Jadwal: "$title" akan dimulai dalam $diffMinutes menit ($timeStr WIB) di $location.',
-              style: const TextStyle(
-                color: Color(0xFF24352A),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-                child: const Text(
-                  'Tutup',
-                  style: TextStyle(color: green, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-    }
+    await NotificationService.instance.checkDueRemindersNow();
   }
 
   DateTime _getItemDate(Map<String, dynamic> item) {
@@ -202,11 +165,9 @@ class _JadwalPageState extends State<JadwalPage> {
 
     final iso = (item['tanggalIso'] ?? item['date'] ?? '').toString();
     if (iso.isNotEmpty) {
-      final parsed = DateTime.tryParse(iso);
-      if (parsed != null) return parsed;
       return JadwalDateUtils.parseIsoDate(iso);
     }
-    return DateTime.now();
+    return JadwalDateUtils.nowWib();
   }
 
   String dateKey(DateTime date) =>
@@ -269,24 +230,71 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   // ===========================================================================
-  // FORM TAMBAH JADWAL MODERN (BOTTOM SHEET + KATEGORI PILIHAN + NOTIF WA)
+  // FORM TAMBAH / EDIT JADWAL MODERN (BOTTOM SHEET + KATEGORI + REMINDER WIB)
   // ===========================================================================
-  Future<void> addSchedule() async {
-    final titleController = TextEditingController();
-    final locationController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final timeController = TextEditingController(text: '08:00');
-    final waPhoneController = TextEditingController(text: '089602976525');
+  Future<void> addSchedule({Map<String, dynamic>? existingItem}) async {
+    final isEditing = existingItem != null;
+    final nowWib = JadwalDateUtils.nowWib();
+    final defaultInitialTime =
+        '${nowWib.hour.toString().padLeft(2, '0')}:${nowWib.minute.toString().padLeft(2, '0')}';
 
-    String selectedCategory = categoryOptions.first['label'] as String;
-    int selectedReminderMinutes = 30;
-    bool enableWaNotification = true;
+    final initialTimeStr = isEditing
+        ? JadwalService.formatTimeString(
+            (existingItem['waktu'] ?? existingItem['time'] ?? defaultInitialTime)
+                .toString(),
+            fallback: defaultInitialTime,
+          )
+        : defaultInitialTime;
 
-    DateTime pickedDate = DateTime(
-      selectedDate.year,
-      selectedDate.month,
-      selectedDate.day,
+    final titleController = TextEditingController(
+      text: isEditing
+          ? (existingItem['judul'] ?? existingItem['title'] ?? '').toString()
+          : '',
     );
+    final locationController = TextEditingController(
+      text: isEditing
+          ? (existingItem['lokasi'] ?? existingItem['location'] ?? '').toString()
+          : '',
+    );
+    final descriptionController = TextEditingController(
+      text: isEditing
+          ? (existingItem['catatan'] ?? existingItem['description'] ?? '')
+              .toString()
+          : '',
+    );
+    final timeController = TextEditingController(text: initialTimeStr);
+    final waPhoneController = TextEditingController(
+      text: isEditing
+          ? (existingItem['waPhone'] ?? '089602976525').toString()
+          : '089602976525',
+    );
+
+    String selectedCategory = isEditing
+        ? (existingItem['kategori'] ?? categoryOptions.first['label']).toString()
+        : categoryOptions.first['label'] as String;
+    if (!categoryOptions.any((c) => c['label'] == selectedCategory)) {
+      selectedCategory = categoryOptions.first['label'] as String;
+    }
+
+    int selectedReminderMinutes = isEditing
+        ? (int.tryParse((existingItem['reminderMinutes'] ?? 10).toString()) ??
+            10)
+        : 10;
+    if (!reminderOptions.any((r) => r['minutes'] == selectedReminderMinutes)) {
+      selectedReminderMinutes = 10;
+    }
+
+    bool enableWaNotification = isEditing
+        ? (existingItem['enableWaNotification'] ?? true) == true
+        : true;
+
+    DateTime pickedDate = isEditing
+        ? _getItemDate(existingItem)
+        : DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+          );
 
     final formKey = GlobalKey<FormState>();
 
@@ -302,6 +310,16 @@ class _JadwalPageState extends State<JadwalPage> {
 
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
+            final currentPreviewTime = JadwalService.formatTimeString(
+              timeController.text,
+              fallback: initialTimeStr,
+            );
+            final previewReminderClock =
+                JadwalDateUtils.calculateReminderTimeStr(
+              currentPreviewTime,
+              selectedReminderMinutes,
+            );
+
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(ctx).viewInsets.bottom,
@@ -357,21 +375,23 @@ class _JadwalPageState extends State<JadwalPage> {
                             ),
                           ),
                           const SizedBox(width: 14),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Tambah Jadwal Kegiatan',
-                                  style: TextStyle(
+                                  isEditing
+                                      ? 'Edit Jadwal Kegiatan'
+                                      : 'Tambah Jadwal Kegiatan',
+                                  style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                SizedBox(height: 2),
-                                Text(
-                                  'Atur rincian agenda & pengingat otomatis',
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Atur rincian agenda & pengingat otomatis (WIB)',
                                   style: TextStyle(
                                     color: Color(0xFFE8F2E8),
                                     fontSize: 12.5,
@@ -382,7 +402,10 @@ class _JadwalPageState extends State<JadwalPage> {
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(sheetContext, false),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
@@ -415,7 +438,10 @@ class _JadwalPageState extends State<JadwalPage> {
                               const SizedBox(height: 16),
 
                               // Pilihan Kategori (Interactive Chips)
-                              _buildFormLabel('Pilih Kategori Kegiatan *', textColor),
+                              _buildFormLabel(
+                                'Pilih Kategori Kegiatan *',
+                                textColor,
+                              ),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
@@ -435,7 +461,9 @@ class _JadwalPageState extends State<JadwalPage> {
                                     selectedColor: green,
                                     backgroundColor: fieldBg,
                                     labelStyle: TextStyle(
-                                      color: isSelected ? Colors.white : textColor,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : textColor,
                                       fontWeight: isSelected
                                           ? FontWeight.bold
                                           : FontWeight.w500,
@@ -536,7 +564,10 @@ class _JadwalPageState extends State<JadwalPage> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        _buildFormLabel('Waktu *', textColor),
+                                        _buildFormLabel(
+                                          'Waktu (WIB) *',
+                                          textColor,
+                                        ),
                                         TextFormField(
                                           controller: timeController,
                                           readOnly: true,
@@ -545,10 +576,33 @@ class _JadwalPageState extends State<JadwalPage> {
                                             fontWeight: FontWeight.w600,
                                           ),
                                           onTap: () async {
-                                            final nowTime = TimeOfDay.now();
+                                            final parts =
+                                                timeController.text.split(':');
+                                            final initH = parts.isNotEmpty
+                                                ? (int.tryParse(parts[0]) ??
+                                                    nowWib.hour)
+                                                : nowWib.hour;
+                                            final initM = parts.length > 1
+                                                ? (int.tryParse(parts[1]) ??
+                                                    nowWib.minute)
+                                                : nowWib.minute;
+
                                             final chosen = await showTimePicker(
                                               context: sheetContext,
-                                              initialTime: nowTime,
+                                              initialTime: TimeOfDay(
+                                                hour: initH,
+                                                minute: initM,
+                                              ),
+                                              builder: (context, child) {
+                                                return MediaQuery(
+                                                  data: MediaQuery.of(context)
+                                                      .copyWith(
+                                                    alwaysUse24HourFormat: true,
+                                                  ),
+                                                  child: child ??
+                                                      const SizedBox.shrink(),
+                                                );
+                                              },
                                             );
                                             if (chosen != null) {
                                               final h = chosen.hour
@@ -563,7 +617,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                             }
                                           },
                                           decoration: _modernInputDecoration(
-                                            hint: '08:00',
+                                            hint: '13:00',
                                             icon: Icons.access_time_rounded,
                                             fillColor: fieldBg,
                                           ),
@@ -667,6 +721,37 @@ class _JadwalPageState extends State<JadwalPage> {
                                         }
                                       },
                                     ),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: sheetBg,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.alarm_on_rounded,
+                                            size: 16,
+                                            color: green,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Notifikasi otomatis akan muncul pukul $previewReminderClock WIB ($selectedReminderMinutes menit sebelum $currentPreviewTime WIB).',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: textColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                     if (enableWaNotification) ...[
                                       const SizedBox(height: 10),
                                       TextFormField(
@@ -710,7 +795,8 @@ class _JadwalPageState extends State<JadwalPage> {
                                 maxLines: 3,
                                 style: TextStyle(color: textColor),
                                 decoration: _modernInputDecoration(
-                                  hint: 'Tulis rincian perlengkapan atau agenda...',
+                                  hint:
+                                      'Tulis rincian perlengkapan atau agenda...',
                                   icon: Icons.notes_rounded,
                                   fillColor: fieldBg,
                                 ),
@@ -756,9 +842,11 @@ class _JadwalPageState extends State<JadwalPage> {
                                       icon: const Icon(
                                         Icons.check_circle_outline_rounded,
                                       ),
-                                      label: const Text(
-                                        'Simpan Jadwal',
-                                        style: TextStyle(
+                                      label: Text(
+                                        isEditing
+                                            ? 'Simpan Perubahan'
+                                            : 'Simpan Jadwal',
+                                        style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 15,
                                         ),
@@ -795,8 +883,14 @@ class _JadwalPageState extends State<JadwalPage> {
     if (result == true && mounted) {
       final isoDate =
           '${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}';
-      final cleanTime =
-          JadwalService.formatTimeString(timeController.text.trim());
+      final cleanTime = JadwalService.formatTimeString(
+        timeController.text.trim(),
+        fallback: initialTimeStr,
+      );
+      final reminderClock = JadwalDateUtils.calculateReminderTimeStr(
+        cleanTime,
+        selectedReminderMinutes,
+      );
 
       final rawItem = {
         'judul': titleController.text.trim(),
@@ -806,13 +900,24 @@ class _JadwalPageState extends State<JadwalPage> {
         'lokasi': locationController.text.trim(),
         'catatan': descriptionController.text.trim(),
         'reminderMinutes': selectedReminderMinutes,
+        'reminderTime': reminderClock,
+        'reminderEnabled': true,
         'enableWaNotification': enableWaNotification,
         'waPhone': waPhoneController.text.trim(),
-        'isCompleted': false,
+        'isCompleted': isEditing ? (existingItem['isCompleted'] == true) : false,
       };
 
       try {
-        final savedItem = await JadwalService.addSchedule(rawItem);
+        final Map<String, dynamic> savedItem;
+        if (isEditing) {
+          savedItem = await JadwalService.updateSchedule(
+            existingItem['id'],
+            rawItem,
+          );
+        } else {
+          savedItem = await JadwalService.addSchedule(rawItem);
+        }
+
         if (mounted) {
           setState(() {
             schedules.removeWhere(
@@ -823,15 +928,13 @@ class _JadwalPageState extends State<JadwalPage> {
             showAllHistory = true;
           });
 
-          _checkUpcomingReminders();
-
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               backgroundColor: green,
               content: Text(
-                enableWaNotification
-                    ? 'Jadwal disimpan! Pengingat WA & Aplikasi aktif ($selectedReminderMinutes menit sebelum).'
-                    : 'Jadwal kegiatan berhasil disimpan!',
+                isEditing
+                    ? 'Jadwal diperbarui! Pengingat dijadwalkan ulang pukul $reminderClock WIB ($selectedReminderMinutes menit sebelum $cleanTime WIB).'
+                    : 'Jadwal pukul $cleanTime WIB disimpan! Pengingat otomatis dijadwalkan pukul $reminderClock WIB ($selectedReminderMinutes menit sebelum).',
               ),
             ),
           );
@@ -895,13 +998,17 @@ class _JadwalPageState extends State<JadwalPage> {
   Future<void> showScheduleDetail(Map<String, dynamic> item) async {
     final itemDate = _getItemDate(item);
     final title = (item['title'] ?? item['judul'] ?? '').toString();
-    final time = (item['time'] ?? item['waktu'] ?? '').toString();
+    final time = JadwalService.formatTimeString(
+      (item['time'] ?? item['waktu'] ?? '08:00').toString(),
+    );
     final location = (item['location'] ?? item['lokasi'] ?? '').toString();
     final description =
         (item['description'] ?? item['catatan'] ?? '').toString();
     final category = (item['kategori'] ?? 'Kegiatan Lapangan').toString();
     final reminderMinutes =
         int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
+    final reminderClock =
+        JadwalDateUtils.calculateReminderTimeStr(time, reminderMinutes);
     final isCompleted = item['isCompleted'] == true;
 
     await showModalBottomSheet<void>(
@@ -960,6 +1067,21 @@ class _JadwalPageState extends State<JadwalPage> {
                       ),
                     ),
                   ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(bottomSheetContext);
+                      addSchedule(existingItem: item);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 18, color: green),
+                    label: const Text(
+                      'Edit',
+                      style: TextStyle(
+                        color: green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -985,7 +1107,8 @@ class _JadwalPageState extends State<JadwalPage> {
               ),
               _DetailRow(
                 icon: Icons.notifications_active_outlined,
-                text: 'Pengingat $reminderMinutes menit sebelum jadwal (Aplikasi & WA)',
+                text:
+                    'Pengingat $reminderMinutes menit sebelum jadwal (Pukul $reminderClock WIB)',
               ),
               if (description.isNotEmpty)
                 _DetailRow(
@@ -1004,7 +1127,7 @@ class _JadwalPageState extends State<JadwalPage> {
                           builder: (ctx) => AlertDialog(
                             title: const Text('Hapus Jadwal'),
                             content: const Text(
-                              'Apakah Anda yakin ingin menghapus jadwal ini?',
+                              'Apakah Anda yakin ingin menghapus jadwal ini? Pengingat terkait juga akan dibatalkan.',
                             ),
                             actions: [
                               TextButton(
@@ -1030,7 +1153,9 @@ class _JadwalPageState extends State<JadwalPage> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Jadwal berhasil dihapus'),
+                                content: Text(
+                                  'Jadwal dan pengingat terkait berhasil dihapus',
+                                ),
                               ),
                             );
                           }
@@ -1094,7 +1219,7 @@ class _JadwalPageState extends State<JadwalPage> {
         DateTime(displayedMonth.year, displayedMonth.month, 1).weekday;
     final daysInMonth =
         DateTime(displayedMonth.year, displayedMonth.month + 1, 0).day;
-    final today = DateTime.now();
+    final today = JadwalDateUtils.nowWib();
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
@@ -1102,486 +1227,605 @@ class _JadwalPageState extends State<JadwalPage> {
     final textColor = isDark ? Colors.white : const Color(0xFF24352A);
     final subColor = isDark ? Colors.white70 : const Color(0xFF758278);
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? const Color(0xFF121A15) : const Color(0xFFF7F9F6),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header bar (Tombol Back Sudah Diperbaiki)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-              child: Row(
-                children: [
-                  Material(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(13),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(13),
-                      onTap: _handleBackButton,
-                      child: SizedBox(
-                        width: 46,
-                        height: 46,
-                        child: Icon(
-                          Icons.arrow_back_rounded,
-                          color: textColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      'Jadwal Kegiatan',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _loadData,
-                    icon: Icon(
-                      Icons.refresh_rounded,
-                      color: isDark ? const Color(0xFF81C784) : green,
-                    ),
-                    tooltip: 'Muat ulang jadwal',
-                  ),
-                ],
-              ),
-            ),
-
-            // Search bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: TextField(
-                controller: searchController,
-                style: TextStyle(color: textColor),
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Cari kegiatan, kategori, atau lokasi...',
-                  hintStyle: TextStyle(color: isDark ? Colors.white38 : null),
-                  prefixIcon: Icon(
-                    Icons.search,
-                    color: isDark ? const Color(0xFF81C784) : Colors.grey,
-                  ),
-                  filled: true,
-                  fillColor: cardBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: cardBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: cardBorder),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
-                children: [
-                  // Kalender
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
+    return PopScope(
+      canPop: Navigator.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _handleBackButton();
+        }
+      },
+      child: Scaffold(
+        backgroundColor:
+            isDark ? const Color(0xFF121A15) : const Color(0xFFF7F9F6),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Header bar (Tombol Back, History Reminder & Notifikasi)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+                child: Row(
+                  children: [
+                    Material(
                       color: cardBg,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: cardBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(
-                            alpha: isDark ? 0.2 : 0.04,
+                      borderRadius: BorderRadius.circular(13),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(13),
+                        onTap: _handleBackButton,
+                        child: SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(
+                            Icons.arrow_back_rounded,
+                            color: textColor,
                           ),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => changeMonth(-1),
-                              icon: Icon(Icons.chevron_left, color: textColor),
-                              tooltip: 'Bulan sebelumnya',
-                            ),
-                            Expanded(
-                              child: Text(
-                                '${monthNames[displayedMonth.month - 1]} ${displayedMonth.year}',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => changeMonth(1),
-                              icon: Icon(Icons.chevron_right, color: textColor),
-                              tooltip: 'Bulan selanjutnya',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: dayNames.map((name) {
-                            return Expanded(
-                              child: Center(
-                                child: Text(
-                                  name,
-                                  style: TextStyle(
-                                    color: subColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 10),
-                        ...List.generate(
-                          (firstWeekday - 1 + daysInMonth + 6) ~/ 7,
-                          (week) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 7),
-                              child: Row(
-                                children: List.generate(7, (column) {
-                                  final day =
-                                      week * 7 + column - (firstWeekday - 2);
-
-                                  if (day < 1 || day > daysInMonth) {
-                                    return const Expanded(
-                                      child: SizedBox(height: 40),
-                                    );
-                                  }
-
-                                  final date = DateTime(
-                                    displayedMonth.year,
-                                    displayedMonth.month,
-                                    day,
-                                  );
-                                  final selected = !showAllHistory &&
-                                      dateKey(date) == dateKey(selectedDate);
-                                  final isToday =
-                                      dateKey(date) == dateKey(today);
-                                  final hasSchedule = schedules.any(
-                                    (item) =>
-                                        dateKey(_getItemDate(item)) ==
-                                        dateKey(date),
-                                  );
-
-                                  return Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => selectDay(day),
-                                      child: Container(
-                                        height: 40,
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? green
-                                              : Colors.transparent,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: isToday && !selected
-                                              ? Border.all(color: green)
-                                              : null,
-                                        ),
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              '$day',
-                                              style: TextStyle(
-                                                color: selected
-                                                    ? Colors.white
-                                                    : textColor,
-                                                fontWeight: selected || isToday
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                              ),
-                                            ),
-                                            if (hasSchedule)
-                                              Container(
-                                                width: 5,
-                                                height: 5,
-                                                decoration: BoxDecoration(
-                                                  color: selected
-                                                      ? Colors.white
-                                                      : (isDark
-                                                          ? const Color(
-                                                              0xFF81C784,
-                                                            )
-                                                          : green),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Tombol Tambah Jadwal
-                  SizedBox(
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: addSchedule,
-                      icon: const Icon(Icons.add_circle_outline_rounded),
-                      label: const Text(
-                        'Tambah Jadwal Kegiatan',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Header Riwayat Jadwal + Toggle "Semua Riwayat" vs "Tanggal Dipilih"
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Riwayat Jadwal',
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Jadwal Kegiatan',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 21,
                           fontWeight: FontWeight.bold,
                           color: textColor,
                         ),
                       ),
-                      Row(
-                        children: [
-                          InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () {
-                              setState(() => showAllHistory = true);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: showAllHistory ? green : lightGreen,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                'Semua (${schedules.length})',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      showAllHistory ? Colors.white : green,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () {
-                              setState(() => showAllHistory = false);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: !showAllHistory ? green : lightGreen,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                formatDate(selectedDate),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      !showAllHistory ? Colors.white : green,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                    ),
+                    IconButton(
+                      onPressed: _openHistoryReminderPage,
+                      icon: Icon(
+                        Icons.history_rounded,
+                        color: isDark ? const Color(0xFF81C784) : green,
                       ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  if (isLoading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: CircularProgressIndicator(color: green),
-                      ),
-                    )
-                  else if (filteredSchedules.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(26),
-                      decoration: BoxDecoration(
-                        color: cardBg,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: cardBorder),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.event_note_outlined,
-                            size: 42,
-                            color:
-                                isDark ? const Color(0xFF81C784) : Colors.grey,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            showAllHistory
-                                ? 'Belum ada riwayat jadwal tersimpan'
-                                : 'Belum ada jadwal pada tanggal ${formatDate(selectedDate)}',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: subColor),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ...filteredSchedules.map(
-                      (item) {
-                        final itemDate = _getItemDate(item);
-                        final title =
-                            (item['title'] ?? item['judul'] ?? '').toString();
-                        final time =
-                            (item['time'] ?? item['waktu'] ?? '').toString();
-                        final location =
-                            (item['location'] ?? item['lokasi'] ?? '')
-                                .toString();
-                        final category =
-                            (item['kategori'] ?? 'Penyuluhan').toString();
-                        final isCompleted = item['isCompleted'] == true;
-
-                        return Card(
-                          color: cardBg,
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: cardBorder),
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
+                      tooltip: 'History Reminder',
+                    ),
+                    ListenableBuilder(
+                      listenable: NotificationService.instance,
+                      builder: (context, _) {
+                        final count = NotificationService.instance.totalCount;
+                        return IconButton(
+                          onPressed: _openNotificationPage,
+                          tooltip: 'Notifikasi ($count)',
+                          icon: Badge(
+                            isLabelVisible: count > 0,
+                            label: Text('$count'),
+                            child: Icon(
+                              Icons.notifications_outlined,
+                              color: isDark ? const Color(0xFF81C784) : green,
                             ),
-                            onTap: () => showScheduleDetail(item),
-                            leading: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: isCompleted
-                                    ? (isDark
-                                        ? const Color(0xFF1B3B22)
-                                        : Colors.green.shade50)
-                                    : (isDark
-                                        ? const Color(0xFF26352B)
-                                        : lightGreen),
-                                borderRadius: BorderRadius.circular(13),
-                              ),
-                              child: Icon(
-                                isCompleted
-                                    ? Icons.check_circle_rounded
-                                    : Icons.event_note_rounded,
-                                color: isDark
-                                    ? const Color(0xFF81C784)
-                                    : green,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    title,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      decoration: isCompleted
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: isCompleted
-                                          ? Colors.grey
-                                          : textColor,
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: softGreen,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    category,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: green,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                '${formatDate(itemDate)} • $time WIB • $location',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: subColor,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
                           ),
                         );
                       },
                     ),
-                ],
+                    IconButton(
+                      onPressed: _loadData,
+                      icon: Icon(
+                        Icons.refresh_rounded,
+                        color: isDark ? const Color(0xFF81C784) : green,
+                      ),
+                      tooltip: 'Muat ulang jadwal',
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              // Search bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: TextField(
+                  controller: searchController,
+                  style: TextStyle(color: textColor),
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Cari kegiatan, kategori, atau lokasi...',
+                    hintStyle: TextStyle(color: isDark ? Colors.white38 : null),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: isDark ? const Color(0xFF81C784) : Colors.grey,
+                    ),
+                    filled: true,
+                    fillColor: cardBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: cardBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(15),
+                      borderSide: BorderSide(color: cardBorder),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
+                  children: [
+                    // Kalender
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.2 : 0.04,
+                            ),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              IconButton(
+                                onPressed: () => changeMonth(-1),
+                                icon:
+                                    Icon(Icons.chevron_left, color: textColor),
+                                tooltip: 'Bulan sebelumnya',
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${monthNames[displayedMonth.month - 1]} ${displayedMonth.year}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => changeMonth(1),
+                                icon:
+                                    Icon(Icons.chevron_right, color: textColor),
+                                tooltip: 'Bulan selanjutnya',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: dayNames.map((name) {
+                              return Expanded(
+                                child: Center(
+                                  child: Text(
+                                    name,
+                                    style: TextStyle(
+                                      color: subColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 10),
+                          ...List.generate(
+                            (firstWeekday - 1 + daysInMonth + 6) ~/ 7,
+                            (week) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 7),
+                                child: Row(
+                                  children: List.generate(7, (column) {
+                                    final day =
+                                        week * 7 + column - (firstWeekday - 2);
+
+                                    if (day < 1 || day > daysInMonth) {
+                                      return const Expanded(
+                                        child: SizedBox(height: 40),
+                                      );
+                                    }
+
+                                    final date = DateTime(
+                                      displayedMonth.year,
+                                      displayedMonth.month,
+                                      day,
+                                    );
+                                    final selected = !showAllHistory &&
+                                        dateKey(date) == dateKey(selectedDate);
+                                    final isToday =
+                                        dateKey(date) == dateKey(today);
+                                    final hasSchedule = schedules.any(
+                                      (item) =>
+                                          dateKey(_getItemDate(item)) ==
+                                          dateKey(date),
+                                    );
+
+                                    return Expanded(
+                                      child: GestureDetector(
+                                        onTap: () => selectDay(day),
+                                        child: Container(
+                                          height: 40,
+                                          margin: const EdgeInsets.symmetric(
+                                            horizontal: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: selected
+                                                ? green
+                                                : Colors.transparent,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                            border: isToday && !selected
+                                                ? Border.all(color: green)
+                                                : null,
+                                          ),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                '$day',
+                                                style: TextStyle(
+                                                  color: selected
+                                                      ? Colors.white
+                                                      : textColor,
+                                                  fontWeight:
+                                                      selected || isToday
+                                                          ? FontWeight.bold
+                                                          : FontWeight.normal,
+                                                ),
+                                              ),
+                                              if (hasSchedule)
+                                                Container(
+                                                  width: 5,
+                                                  height: 5,
+                                                  decoration: BoxDecoration(
+                                                    color: selected
+                                                        ? Colors.white
+                                                        : (isDark
+                                                            ? const Color(
+                                                                0xFF81C784,
+                                                              )
+                                                            : green),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Tombol Tambah Jadwal & Tombol History Reminder
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: SizedBox(
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              onPressed: () => addSchedule(),
+                              icon: const Icon(
+                                Icons.add_circle_outline_rounded,
+                              ),
+                              label: const Text(
+                                'Tambah Jadwal',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14.5,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: green,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 52,
+                            child: OutlinedButton.icon(
+                              onPressed: _openHistoryReminderPage,
+                              icon: const Icon(Icons.history_rounded, size: 19),
+                              label: const Text(
+                                'History Reminder',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor:
+                                    isDark ? const Color(0xFF81C784) : green,
+                                side: BorderSide(
+                                  color:
+                                      isDark ? const Color(0xFF81C784) : green,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // Header Riwayat Jadwal + Toggle "Semua Riwayat" vs "Tanggal Dipilih"
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Riwayat Jadwal',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () {
+                                setState(() => showAllHistory = true);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: showAllHistory ? green : lightGreen,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  'Semua (${schedules.length})',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: showAllHistory
+                                        ? Colors.white
+                                        : green,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              onTap: () {
+                                setState(() => showAllHistory = false);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: !showAllHistory ? green : lightGreen,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  formatDate(selectedDate),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: !showAllHistory
+                                        ? Colors.white
+                                        : green,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    if (isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: CircularProgressIndicator(color: green),
+                        ),
+                      )
+                    else if (filteredSchedules.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(26),
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: cardBorder),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.event_note_outlined,
+                              size: 42,
+                              color: isDark
+                                  ? const Color(0xFF81C784)
+                                  : Colors.grey,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              showAllHistory
+                                  ? 'Belum ada riwayat jadwal tersimpan'
+                                  : 'Belum ada jadwal pada tanggal ${formatDate(selectedDate)}',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: subColor),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ...filteredSchedules.map(
+                        (item) {
+                          final itemDate = _getItemDate(item);
+                          final title =
+                              (item['title'] ?? item['judul'] ?? '').toString();
+                          final time = JadwalService.formatTimeString(
+                            (item['time'] ?? item['waktu'] ?? '08:00')
+                                .toString(),
+                          );
+                          final reminderMinutes = int.tryParse(
+                                (item['reminderMinutes'] ?? 30).toString(),
+                              ) ??
+                              30;
+                          final reminderClock =
+                              JadwalDateUtils.calculateReminderTimeStr(
+                            time,
+                            reminderMinutes,
+                          );
+                          final location =
+                              (item['location'] ?? item['lokasi'] ?? '')
+                                  .toString();
+                          final category =
+                              (item['kategori'] ?? 'Penyuluhan').toString();
+                          final isCompleted = item['isCompleted'] == true;
+
+                          return Card(
+                            color: cardBg,
+                            elevation: 0,
+                            margin: const EdgeInsets.only(bottom: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(color: cardBorder),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 6,
+                              ),
+                              onTap: () => showScheduleDetail(item),
+                              leading: Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: isCompleted
+                                      ? (isDark
+                                          ? const Color(0xFF1B3B22)
+                                          : Colors.green.shade50)
+                                      : (isDark
+                                          ? const Color(0xFF26352B)
+                                          : lightGreen),
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: Icon(
+                                  isCompleted
+                                      ? Icons.check_circle_rounded
+                                      : Icons.event_note_rounded,
+                                  color: isDark
+                                      ? const Color(0xFF81C784)
+                                      : green,
+                                ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        decoration: isCompleted
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: isCompleted
+                                            ? Colors.grey
+                                            : textColor,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: softGreen,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      category,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: green,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${formatDate(itemDate)} • $time WIB • $location',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: subColor,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.notifications_active_outlined,
+                                          size: 13,
+                                          color: isDark
+                                              ? const Color(0xFF81C784)
+                                              : green,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            'Reminder: $reminderMinutes menit sebelum ($reminderClock WIB)',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: isDark
+                                                  ? const Color(0xFFA5D6A7)
+                                                  : green,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                            ),
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1600,16 +1844,16 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: const Color(0xFF245C3A)),
-          const SizedBox(width: 12),
+          Icon(icon, size: 20, color: const Color(0xFF245C3A)),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 15, height: 1.4),
+              style: const TextStyle(fontSize: 14),
             ),
           ),
         ],

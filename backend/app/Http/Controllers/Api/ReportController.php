@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppNotification;
 use App\Models\Report;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
 {
@@ -65,6 +67,29 @@ class ReportController extends Controller
             'description' => $validated['description'] ?? null,
             'status' => $validated['status'] ?? 'draft',
         ]);
+
+        // Catat notifikasi laporan baru ke tabel app_notifications (tanpa mengganggu alur utama)
+        try {
+            if (Schema::hasTable('app_notifications')) {
+                $statusLabel = ($report->status === 'draft') ? 'Disimpan sebagai Draft' : 'Berhasil Dikirim';
+                AppNotification::create([
+                    'user_id' => $request->user()->id,
+                    'type' => 'laporan',
+                    'title' => 'Laporan Baru: ' . $report->title,
+                    'message' => "Laporan kegiatan \"{$report->title}\" di {$report->location} ({$statusLabel}).",
+                    'reference_id' => 'report_' . $report->id,
+                    'metadata' => [
+                        'report_id' => $report->id,
+                        'activity_date' => $validated['activity_date'],
+                        'location' => $report->location,
+                        'status' => $report->status,
+                    ],
+                    'is_read' => false,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Abaikan jika tabel belum tersedia
+        }
 
         return response()->json([
             'success' => true,

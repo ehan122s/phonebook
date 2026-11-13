@@ -3,6 +3,21 @@ abstract final class ApiConstants {
   /// Base URL backend Laravel di Vercel.
   static const String baseUrl = 'https://phonebook-five-umber.vercel.app';
 
+  // Endpoint URL Helpers
+  static String get categoriesUrl => '$baseUrl/api/categories';
+  static String get materialsUrl => '$baseUrl/api/materials';
+  static String get usersUrl => '$baseUrl/api/users';
+  static String userDetailUrl(dynamic id) => '$baseUrl/api/users/$id';
+  static String get reportsUrl => '$baseUrl/api/reports';
+  static String reportDetailUrl(dynamic id) => '$baseUrl/api/reports/$id';
+  static String get schedulesUrl => '$baseUrl/api/schedules';
+  static String scheduleDetailUrl(dynamic id) => '$baseUrl/api/schedules/$id';
+  static String get notificationsUrl => '$baseUrl/api/notifications';
+  static String notificationDetailUrl(dynamic id) =>
+      '$baseUrl/api/notifications/$id';
+  static String get clearAllNotificationsUrl =>
+      '$baseUrl/api/notifications/clear-all';
+
   /// Helper untuk merangkai token tanpa memicu filter push protection Git
   static String _join(List<String> parts) => parts.join();
 

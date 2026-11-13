@@ -6,6 +6,8 @@
 //   SplashScreen (bukan await _mainCtrl.forward()), sehingga tidak akan pernah
 //   nyangkut/stuck saat di-Hot Restart di Flutter Web!
 // - Bisa juga di-klik layarnya kalau mau langsung skip Splash Screen.
+// - Menginisialisasi NotificationService global untuk pengelolaan notifikasi
+//   dan penjadwalan reminder otomatis (Asia/Jakarta).
 // ============================================================================
 
 import 'dart:async';
@@ -16,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'services/app_settings_service.dart';
+import 'services/notification_service.dart';
 import 'pages/admin/admin_page.dart';
 import 'pages/home/home.dart';
 import 'pages/login/login.dart';
@@ -31,6 +34,9 @@ void main() async {
 
   // Inisialisasi pengaturan tema dan ukuran font global
   await AppSettingsService.instance.init();
+
+  // Inisialisasi sistem notifikasi & penjadwalan reminder otomatis (Asia/Jakarta)
+  await NotificationService.instance.init();
 
   runApp(const PhonebookApp());
 }
@@ -48,6 +54,8 @@ class PhonebookApp extends StatelessWidget {
         return MaterialApp(
           title: 'Phonebook',
           debugShowCheckedModeBanner: false,
+          scaffoldMessengerKey:
+              NotificationService.instance.scaffoldMessengerKey,
           themeMode: settings.themeMode,
           theme: _buildLightTheme(),
           darkTheme: _buildDarkTheme(),

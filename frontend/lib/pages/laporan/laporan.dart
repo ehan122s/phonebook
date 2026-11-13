@@ -9,6 +9,8 @@ import '../../services/connectivity_service.dart';
 import '../../services/laporan_service.dart';
 import '../../services/offline_database.dart';
 import '../../services/sync_service.dart';
+import '../../services/notification_service.dart';
+import '../notifikasi/notifikasi_page.dart';
 import '../../widgets/laporan/create_report_card.dart';
 import '../../widgets/laporan/empty_state.dart';
 import '../../widgets/laporan/laporan_header.dart';
@@ -110,6 +112,11 @@ class _LaporanPageState extends State<LaporanPage> {
       if (result.synced > 0) {
         // Clean up synced reports from local DB
         await OfflineDatabase.instance.clearSyncedReports();
+        await NotificationService.instance.addNotification(
+          type: 'sinkronisasi',
+          title: 'Sinkronisasi Laporan Berhasil',
+          message: '${result.synced} laporan offline berhasil disinkronkan ke server.',
+        );
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -477,6 +484,30 @@ class _LaporanPageState extends State<LaporanPage> {
           color: primaryGreen,
         ),
         actions: [
+          ListenableBuilder(
+            listenable: NotificationService.instance,
+            builder: (context, _) {
+              final notifCount = NotificationService.instance.totalCount;
+              return IconButton(
+                tooltip: 'Notifikasi ($notifCount)',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationPage(),
+                    ),
+                  );
+                },
+                icon: Badge(
+                  isLabelVisible: notifCount > 0,
+                  label: Text('$notifCount'),
+                  child: Icon(
+                    Icons.notifications_outlined,
+                    color: primaryGreen,
+                  ),
+                ),
+              );
+            },
+          ),
           if (_pendingSyncCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 8),

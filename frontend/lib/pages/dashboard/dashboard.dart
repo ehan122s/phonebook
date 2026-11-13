@@ -1,9 +1,11 @@
 // ============================================================================
 // [KHUSUS USER - DASHBOARD USER]
-// Simpan file ini di: lib/pages/dashboard.dart
+// Simpan file ini di: lib/pages/dashboard/dashboard.dart
 // ============================================================================
 
 import 'package:flutter/material.dart';
+import '../../services/notification_service.dart';
+import '../notifikasi/notifikasi_page.dart';
 import 'kategori.dart';
 
 class DashboardPage extends StatelessWidget {
@@ -28,6 +30,14 @@ class DashboardPage extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const KategoriPage(),
+      ),
+    );
+  }
+
+  void _openNotificationPage(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationPage(),
       ),
     );
   }
@@ -129,7 +139,7 @@ class DashboardPage extends StatelessWidget {
                       icon: Icons.history_rounded,
                       title: 'Jurnal Kegiatan',
                       actionText: 'Lihat Semua',
-                      onActionTap: () {},
+                      onActionTap: () => onNavigate?.call(2),
                       textColor: textColor,
                     ),
                     const SizedBox(height: 14),
@@ -265,44 +275,84 @@ class DashboardPage extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // Ikon Lonceng Notifikasi seperti pada referensi
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: kWhite.withValues(alpha: 0.9),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.notifications_rounded,
-                              color: kPrimary,
-                              size: 24,
-                            ),
-                          ),
-                          Positioned(
-                            right: 2,
-                            top: 2,
-                            child: Container(
-                              width: 11,
-                              height: 11,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE53935),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: kWhite, width: 2),
+                      // Ikon Lonceng Notifikasi dengan Badge Dinamis & Navigasi ke Halaman Notifikasi
+                      ListenableBuilder(
+                        listenable: NotificationService.instance,
+                        builder: (context, _) {
+                          final notifCount =
+                              NotificationService.instance.totalCount;
+
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () => _openNotificationPage(context),
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      color: kWhite.withValues(alpha: 0.9),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.notifications_rounded,
+                                      color: kPrimary,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  if (notifCount > 0)
+                                    Positioned(
+                                      right: -2,
+                                      top: -2,
+                                      child: Container(
+                                        constraints: const BoxConstraints(
+                                          minWidth: 20,
+                                          minHeight: 20,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 5,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE53935),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: kWhite,
+                                            width: 1.8,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            notifCount > 99
+                                                ? '99+'
+                                                : '$notifCount',
+                                            style: const TextStyle(
+                                              color: kWhite,
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -775,7 +825,8 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF223026) : DashboardPage.kSoftGreen;
-    final valueColor = isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final valueColor =
+        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -984,7 +1035,8 @@ class _ArchiveActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
-    final titleColor = isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final titleColor =
+        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -999,7 +1051,8 @@ class _ArchiveActionCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: DashboardPage.kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
+            color:
+                DashboardPage.kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

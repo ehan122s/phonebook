@@ -11,6 +11,7 @@
   import '../../constants/laporan_constants.dart';
   import '../../services/connectivity_service.dart';
   import '../../services/laporan_service.dart';
+  import '../../services/notification_service.dart';
 
   // ---------------------------------------------------------------------------
   // Report‑type selection bottom sheet
@@ -962,9 +963,17 @@
     if (!online) {
       // ── Offline path: save locally ──
       try {
-        await LaporanService.saveOffline(
+        final localId = await LaporanService.saveOffline(
           payload: payload,
           jenisLaporan: jenisLaporan,
+        );
+
+        await NotificationService.instance.addReportCreatedNotification(
+          title: title,
+          jenisLaporan: jenisLaporan,
+          location: location,
+          status: status,
+          reportId: 'local_$localId',
         );
 
         await onReportSaved();

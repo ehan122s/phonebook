@@ -737,7 +737,10 @@ class _AdminPageState extends State<AdminPage> {
       case 3:
         return const LaporanPage();
       case 4:
-        return const JadwalPage();
+        return JadwalPage(
+          onBack: () => setState(() => _selectedMenu = 0),
+          onNavigate: (idx) => setState(() => _selectedMenu = idx == 0 ? 0 : idx),
+        );
       case 5:
         return const MateriPage();
       default:
