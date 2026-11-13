@@ -17,7 +17,7 @@ import 'connectivity_service.dart';
 ///    secara persisten (SharedPreferences + API Backend) tanpa menghapus data Laporan/Jadwal asli.
 /// 3. Menjadwalkan Reminder Jadwal otomatis menggunakan timezone Asia/Jakarta (WIB / UTC+7)
 ///    melalui Android AlarmManager MethodChannel (tetap jalan di background, app ditutup, atau restart)
-///    serta exact Timer di level aplikasi (tetap jalan saat berpindah halaman).
+///    serta exact Timer & pengecekan berkala 5 detik di level aplikasi (tetap jalan saat berpindah halaman).
 class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   NotificationService._();
 
@@ -30,7 +30,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   static const String _deletedIdsPrefix = 'phonebook_deleted_notif_ids_v2';
   static const String _clearedAtPrefix = 'phonebook_notif_cleared_at_v2';
   static const String _triggeredRemindersKey =
-      'phonebook_triggered_reminders_v2';
+      'phonebook_triggered_reminders_v3';
   static const String _jadwalStorageKey = 'phonebook_jadwal_items_v1';
 
   /// Global key agar banner/snackbar reminder tetap dapat muncul meskipun pengguna berpindah halaman
@@ -41,6 +41,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _deletedNotificationIds = {};
   final Set<String> _triggeredReminderSignatures = {};
   final Map<String, Timer> _exactReminderTimers = {};
+  final Map<String, String> _scheduledSignaturesById = {};
 
   Timer? _periodicCheckTimer;
   bool _initialized = false;
@@ -70,10 +71,11 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     await requestAndroidPermission();
     await syncScheduledRemindersFromStorage();
 
-    // Cek setiap 15 detik di level global aplikasi (bukan hanya di halaman Jadwal)
+    // Cek setiap 5 detik di level global aplikasi agar reminder selalu muncul tepat waktu
+    // walaupun pengguna sedang di halaman Dashboard, Laporan, Materi, atau Profil
     _periodicCheckTimer?.cancel();
     _periodicCheckTimer = Timer.periodic(
-      const Duration(seconds: 15),
+      const Duration(seconds: 5),
       (_) => checkDueRemindersNow(),
     );
   }
@@ -81,9 +83,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _syncNativeTriggeredReminders().then((_) {
-        checkDueRemindersNow();
-      });
+      checkDueRemindersNow();
     }
   }
 
@@ -179,7 +179,6 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
               final id = map['id'].toString();
               final refId = (map['referenceId'] ?? '').toString();
 
-              // Jangan masukkan kembali notifikasi yang sudah pernah dihapus pengguna
               if (_deletedNotificationIds.contains(id) ||
                   (refId.isNotEmpty &&
                       _deletedNotificationIds.contains(refId))) {
@@ -228,7 +227,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Map<String, dynamic> _normalizeNotification(Map<String, dynamic> raw) {
-    final nowWib = JadwalDateUtils.nowWib();
+    final nowWib = DateTime.now();
     final id = (raw['id'] ??
             raw['reference_id'] ??
             'notif_${nowWib.millisecondsSinceEpoch}')
@@ -280,12 +279,11 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     required String message,
     String? referenceId,
     Map<String, dynamic>? metadata,
-    bool triggerSystemNotification = true,
+    bool triggerSystemNotification = false,
   }) async {
-    final nowWib = JadwalDateUtils.nowWib();
-    final id = referenceId ?? 'notif_${nowWib.microsecondsSinceEpoch}';
+    final now = DateTime.now();
+    final id = referenceId ?? 'notif_${now.microsecondsSinceEpoch}';
 
-    // Pastikan jika referenceId baru dibuat, hapus dari daftar deleted lama agar bisa tampil
     _deletedNotificationIds.remove(id);
 
     final newItem = _normalizeNotification({
@@ -294,12 +292,11 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
       'title': title,
       'message': message,
       'referenceId': id,
-      'createdAt': nowWib.toIso8601String(),
+      'createdAt': now.toIso8601String(),
       'isRead': false,
       'metadata': metadata ?? <String, dynamic>{},
     });
 
-    // Hindari duplikasi dengan referenceId yang sama persis
     _notifications.removeWhere(
       (e) =>
           e['id'].toString() == id ||
@@ -373,18 +370,18 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     required String status,
     dynamic reportId,
   }) async {
-    final nowWib = JadwalDateUtils.nowWib();
+    final now = DateTime.now();
     final statusLabel =
         status.toLowerCase() == 'draft' ? 'Draft Disimpan' : 'Berhasil Dikirim';
     final ref = reportId != null
-        ? 'report_${reportId}_${nowWib.millisecondsSinceEpoch}'
-        : 'report_${nowWib.millisecondsSinceEpoch}';
+        ? 'report_${reportId}_${now.millisecondsSinceEpoch}'
+        : 'report_${now.millisecondsSinceEpoch}';
 
     await addNotification(
       type: 'laporan',
       title: 'Laporan Baru ($statusLabel)',
       message:
-          '$jenisLaporan "$title" di $location telah tercatat pada ${JadwalDateUtils.formatTanggal(nowWib)}.',
+          '$jenisLaporan "$title" di $location telah tercatat pada ${JadwalDateUtils.formatTanggal(now)}.',
       referenceId: ref,
       metadata: {
         'reportId': reportId?.toString(),
@@ -397,9 +394,11 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Helper ketika pengguna membuat jadwal baru
+  /// Helper ketika pengguna membuat jadwal baru:
+  /// Mencatat ke halaman Notifikasi dalam aplikasi TANPA memicu notifikasi reminder sistem prematur
+  /// (notifikasi reminder sistem baru akan berbunyi otomatis tepat pada waktu `waktu_jadwal - reminderMinutes`).
   Future<void> addScheduleCreatedNotification(Map<String, dynamic> item) async {
-    final nowWib = JadwalDateUtils.nowWib();
+    final now = DateTime.now();
     final judul = (item['judul'] ?? item['title'] ?? 'Kegiatan').toString();
     final tanggalIso = (item['tanggalIso'] ?? '').toString();
     final tanggalFormatted =
@@ -407,18 +406,18 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     final waktu = (item['waktu'] ?? item['time'] ?? '08:00').toString();
     final lokasi = (item['lokasi'] ?? item['location'] ?? '-').toString();
     final reminderMinutes =
-        int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
+        int.tryParse((item['reminderMinutes'] ?? 10).toString()) ?? 10;
     final reminderClock =
         JadwalDateUtils.calculateReminderTimeStr(waktu, reminderMinutes);
 
     final ref =
-        'schedule_created_${item['id']}_${nowWib.millisecondsSinceEpoch}';
+        'schedule_created_${item['id']}_${now.millisecondsSinceEpoch}';
 
     await addNotification(
       type: 'jadwal',
       title: 'Jadwal Baru: $judul',
       message:
-          'Dijadwalkan pada $tanggalFormatted pukul $waktu WIB di $lokasi. Pengingat otomatis aktif $reminderMinutes menit sebelumnya (pukul $reminderClock WIB).',
+          'Dijadwalkan pada $tanggalFormatted pukul $waktu WIB di $lokasi. Pengingat otomatis akan muncul $reminderMinutes menit sebelumnya (pukul $reminderClock WIB).',
       referenceId: ref,
       metadata: {
         'scheduleId': item['id']?.toString(),
@@ -429,7 +428,9 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
         'reminderTime': reminderClock,
         'lokasi': lokasi,
       },
-      triggerSystemNotification: true,
+      // JANGAN memunculkan notifikasi sistem saat menekan tombol Tambah Jadwal;
+      // biarkan notifikasi sistem muncul tepat pada waktu reminder (misal 12:55 atau 12:50)!
+      triggerSystemNotification: false,
     );
   }
 
@@ -491,8 +492,6 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// B. Fitur Hapus Notifikasi Satu per Satu
-  /// Menghapus 1 notifikasi secara permanen dari penyimpanan lokal & server
-  /// tanpa memengaruhi notifikasi lain maupun data laporan/jadwal asli.
   Future<void> deleteNotification(String id) async {
     final index =
         _notifications.indexWhere((e) => e['id'].toString() == id.toString());
@@ -537,8 +536,6 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// A. Fitur Hapus Semua Notifikasi
-  /// Menghapus seluruh notifikasi pengguna sekaligus secara permanen dari penyimpanan lokal & server
-  /// tanpa menghapus laporan atau jadwal aslinya.
   Future<void> deleteAllNotifications() async {
     for (final item in _notifications) {
       _deletedNotificationIds.add(item['id'].toString());
@@ -551,7 +548,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _notifications.clear();
-    _lastClearedAt = JadwalDateUtils.nowWib();
+    _lastClearedAt = DateTime.now();
 
     final prefs = await SharedPreferences.getInstance();
     final scope = await _getUserScopeKey();
@@ -583,7 +580,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ===========================================================================
-  // PENJADWALAN REMINDER OTOMATIS (TIMEZONE ASIA/JAKARTA - WIB)
+  // PENJADWALAN REMINDER OTOMATIS (TIMEZONE LOKAL PERANGKAT / ASIA/JAKARTA)
   // ===========================================================================
 
   Future<void> _loadTriggeredSignatures() async {
@@ -592,7 +589,6 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     _triggeredReminderSignatures
       ..clear()
       ..addAll(list);
-    await _syncNativeTriggeredReminders();
   }
 
   Future<void> _saveTriggeredSignatures() async {
@@ -603,35 +599,13 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _syncNativeTriggeredReminders() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    try {
-      final result =
-          await _nativeChannel.invokeMethod<List<dynamic>>('getTriggeredReminders');
-      if (result != null && result.isNotEmpty) {
-        bool changed = false;
-        for (final sig in result) {
-          final str = sig?.toString() ?? '';
-          if (str.isNotEmpty && _triggeredReminderSignatures.add(str)) {
-            changed = true;
-          }
-        }
-        if (changed) {
-          await _saveTriggeredSignatures();
-        }
-      }
-    } catch (_) {}
-  }
-
   /// Membuat signature unik untuk suatu versi jadwal (id + tanggal + waktu + reminderMinutes)
-  /// sehingga tidak pernah ada notifikasi ganda untuk jadwal yang sama, namun jika jadwal diedit
-  /// (jam/tanggal/reminder berubah), reminder baru tetap akan dijadwalkan ulang.
   String buildReminderSignature(Map<String, dynamic> item) {
     final id = (item['id'] ?? '').toString();
     final tanggalIso = (item['tanggalIso'] ?? '').toString();
     final waktu = (item['waktu'] ?? item['time'] ?? '08:00').toString();
     final reminderMinutes =
-        int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
+        int.tryParse((item['reminderMinutes'] ?? 10).toString()) ?? 10;
     return '${id}_${tanggalIso}_${waktu}_$reminderMinutes';
   }
 
@@ -655,31 +629,47 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  /// Menjadwalkan ulang semua jadwal dalam list
+  /// Menjadwalkan ulang semua jadwal dalam list tanpa membatalkan timer aktif yang signature-nya sama
   Future<void> rescheduleAllFromList(List<Map<String, dynamic>> items) async {
-    for (final timer in _exactReminderTimers.values) {
-      timer.cancel();
-    }
-    _exactReminderTimers.clear();
+    final activeIds = <String>{};
 
     for (final item in items) {
+      final id = (item['id'] ?? '').toString();
+      if (id.isEmpty) continue;
+      activeIds.add(id);
+
       if (item['isCompleted'] == true || item['reminderEnabled'] == false) {
-        await cancelReminderForScheduleId(item['id'], removeTriggeredHistory: false);
+        await cancelReminderForScheduleId(id, removeTriggeredHistory: false);
       } else {
+        final sig = buildReminderSignature(item);
+        // Jika timer untuk signature yang sama persis sudah aktif, jangan di-reset
+        if (_scheduledSignaturesById[id] == sig &&
+            (_exactReminderTimers[id]?.isActive ?? false)) {
+          continue;
+        }
         await scheduleReminderForItem(item);
       }
+    }
+
+    // Bersihkan timer untuk jadwal yang sudah tidak ada di daftar
+    final removedIds = _exactReminderTimers.keys
+        .where((k) => !activeIds.contains(k))
+        .toList();
+    for (final remId in removedIds) {
+      _exactReminderTimers[remId]?.cancel();
+      _exactReminderTimers.remove(remId);
+      _scheduledSignaturesById.remove(remId);
     }
   }
 
   /// Menjadwalkan reminder otomatis untuk satu item jadwal berdasarkan waktu jadwal - reminderMinutes
-  /// dalam zona waktu Asia/Jakarta (WIB).
   Future<void> scheduleReminderForItem(Map<String, dynamic> item) async {
     final id = (item['id'] ?? '').toString();
     if (id.isEmpty) return;
 
-    // Batalkan timer lama untuk ID ini terlebih dahulu
     _exactReminderTimers[id]?.cancel();
     _exactReminderTimers.remove(id);
+    _scheduledSignaturesById.remove(id);
 
     if (item['isCompleted'] == true || item['reminderEnabled'] == false) {
       await cancelReminderForScheduleId(id, removeTriggeredHistory: false);
@@ -699,17 +689,26 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
 
     final reminderMinutes =
-        int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
+        int.tryParse((item['reminderMinutes'] ?? 10).toString()) ?? 10;
 
-    final scheduleWib = DateTime(date.year, date.month, date.day, hour, minute);
-    final reminderTriggerWib =
-        scheduleWib.subtract(Duration(minutes: reminderMinutes));
-    final nowWib = JadwalDateUtils.nowWib();
+    // Gunakan waktu lokal perangkat (Asia/Jakarta) sehingga 100% sinkron dengan jam sistem & TimePicker
+    final scheduleLocal = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    );
+    final reminderTriggerLocal =
+        scheduleLocal.subtract(Duration(minutes: reminderMinutes));
+    final nowLocal = DateTime.now();
 
-    // Jika jadwal utamanya sudah lewat lebih dari 5 menit yang lalu, jangan jadwalkan alarm baru
-    if (nowWib.isAfter(scheduleWib.add(const Duration(minutes: 5)))) {
+    // Jika jadwal utamanya sudah lewat lebih dari 2 menit yang lalu, jangan jadwalkan alarm
+    if (nowLocal.isAfter(scheduleLocal.add(const Duration(minutes: 2)))) {
       return;
     }
+
+    _scheduledSignaturesById[id] = signature;
 
     final title = (item['judul'] ?? item['title'] ?? 'Kegiatan').toString();
     final location = (item['lokasi'] ?? item['location'] ?? '-').toString();
@@ -720,53 +719,74 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     final notifBody =
         'Kegiatan "$title" akan dimulai pukul $timeStr WIB ($reminderMinutes menit lagi) di $location.';
 
-    // Hitung epoch millis dalam Asia/Jakarta (WIB) untuk AlarmManager Android
-    final triggerEpochMillis = JadwalDateUtils.wibToEpochMillis(
-      reminderTriggerWib.year,
-      reminderTriggerWib.month,
-      reminderTriggerWib.day,
-      reminderTriggerWib.hour,
-      reminderTriggerWib.minute,
-      0,
-    );
-    final nowEpochMillis = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final effectiveTriggerMillis = triggerEpochMillis <= nowEpochMillis
-        ? nowEpochMillis + 1500
-        : triggerEpochMillis;
+    final triggerEpochMillis = reminderTriggerLocal.millisecondsSinceEpoch;
+    final nowEpochMillis = nowLocal.millisecondsSinceEpoch;
 
-    // 1. Jadwalkan di Native Android AlarmManager (agar tetap berjalan di background/app ditutup/restart)
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        await _nativeChannel.invokeMethod('scheduleReminder', {
-          'scheduleKey': id,
-          'notificationId': (id.hashCode.abs() % 90000) + 10000,
-          'triggerAtMillis': effectiveTriggerMillis,
-          'title': notifTitle,
-          'body': notifBody,
-          'signature': signature,
-        });
-      } catch (_) {}
-    }
+    final delay = reminderTriggerLocal.difference(nowLocal);
 
-    // 2. Jadwalkan Exact Timer di Flutter (agar tepat pada detiknya memicu update state & banner saat app aktif/pindah halaman)
-    final delay = reminderTriggerWib.difference(nowWib);
-    if (delay <= Duration.zero) {
-      // Sudah memasuki rentang waktu reminder (antara reminderTriggerWib s/d scheduleWib)
-      _exactReminderTimers[id] = Timer(
-        const Duration(milliseconds: 800),
-        () => _triggerReminderNow(item, reminderTimeStr),
-      );
-    } else {
+    if (delay > Duration.zero) {
+      // Waktu reminder masih di masa depan -> jadwalkan tepat pada reminderTriggerLocal!
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await _nativeChannel.invokeMethod('scheduleReminder', {
+            'scheduleKey': id,
+            'notificationId': (id.hashCode.abs() % 90000) + 10000,
+            'triggerAtMillis': triggerEpochMillis,
+            'title': notifTitle,
+            'body': notifBody,
+            'signature': signature,
+          });
+        } catch (_) {}
+      }
+
       _exactReminderTimers[id] = Timer(
         delay,
-        () => _triggerReminderNow(item, reminderTimeStr),
+        () => _triggerReminderNow(
+          item,
+          reminderTimeStr,
+          triggeredByNativeAlready: false,
+        ),
+      );
+    } else {
+      // Apabila waktu sekarang sudah berada pada atau melewati titik reminderTriggerLocal
+      // namun jadwal utama (scheduleLocal) masih belum lewat:
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await _nativeChannel.invokeMethod('scheduleReminder', {
+            'scheduleKey': id,
+            'notificationId': (id.hashCode.abs() % 90000) + 10000,
+            'triggerAtMillis': nowEpochMillis + 1500,
+            'title': notifTitle,
+            'body': notifBody,
+            'signature': signature,
+          });
+        } catch (_) {}
+      }
+
+      _exactReminderTimers[id] = Timer(
+        const Duration(milliseconds: 1500),
+        () => _triggerReminderNow(
+          item,
+          reminderTimeStr,
+          triggeredByNativeAlready: false,
+        ),
       );
     }
   }
 
   /// Mengecek seluruh jadwal di penyimpanan apakah ada yang sudah memasuki waktu reminder
   Future<void> checkDueRemindersNow() async {
-    await _syncNativeTriggeredReminders();
+    Set<String> nativeTriggeredSigs = {};
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final result = await _nativeChannel
+            .invokeMethod<List<dynamic>>('getTriggeredReminders');
+        if (result != null) {
+          nativeTriggeredSigs =
+              result.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toSet();
+        }
+      } catch (_) {}
+    }
 
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_jadwalStorageKey);
@@ -780,7 +800,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    final nowWib = JadwalDateUtils.nowWib();
+    final nowLocal = DateTime.now();
     bool storageUpdated = false;
 
     for (final item in items) {
@@ -804,21 +824,36 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
       final hour = parts.isNotEmpty ? (int.tryParse(parts[0]) ?? 8) : 8;
       final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
       final reminderMinutes =
-          int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
+          int.tryParse((item['reminderMinutes'] ?? 10).toString()) ?? 10;
 
-      final scheduleWib =
+      final scheduleLocal =
           DateTime(date.year, date.month, date.day, hour, minute);
-      final reminderTriggerWib =
-          scheduleWib.subtract(Duration(minutes: reminderMinutes));
+      final reminderTriggerLocal =
+          scheduleLocal.subtract(Duration(minutes: reminderMinutes));
 
-      if (!nowWib.isBefore(reminderTriggerWib) &&
-          !nowWib.isAfter(scheduleWib.add(const Duration(minutes: 5)))) {
+      final bool firedInNative = nativeTriggeredSigs.contains(sig);
+      final bool isTimeReached = !nowLocal.isBefore(reminderTriggerLocal) &&
+          !nowLocal.isAfter(scheduleLocal.add(const Duration(minutes: 5)));
+
+      if (firedInNative || isTimeReached) {
         final reminderTimeStr =
             JadwalDateUtils.calculateReminderTimeStr(timeStr, reminderMinutes);
-        await _triggerReminderNow(item, reminderTimeStr);
+        await _triggerReminderNow(
+          item,
+          reminderTimeStr,
+          triggeredByNativeAlready: firedInNative,
+        );
         item['reminderTriggered'] = true;
-        item['reminderTriggeredAt'] = nowWib.toIso8601String();
+        item['reminderTriggeredAt'] = nowLocal.toIso8601String();
         storageUpdated = true;
+      } else {
+        // Pastikan timer aktif untuk jadwal yang belum tiba waktunya
+        final id = (item['id'] ?? '').toString();
+        if (id.isNotEmpty &&
+            nowLocal.isBefore(reminderTriggerLocal) &&
+            !(_exactReminderTimers[id]?.isActive ?? false)) {
+          await scheduleReminderForItem(item);
+        }
       }
     }
 
@@ -830,8 +865,9 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _triggerReminderNow(
     Map<String, dynamic> item,
-    String reminderTimeStr,
-  ) async {
+    String reminderTimeStr, {
+    required bool triggeredByNativeAlready,
+  }) async {
     final sig = buildReminderSignature(item);
     if (_triggeredReminderSignatures.contains(sig)) return;
 
@@ -841,13 +877,14 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     final id = (item['id'] ?? '').toString();
     _exactReminderTimers[id]?.cancel();
     _exactReminderTimers.remove(id);
+    _scheduledSignaturesById.remove(id);
 
     final title = (item['judul'] ?? item['title'] ?? 'Kegiatan').toString();
     final timeStr = (item['waktu'] ?? item['time'] ?? '08:00').toString();
     final location = (item['lokasi'] ?? item['location'] ?? '-').toString();
     final reminderMinutes =
-        int.tryParse((item['reminderMinutes'] ?? 30).toString()) ?? 30;
-    final nowWib = JadwalDateUtils.nowWib();
+        int.tryParse((item['reminderMinutes'] ?? 10).toString()) ?? 10;
+    final nowLocal = DateTime.now();
 
     // Update status reminderTriggered pada penyimpanan jadwal lokal
     try {
@@ -860,13 +897,13 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
         final idx = list.indexWhere((e) => e['id'].toString() == id);
         if (idx >= 0) {
           list[idx]['reminderTriggered'] = true;
-          list[idx]['reminderTriggeredAt'] = nowWib.toIso8601String();
+          list[idx]['reminderTriggeredAt'] = nowLocal.toIso8601String();
           await prefs.setString(_jadwalStorageKey, jsonEncode(list));
         }
       }
     } catch (_) {}
 
-    // Tambahkan ke daftar Notifikasi aplikasi & tampilkan notifikasi sistem
+    // Tambahkan ke daftar Notifikasi aplikasi & tampilkan notifikasi sistem Android
     await addNotification(
       type: 'reminder',
       title: 'Pengingat Jadwal: $title',
@@ -881,12 +918,47 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
         'reminderTime': reminderTimeStr,
         'lokasi': location,
       },
-      triggerSystemNotification: true,
+      triggerSystemNotification: !triggeredByNativeAlready,
     );
 
-    // Tampilkan notifikasi in-app melalui global ScaffoldMessenger (muncul di halaman mana pun)
+    // Tampilkan MaterialBanner & SnackBar in-app melalui global ScaffoldMessenger
+    // sehingga muncul jelas di halaman mana pun pengguna berada
     final messenger = scaffoldMessengerKey.currentState;
     if (messenger != null) {
+      messenger.clearMaterialBanners();
+      messenger.showMaterialBanner(
+        MaterialBanner(
+          backgroundColor: const Color(0xFFE8F2E8),
+          leading: const CircleAvatar(
+            backgroundColor: Color(0xFF245C3A),
+            child: Icon(
+              Icons.notifications_active_rounded,
+              color: Colors.white,
+            ),
+          ),
+          content: Text(
+            'Pengingat Jadwal ($reminderTimeStr WIB): "$title" akan dimulai pukul $timeStr WIB ($reminderMinutes menit lagi) di $location.',
+            style: const TextStyle(
+              color: Color(0xFF24352A),
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => messenger.hideCurrentMaterialBanner(),
+              child: const Text(
+                'Tutup',
+                style: TextStyle(
+                  color: Color(0xFF245C3A),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
       messenger.showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 6),
@@ -902,7 +974,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Pengingat Jadwal ($reminderTimeStr WIB): "$title" akan dimulai pukul $timeStr WIB ($reminderMinutes menit lagi) di $location.',
+                  'Pengingat Jadwal ($reminderTimeStr WIB): "$title" dimulai pukul $timeStr WIB ($reminderMinutes menit lagi) di $location.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -929,6 +1001,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
 
     _exactReminderTimers[id]?.cancel();
     _exactReminderTimers.remove(id);
+    _scheduledSignaturesById.remove(id);
 
     if (removeTriggeredHistory) {
       _triggeredReminderSignatures.removeWhere((sig) => sig.startsWith('${id}_'));

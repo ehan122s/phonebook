@@ -19,6 +19,7 @@ class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   int selectedIndex = 0;
   int? _previousIndex;
+  bool _isAnimating = false;
   int _slideDirection = 1; // 1 = halaman baru masuk dari kanan, -1 = masuk dari kiri
   final List<int> _tabHistory = [0];
 
@@ -44,11 +45,13 @@ class _HomePageState extends State<HomePage>
       curve: Curves.easeInOutCubic,
     );
 
+    // PENTING: Hanya bersihkan _previousIndex saat animasi benar-benar COMPLETED
+    // (Jangan pada AnimationStatus.dismissed karena forward(from: 0.0) memicu dismissed di awal!)
     _transitionCtrl.addStatusListener((status) {
-      if (status == AnimationStatus.completed ||
-          status == AnimationStatus.dismissed) {
-        if (mounted && _previousIndex != null) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) {
           setState(() {
+            _isAnimating = false;
             _previousIndex = null;
           });
         }
@@ -97,12 +100,18 @@ class _HomePageState extends State<HomePage>
     // Pastikan widget halaman tujuan sudah dibuat di cache sebelum animasi dimulai
     _pageAt(index);
 
+    final int oldIndex = selectedIndex;
+    // Jika pengguna berpindah ke menu dengan indeks lebih besar -> halaman baru masuk dari kanan (+1)
+    // Jika pengguna berpindah ke menu dengan indeks lebih kecil -> halaman baru masuk dari kiri (-1)
+    final int direction = index > oldIndex ? 1 : -1;
+
+    _transitionCtrl.stop();
+
     setState(() {
-      // Jika berpindah ke menu dengan indeks lebih besar -> halaman baru masuk dari kanan (+1)
-      // Jika berpindah ke menu dengan indeks lebih kecil -> halaman baru masuk dari kiri (-1)
-      _slideDirection = index > selectedIndex ? 1 : -1;
-      _previousIndex = selectedIndex;
+      _slideDirection = direction;
+      _previousIndex = oldIndex;
       selectedIndex = index;
+      _isAnimating = true;
 
       if (recordHistory) {
         if (_tabHistory.isEmpty || _tabHistory.last != index) {
@@ -133,9 +142,9 @@ class _HomePageState extends State<HomePage>
             child: AnimatedBuilder(
               animation: _curvedAnim,
               builder: (context, _) {
-                final isAnimating =
-                    _transitionCtrl.isAnimating && _previousIndex != null;
-                final progress = _curvedAnim.value;
+                final bool activeTransition =
+                    _isAnimating && _previousIndex != null && _previousIndex != selectedIndex;
+                final double progress = _curvedAnim.value;
 
                 return Stack(
                   fit: StackFit.expand,
@@ -146,21 +155,20 @@ class _HomePageState extends State<HomePage>
                     }
 
                     final resolvedPage = _pageAt(index);
-                    final isCurrent = index == selectedIndex;
-                    final isPrevious = isAnimating && index == _previousIndex;
-                    final isVisible = isCurrent || isPrevious;
+                    final bool isCurrent = index == selectedIndex;
+                    final bool isPrevious = activeTransition && index == _previousIndex;
+                    final bool isVisible = isCurrent || isPrevious;
 
                     Offset offset = Offset.zero;
-                    if (isAnimating) {
+                    if (activeTransition) {
                       if (isCurrent) {
-                        // Halaman baru masuk dari kanan (jika _slideDirection == 1)
-                        // atau masuk dari kiri (jika _slideDirection == -1)
+                        // Halaman baru masuk dari kanan (+1 -> 0) atau dari kiri (-1 -> 0)
                         offset = Offset(
                           _slideDirection * (1.0 - progress),
                           0.0,
                         );
                       } else if (isPrevious) {
-                        // Halaman lama bergeser keluar ke arah berlawanan
+                        // Halaman sebelumnya bergeser ke kiri (0 -> -1) atau ke kanan (0 -> +1)
                         offset = Offset(
                           -_slideDirection * progress,
                           0.0,
@@ -192,7 +200,7 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         bottomNavigationBar: SizedBox(
-          height: 72 + MediaQuery.paddingOf(context).bottom,
+          height: 88 + MediaQuery.paddingOf(context).bottom,
           child: BottomNav(
             selectedIndex: selectedIndex,
             onChanged: changePage,

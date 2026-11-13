@@ -20,7 +20,7 @@ import org.json.JSONObject
 class MainActivity : FlutterActivity() {
     companion object {
         const val CHANNEL_NAME = "com.cdkv.phonebook/notifications"
-        const val NOTIFICATION_CHANNEL_ID = "phonebook_reminder_channel"
+        const val NOTIFICATION_CHANNEL_ID = "phonebook_reminder_channel_v2"
         const val NOTIFICATION_CHANNEL_NAME = "Notifikasi & Pengingat Jadwal Phonebook"
         const val PREFS_NAME = "phonebook_native_reminders"
         const val PERMISSION_REQUEST_CODE = 10021
@@ -39,6 +39,7 @@ class MainActivity : FlutterActivity() {
                         description =
                             "Saluran notifikasi laporan, jadwal, dan pengingat otomatis aplikasi Phonebook Kehutanan"
                         enableVibration(true)
+                        enableLights(true)
                     }
                     manager.createNotificationChannel(channel)
                 }
@@ -72,8 +73,10 @@ class MainActivity : FlutterActivity() {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
 
@@ -112,30 +115,21 @@ class MainActivity : FlutterActivity() {
                 flags
             )
 
+            val showIntent = PendingIntent.getActivity(
+                context,
+                notificationId,
+                Intent(context, MainActivity::class.java),
+                flags
+            )
+
             // Batalkan alarm sebelumnya dengan ID yang sama agar tidak ada notifikasi ganda
             alarmManager.cancel(pendingIntent)
 
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (alarmManager.canScheduleExactAlarms()) {
-                        alarmManager.setExactAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            triggerAtMillis,
-                            pendingIntent
-                        )
-                    } else {
-                        alarmManager.setAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            triggerAtMillis,
-                            pendingIntent
-                        )
-                    }
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    // setAlarmClock tidak pernah di-throttle oleh Doze mode Android
+                    val alarmClockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent)
+                    alarmManager.setAlarmClock(alarmClockInfo, pendingIntent)
                 } else {
                     alarmManager.setExact(
                         AlarmManager.RTC_WAKEUP,
@@ -144,18 +138,28 @@ class MainActivity : FlutterActivity() {
                     )
                 }
             } catch (_: SecurityException) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.set(
-                        AlarmManager.RTC_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    )
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            triggerAtMillis,
+                            pendingIntent
+                        )
+                    } else {
+                        alarmManager.set(
+                            AlarmManager.RTC_WAKEUP,
+                            triggerAtMillis,
+                            pendingIntent
+                        )
+                    }
+                } catch (_: Exception) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            triggerAtMillis,
+                            pendingIntent
+                        )
+                    }
                 }
             }
         }
