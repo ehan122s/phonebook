@@ -1,7 +1,12 @@
 // ============================================================================
 // [KHUSUS ADMIN - HALAMAN FOLDER SELURUH USER]
-// Simpan file ini di: lib/pages/admin_folder_page.dart
+// Simpan file ini di: lib/pages/admin/admin_folder_page.dart
 // Hanya untuk Admin: Melihat SELURUH FOLDER USER, laporan, & arsip kegiatan
+//
+// Pembaruan Desain ("Soft Green Forest - Modern & Responsif"):
+// - Selaras dengan KategoriPage & DashboardPage (palet #245C3A / #4F8A5B /
+//   #E8F2E8 / #F2F7F0 tanpa warna mencolok yang bertabrakan, plus dukungan Dark Mode).
+// - Padding dan tab switcher adaptif untuk layar mobile maupun desktop.
 // ============================================================================
 
 import 'dart:convert';
@@ -9,8 +14,20 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../widgets/laporan/report_dialogs.dart';
+
 class AdminFolderPage extends StatefulWidget {
   const AdminFolderPage({super.key});
+
+  static const Color kPrimary = Color(0xFF245C3A);
+  static const Color kSecondary = Color(0xFF4F8A5B);
+  static const Color kLightGreen = Color(0xFFE8F2E8);
+  static const Color kSoftGreen = Color(0xFFF2F7F0);
+  static const Color kBackground = Color(0xFFF7F9F6);
+  static const Color kCard = Color(0xFFFFFFFF);
+  static const Color kTextPrimary = Color(0xFF24352A);
+  static const Color kTextSecondary = Color(0xFF758278);
+  static const Color kBorder = Color(0xFFE1EAE0);
 
   @override
   State<AdminFolderPage> createState() => _AdminFolderPageState();
@@ -40,6 +57,16 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
     'Ekosistem & Konservasi',
     'Kelembagaan KTH',
   ];
+
+  bool get _isDark => Theme.of(context).brightness == Brightness.dark;
+  Color get _bg => _isDark ? const Color(0xFF121814) : AdminFolderPage.kBackground;
+  Color get _cardBg => _isDark ? const Color(0xFF1E2822) : AdminFolderPage.kCard;
+  Color get _borderCol => _isDark ? const Color(0xFF2E3D34) : AdminFolderPage.kBorder;
+  Color get _textPrimaryCol => _isDark ? Colors.white : AdminFolderPage.kTextPrimary;
+  Color get _textSecondaryCol => _isDark ? Colors.white70 : AdminFolderPage.kTextSecondary;
+  Color get _softGreenCol => _isDark ? const Color(0xFF26352B) : AdminFolderPage.kSoftGreen;
+  Color get _lightGreenCol => _isDark ? const Color(0xFF1B3B22) : AdminFolderPage.kLightGreen;
+  Color get _primaryCol => _isDark ? const Color(0xFF81C784) : AdminFolderPage.kPrimary;
 
   @override
   void initState() {
@@ -202,11 +229,22 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
     return 'Penyuluhan';
   }
 
+  IconData _categoryIcon(String category) {
+    return switch (category) {
+      'Penyuluhan' => Icons.campaign_outlined,
+      'Monitoring & Patroli' => Icons.travel_explore_outlined,
+      'Rehabilitasi Hutan' => Icons.park_outlined,
+      'Ekosistem & Konservasi' => Icons.eco_outlined,
+      'Kelembagaan KTH' => Icons.groups_outlined,
+      _ => Icons.folder_outlined,
+    };
+  }
+
   void _showAdminArchiveDetail(Map<String, dynamic> item) {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: _cardBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -224,18 +262,14 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: isLaporan
-                          ? const Color(0xFFE8F5E9)
-                          : const Color(0xFFE3F2FD),
+                      color: isLaporan ? _lightGreenCol : _softGreenCol,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       isLaporan
                           ? Icons.description_outlined
                           : Icons.event_available_rounded,
-                      color: isLaporan
-                          ? const Color(0xFF285C2E)
-                          : const Color(0xFF1565C0),
+                      color: _primaryCol,
                       size: 26,
                     ),
                   ),
@@ -246,65 +280,114 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                       children: [
                         Text(
                           (item['judul'] ?? '-').toString(),
-                          style: const TextStyle(
-                            fontSize: 18,
+                          style: TextStyle(
+                            fontSize: 17.5,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
+                            color: _textPrimaryCol,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '${item['tipe']} • Kategori ${item['kategori']}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
-                            color: Color(0xFF5A655E),
+                            color: _textSecondaryCol,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  _StatusBadge(status: (item['status'] ?? 'Selesai').toString()),
+                  _StatusBadge(
+                    status: (item['status'] ?? 'Selesai').toString(),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
-              const Divider(height: 1),
+              Divider(height: 1, color: _borderCol),
               const SizedBox(height: 14),
               _DetailRow(
                 icon: Icons.folder_shared_outlined,
                 label: 'Folder Milik User',
                 value: (item['userName'] ?? '-').toString(),
+                textColor: _textPrimaryCol,
+                subColor: _textSecondaryCol,
+                iconColor: _primaryCol,
               ),
               const SizedBox(height: 8),
               _DetailRow(
                 icon: Icons.location_on_outlined,
                 label: 'Wilayah / Lokasi',
                 value: (item['wilayah'] ?? '-').toString(),
+                textColor: _textPrimaryCol,
+                subColor: _textSecondaryCol,
+                iconColor: _primaryCol,
               ),
               const SizedBox(height: 8),
               _DetailRow(
                 icon: Icons.calendar_today_outlined,
                 label: 'Tanggal & Waktu',
                 value: '${item['tanggal']} • ${item['waktu'] ?? '08:00'} WIB',
+                textColor: _textPrimaryCol,
+                subColor: _textSecondaryCol,
+                iconColor: _primaryCol,
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Ringkasan Laporan / Arsip:',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF6E7A72),
+                  color: _textSecondaryCol,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 (item['deskripsi'] ?? '-').toString(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   height: 1.45,
-                  color: Color(0xFF1E2923),
+                  color: _textPrimaryCol,
                 ),
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 18),
+              if (isLaporan) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetCtx);
+                      showReportDownloadSheet(
+                        context,
+                        laporan: {
+                          'id': item['id'],
+                          'judul': item['judul'],
+                          'jenis': 'Laporan ${item['kategori'] ?? 'Penyuluhan'}',
+                          'pelapor': item['userName'] ?? 'Penyuluh Kehutanan',
+                          'userName': item['userName'] ?? 'Penyuluh Kehutanan',
+                          'tanggal': item['tanggal'] ?? '-',
+                          'lokasi': item['wilayah'] ?? '-',
+                          'isi': item['deskripsi'] ?? '',
+                          'status': item['status'] ?? 'Selesai',
+                        },
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _primaryCol,
+                      side: BorderSide(color: _primaryCol),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                    label: const Text(
+                      'Unduh & Cetak Laporan (PDF / Word)',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Row(
                 children: [
                   OutlinedButton.icon(
@@ -315,6 +398,18 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                       });
                       _persistArchives();
                     },
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: Colors.red.withValues(alpha: 0.4),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
                     icon: const Icon(
                       Icons.delete_outline,
                       size: 18,
@@ -322,7 +417,10 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     ),
                     label: const Text(
                       'Hapus Berkas',
-                      style: TextStyle(color: Colors.red),
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -330,14 +428,19 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF285C2E),
+                          backgroundColor: AdminFolderPage.kPrimary,
                           foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: () {
                           Navigator.pop(sheetCtx);
                           setState(() {
-                            final idx = _allItems
-                                .indexWhere((e) => e['id'] == item['id']);
+                            final idx = _allItems.indexWhere(
+                              (e) => e['id'] == item['id'],
+                            );
                             if (idx >= 0) {
                               _allItems[idx]['status'] = 'Selesai';
                             }
@@ -345,19 +448,29 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                           _persistArchives();
                         },
                         icon: const Icon(Icons.verified_outlined, size: 18),
-                        label: const Text('Verifikasi Selesai'),
+                        label: const Text(
+                          'Verifikasi Selesai',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     )
                   else
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF285C2E),
+                          backgroundColor: AdminFolderPage.kPrimary,
                           foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onPressed: () => Navigator.pop(sheetCtx),
                         icon: const Icon(Icons.check_rounded, size: 18),
-                        label: const Text('Tutup'),
+                        label: const Text(
+                          'Tutup',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
                     ),
                 ],
@@ -372,23 +485,24 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F5),
+      backgroundColor: _bg,
       appBar: _openedFolder != null
           ? AppBar(
-              backgroundColor: Colors.white,
+              backgroundColor: _cardBg,
+              surfaceTintColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
                 onPressed: () => setState(() => _openedFolder = null),
-                icon: const Icon(
+                icon: Icon(
                   Icons.arrow_back_rounded,
-                  color: Color(0xFF285C2E),
+                  color: _primaryCol,
                 ),
               ),
               title: Text(
                 (_openedFolder!['title'] ?? 'Folder User').toString(),
-                style: const TextStyle(
-                  color: Color(0xFF1E2923),
-                  fontSize: 19,
+                style: TextStyle(
+                  color: _textPrimaryCol,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -411,23 +525,36 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
         _allItems.where((e) => e['tipe'] == 'Laporan').length;
     final totalJadwal =
         _allItems.where((e) => e['tipe'] == 'Arsip Jadwal').length;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPad = screenWidth >= 760 ? 28.0 : 18.0;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 80),
+      padding: EdgeInsets.fromLTRB(horizontalPad, 20, horizontalPad, 60),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Banner Direktori Seluruh Folder User
+          // Banner Direktori Seluruh Folder User (Selaras dengan KategoriPage & LaporanHeader)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF285C2E), Color(0xFF3E7B46)],
+                colors: [
+                  Color(0xFF1B462B),
+                  AdminFolderPage.kPrimary,
+                  AdminFolderPage.kSecondary,
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: AdminFolderPage.kPrimary.withValues(alpha: 0.16),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,15 +562,15 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       child: const Icon(
                         Icons.folder_shared_rounded,
                         color: Colors.white,
-                        size: 32,
+                        size: 30,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -452,11 +579,11 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Direktori Folder Seluruh User (Admin)',
+                            'Direktori Folder Seluruh User',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -465,6 +592,7 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 13,
+                              height: 1.35,
                             ),
                           ),
                         ],
@@ -500,45 +628,61 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
           // Pencarian Folder User / Laporan
           TextField(
             onChanged: (val) => setState(() => _searchQuery = val),
+            style: TextStyle(color: _textPrimaryCol, fontSize: 13.5),
             decoration: InputDecoration(
               hintText:
                   'Cari nama folder user, NIP, wilayah, atau judul laporan...',
-              hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-              prefixIcon: const Icon(
+              hintStyle: TextStyle(fontSize: 13, color: _textSecondaryCol),
+              prefixIcon: Icon(
                 Icons.search_rounded,
-                color: Color(0xFF285C2E),
+                color: _primaryCol,
               ),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      onPressed: () => setState(() => _searchQuery = ''),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: _textSecondaryCol,
+                      ),
+                    )
+                  : null,
               filled: true,
-              fillColor: Colors.white,
+              fillColor: _cardBg,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
-                vertical: 12,
+                vertical: 14,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFDCE4DD)),
+                borderSide: BorderSide(color: _borderCol),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFDCE4DD)),
+                borderSide: BorderSide(color: _borderCol),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: _primaryCol, width: 1.5),
               ),
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
           // Switcher Tampilan Admin
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
-              color: const Color(0xFFE4ECE4),
-              borderRadius: BorderRadius.circular(14),
+              color: _softGreenCol,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _borderCol),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: _TabSwitchButton(
-                    label: 'Folder Seluruh User',
+                    label: 'Per User',
                     icon: Icons.folder_shared_outlined,
                     isSelected: _viewMode == 0,
                     onTap: () => setState(() => _viewMode = 0),
@@ -546,7 +690,7 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                 ),
                 Expanded(
                   child: _TabSwitchButton(
-                    label: 'Folder per Kategori',
+                    label: 'Per Kategori',
                     icon: Icons.folder_outlined,
                     isSelected: _viewMode == 1,
                     onTap: () => setState(() => _viewMode = 1),
@@ -554,7 +698,7 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                 ),
                 Expanded(
                   child: _TabSwitchButton(
-                    label: 'Semua Berkas User',
+                    label: 'Semua Berkas',
                     icon: Icons.list_alt_rounded,
                     isSelected: _viewMode == 2,
                     onTap: () => setState(() => _viewMode = 2),
@@ -570,19 +714,22 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Daftar Folder Milik Setiap User',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E2923),
+                Expanded(
+                  child: Text(
+                    'Daftar Folder Milik Setiap User',
+                    style: TextStyle(
+                      fontSize: 17.5,
+                      fontWeight: FontWeight.w800,
+                      color: _textPrimaryCol,
+                    ),
                   ),
                 ),
                 Text(
                   '${_usersList.length} Penyuluh',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF6E7A72),
+                    fontWeight: FontWeight.w600,
+                    color: _textSecondaryCol,
                   ),
                 ),
               ],
@@ -590,23 +737,23 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
             const SizedBox(height: 12),
             ..._buildUserFolderList(),
           ] else if (_viewMode == 1) ...[
-            const Text(
+            Text(
               'Folder Kategori (Gabungan Seluruh User)',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E2923),
+                fontSize: 17.5,
+                fontWeight: FontWeight.w800,
+                color: _textPrimaryCol,
               ),
             ),
             const SizedBox(height: 12),
             ..._buildCategoryFolderList(),
           ] else ...[
-            const Text(
+            Text(
               'Seluruh Laporan & Arsip Kegiatan Semua User',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1E2923),
+                fontSize: 17.5,
+                fontWeight: FontWeight.w800,
+                color: _textPrimaryCol,
               ),
             ),
             const SizedBox(height: 10),
@@ -646,12 +793,21 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
       return Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFDCE4DD)),
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: AdminFolderPage.kPrimary.withValues(
+                alpha: _isDark ? 0.18 : 0.04,
+              ),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           onTap: () {
             setState(() {
               _openedFolder = {
@@ -668,16 +824,16 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
             child: Row(
               children: [
                 Container(
-                  width: 54,
-                  height: 54,
+                  width: 52,
+                  height: 52,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
+                    color: _lightGreenCol,
                     borderRadius: BorderRadius.circular(15),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.folder_shared_rounded,
-                    color: Color(0xFF285C2E),
-                    size: 30,
+                    color: _primaryCol,
+                    size: 28,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -687,43 +843,43 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     children: [
                       Text(
                         'Folder $userName',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w700,
+                          color: _textPrimaryCol,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         'NIP: ${user['nip'] ?? '-'} • ${user['wilayah'] ?? '-'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF6E7A72),
+                          color: _textSecondaryCol,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
-                        runSpacing: 4,
+                        runSpacing: 6,
                         children: [
                           _CountTag(
                             label: '$countLaporan Laporan Kegiatan',
-                            bg: const Color(0xFFE8F5E9),
-                            fg: const Color(0xFF285C2E),
+                            bg: _lightGreenCol,
+                            fg: _primaryCol,
                           ),
                           _CountTag(
                             label: '$countJadwal Arsip Jadwal',
-                            bg: const Color(0xFFE3F2FD),
-                            fg: const Color(0xFF1565C0),
+                            bg: _softGreenCol,
+                            fg: AdminFolderPage.kSecondary,
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF6E7A72),
+                  color: _textSecondaryCol,
                 ),
               ],
             ),
@@ -743,13 +899,16 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
       return Container(
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2EAE3)),
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _borderCol),
         ),
         child: ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           onTap: () {
             setState(() {
               _openedFolder = {
@@ -762,31 +921,34 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
             });
           },
           leading: Container(
-            width: 46,
-            height: 46,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
-              borderRadius: BorderRadius.circular(13),
+              color: _lightGreenCol,
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(
-              Icons.folder_rounded,
-              color: Color(0xFFF57C00),
-              size: 26,
+            child: Icon(
+              _categoryIcon(cat),
+              color: _primaryCol,
+              size: 25,
             ),
           ),
           title: Text(
             'Folder $cat',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 15.5,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E2923),
+              fontWeight: FontWeight.w700,
+              color: _textPrimaryCol,
             ),
           ),
           subtitle: Text(
             '$countLaporan Laporan • $countJadwal Arsip Jadwal (Seluruh User)',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF6E7A72)),
+            style: TextStyle(fontSize: 12, color: _textSecondaryCol),
           ),
-          trailing: const Icon(Icons.chevron_right_rounded),
+          trailing: Icon(
+            Icons.chevron_right_rounded,
+            color: _textSecondaryCol,
+          ),
         ),
       );
     }).toList();
@@ -795,6 +957,8 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
   Widget _buildOpenedUserFolderView(Map<String, dynamic> folder) {
     final isUserFolder = folder['folderType'] == 'user';
     final filterKey = (folder['filterKey'] ?? '').toString();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPad = screenWidth >= 760 ? 28.0 : 18.0;
 
     final docs = _allItems.where((item) {
       return isUserFolder
@@ -803,7 +967,7 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
     }).toList();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 16, 28, 80),
+      padding: EdgeInsets.fromLTRB(horizontalPad, 16, horizontalPad, 60),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -811,9 +975,9 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: const Color(0xFFE6F2E7),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFB7D7B9)),
+              color: _softGreenCol,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _borderCol),
             ),
             child: Row(
               children: [
@@ -821,8 +985,8 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF285C2E),
-                    borderRadius: BorderRadius.circular(13),
+                    color: AdminFolderPage.kPrimary,
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     isUserFolder
@@ -839,18 +1003,18 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     children: [
                       Text(
                         (folder['title'] ?? '').toString(),
-                        style: const TextStyle(
-                          fontSize: 17,
+                        style: TextStyle(
+                          fontSize: 16.5,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
+                          color: _textPrimaryCol,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         (folder['subtitle'] ?? '').toString(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
-                          color: Color(0xFF4A584E),
+                          color: _textSecondaryCol,
                         ),
                       ),
                     ],
@@ -872,14 +1036,20 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
     final filters = ['Semua', 'Laporan', 'Arsip Jadwal'];
     return Wrap(
       spacing: 8,
+      runSpacing: 6,
       children: filters.map((f) {
         final selected = _selectedTypeFilter == f;
         return ChoiceChip(
           label: Text(f),
           selected: selected,
-          selectedColor: const Color(0xFF285C2E),
+          showCheckmark: false,
+          selectedColor: AdminFolderPage.kPrimary,
+          backgroundColor: _cardBg,
+          side: BorderSide(
+            color: selected ? AdminFolderPage.kPrimary : _borderCol,
+          ),
           labelStyle: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF1E2923),
+            color: selected ? Colors.white : _textPrimaryCol,
             fontWeight: FontWeight.w600,
             fontSize: 12.5,
           ),
@@ -910,13 +1080,14 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
           width: double.infinity,
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: _cardBg,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _borderCol),
           ),
           alignment: Alignment.center,
-          child: const Text(
+          child: Text(
             'Belum ada berkas laporan atau arsip pada folder ini.',
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: _textSecondaryCol),
           ),
         ),
       ];
@@ -927,12 +1098,21 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
       return Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2EAE3)),
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: AdminFolderPage.kPrimary.withValues(
+                alpha: _isDark ? 0.16 : 0.03,
+              ),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: () => _showAdminArchiveDetail(item),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -943,18 +1123,14 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: isLaporan
-                        ? const Color(0xFFE8F5E9)
-                        : const Color(0xFFE3F2FD),
-                    borderRadius: BorderRadius.circular(13),
+                    color: isLaporan ? _lightGreenCol : _softGreenCol,
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
                     isLaporan
                         ? Icons.description_outlined
                         : Icons.event_available_rounded,
-                    color: isLaporan
-                        ? const Color(0xFF285C2E)
-                        : const Color(0xFF1565C0),
+                    color: _primaryCol,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -963,14 +1139,15 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Text(
                               (item['judul'] ?? '-').toString(),
-                              style: const TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E2923),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: _textPrimaryCol,
                               ),
                             ),
                           ),
@@ -980,21 +1157,21 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 6),
                       Text(
-                        '📁 Folder User: ${item['userName']} • Kategori: ${item['kategori']}',
-                        style: const TextStyle(
-                          fontSize: 12,
+                        'Folder: ${item['userName']} • ${item['kategori']}',
+                        style: TextStyle(
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF285C2E),
+                          color: _primaryCol,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${item['tipe']} • ${item['tanggal']} • ${item['wilayah']}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFF6E7A72),
+                          color: _textSecondaryCol,
                         ),
                       ),
                     ],
@@ -1140,13 +1317,19 @@ class _TabSwitchButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeBg = isDark ? AdminFolderPage.kPrimary : Colors.white;
+    final activeFg = isDark ? Colors.white : AdminFolderPage.kPrimary;
+    final inactiveFg = isDark ? Colors.white70 : AdminFolderPage.kTextSecondary;
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
+          color: isSelected ? activeBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1154,9 +1337,7 @@ class _TabSwitchButton extends StatelessWidget {
             Icon(
               icon,
               size: 16,
-              color: isSelected
-                  ? const Color(0xFF285C2E)
-                  : const Color(0xFF5A655E),
+              color: isSelected ? activeFg : inactiveFg,
             ),
             const SizedBox(width: 6),
             Flexible(
@@ -1165,10 +1346,8 @@ class _TabSwitchButton extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected
-                      ? const Color(0xFF285C2E)
-                      : const Color(0xFF5A655E),
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? activeFg : inactiveFg,
                 ),
               ),
             ),
@@ -1193,16 +1372,16 @@ class _CountTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w700,
           color: fg,
         ),
       ),
@@ -1218,16 +1397,16 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color bg, Color fg) = switch (status) {
-      'Selesai' => (const Color(0xFFE8F5E9), const Color(0xFF2E7D32)),
+      'Selesai' => (AdminFolderPage.kLightGreen, AdminFolderPage.kPrimary),
       'Diproses' || 'Terjadwal' => (
         const Color(0xFFFFF4E5),
-        const Color(0xFFE65100),
+        const Color(0xFFB26A00),
       ),
       _ => (const Color(0xFFECEFF1), const Color(0xFF546E7A)),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(20),
@@ -1236,7 +1415,7 @@ class _StatusBadge extends StatelessWidget {
         status,
         style: TextStyle(
           fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w700,
           color: fg,
         ),
       ),
@@ -1248,30 +1427,36 @@ class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color textColor;
+  final Color subColor;
+  final Color iconColor;
 
   const _DetailRow({
     required this.icon,
     required this.label,
     required this.value,
+    required this.textColor,
+    required this.subColor,
+    required this.iconColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 17, color: const Color(0xFF285C2E)),
+        Icon(icon, size: 17, color: iconColor),
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: const TextStyle(fontSize: 13, color: Color(0xFF6E7A72)),
+          style: TextStyle(fontSize: 13, color: subColor),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF1E2923),
+              color: textColor,
             ),
           ),
         ),
