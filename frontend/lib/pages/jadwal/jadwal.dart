@@ -275,9 +275,9 @@ class _JadwalPageState extends State<JadwalPage> {
     final initialWaPhone = isEditing
         ? (existingItem['waPhone'] ??
                 existingItem['wa_phone'] ??
-                (userPhone.isNotEmpty ? userPhone : '089602976525'))
+                (userPhone.isNotEmpty ? userPhone : '089602692362'))
             .toString()
-        : (userPhone.isNotEmpty ? userPhone : '089602976525');
+        : (userPhone.isNotEmpty ? userPhone : '089602692362');
 
     final waPhoneController = TextEditingController(text: initialWaPhone);
 
@@ -289,11 +289,11 @@ class _JadwalPageState extends State<JadwalPage> {
     }
 
     int selectedReminderMinutes = isEditing
-        ? (int.tryParse((existingItem['reminderMinutes'] ?? 10).toString()) ??
-            10)
-        : 10;
+        ? (int.tryParse((existingItem['reminderMinutes'] ?? 5).toString()) ??
+            5)
+        : 5;
     if (!reminderOptions.any((r) => r['minutes'] == selectedReminderMinutes)) {
-      selectedReminderMinutes = 10;
+      selectedReminderMinutes = 5;
     }
 
     bool enableWaNotification = isEditing
@@ -753,7 +753,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
-                                              'Notifikasi otomatis akan muncul pukul $previewReminderClock WIB ($selectedReminderMinutes menit sebelum $currentPreviewTime WIB).',
+                                              'Pengingat WhatsApp otomatis akan terkirim pukul $previewReminderClock WIB ($selectedReminderMinutes menit sebelum $currentPreviewTime WIB) tanpa perlu dipencet.',
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,

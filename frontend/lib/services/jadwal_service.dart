@@ -527,7 +527,8 @@ class JadwalService {
     await NotificationService.instance.addScheduleCreatedNotification(item);
     // 2. Jadwalkan reminder otomatis sesuai waktu jadwal & interval pilihan pengguna
     await NotificationService.instance.scheduleReminderForItem(item);
-    // 3. Kirim pengingat / notifikasi otomatis langsung ke WhatsApp pengguna tanpa harus dipencet manual
+    // 3. Jadwalkan pengingat otomatis di server Fonnte agar tepat pada menit reminder
+    //    (misal 5 menit sebelum jam 10), pesan OTOMATIS TERKIRIM DARI SERVER KE WA tanpa perlu dipencet apa pun
     final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
     final bool enableWa = rawWa == null ||
         rawWa == true ||
@@ -535,6 +536,10 @@ class JadwalService {
         rawWa == '1' ||
         rawWa.toString().toLowerCase() == 'true';
     if (enableWa) {
+      WhatsappReminderService.instance
+          .scheduleAutomaticReminder(item)
+          .catchError((_) => <String, dynamic>{});
+
       WhatsappReminderService.instance
           .sendScheduleCreatedNotification(item)
           .catchError((_) => <String, dynamic>{});
@@ -624,6 +629,10 @@ class JadwalService {
         rawWa == '1' ||
         rawWa.toString().toLowerCase() == 'true';
     if (enableWa) {
+      WhatsappReminderService.instance
+          .scheduleAutomaticReminder(item)
+          .catchError((_) => <String, dynamic>{});
+
       WhatsappReminderService.instance
           .sendScheduleCreatedNotification(item)
           .catchError((_) => <String, dynamic>{});

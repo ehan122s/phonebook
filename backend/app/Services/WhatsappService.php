@@ -9,9 +9,10 @@ class WhatsappService
 {
     /**
      * Send WhatsApp reminder via Fonnte API Gateway.
-     * Returns an array with status, message, and fallback wa.me URL.
+     * Supports $scheduleTimestamp to natively queue reminders on Fonnte's server
+     * so they are automatically delivered at the exact reminder time without touching the app!
      */
-    public static function sendReminder(string $targetPhone, string $message): array
+    public static function sendReminder(string $targetPhone, string $message, ?int $scheduleTimestamp = null): array
     {
         $cleanPhone = self::normalizePhone($targetPhone);
         $token = env('FONNTE_TOKEN') ?: config('services.fonnte.token');
@@ -31,13 +32,19 @@ class WhatsappService
         }
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => $token,
-            ])->timeout(10)->asForm()->post('https://api.fonnte.com/send', [
+            $payload = [
                 'target' => $cleanPhone,
                 'message' => $message,
                 'countryCode' => '62',
-            ]);
+            ];
+
+            if ($scheduleTimestamp !== null && $scheduleTimestamp > (time() + 30)) {
+                $payload['schedule'] = (string) $scheduleTimestamp;
+            }
+
+            $response = Http::withHeaders([
+                'Authorization' => $token,
+            ])->timeout(10)->asForm()->post('https://api.fonnte.com/send', $payload);
 
             $json = $response->json();
             $status = $response->successful() && ($json['status'] ?? false) === true;

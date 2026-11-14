@@ -195,11 +195,45 @@ class WhatsappReminderService {
     }
   }
 
+  /// Menghitung Unix epoch timestamp (dalam detik) tepat pada saat pengingat harus berbunyi/terkirim
+  /// (yaitu: tanggal jadwal + waktu mulai - reminderMinutes) dalam zona waktu Asia/Jakarta (WIB)
+  static int calculateReminderUnixTimestamp(Map<String, dynamic> schedule) {
+    try {
+      final tanggalIso = (schedule['tanggalIso'] ?? schedule['date'] ?? '').toString();
+      final date = JadwalDateUtils.parseIsoDate(tanggalIso);
+      final timeStr = (schedule['waktu'] ?? schedule['start_time'] ?? schedule['time'] ?? '08:00').toString();
+      final parts = timeStr.split(':');
+      final hour = parts.isNotEmpty ? (int.tryParse(parts[0]) ?? 8) : 8;
+      final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      final reminderMinutes =
+          int.tryParse((schedule['reminderMinutes'] ?? schedule['reminder_minutes'] ?? 30).toString()) ?? 30;
+
+      final schedWib = DateTime(date.year, date.month, date.day, hour, minute);
+      final reminderWib = schedWib.subtract(Duration(minutes: reminderMinutes));
+
+      final epochMillis = JadwalDateUtils.wibToEpochMillis(
+        reminderWib.year,
+        reminderWib.month,
+        reminderWib.day,
+        reminderWib.hour,
+        reminderWib.minute,
+        0,
+      );
+
+      return epochMillis ~/ 1000;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Mengirim pesan pengingat langsung ke nomor WhatsApp penerima
   /// menggunakan Fonnte API Gateway resmi dengan token dari sistem.
+  /// Jika [scheduleUnixTimestamp] diisi untuk waktu mendatang, Fonnte akan menjadwalkan
+  /// pesan dan otomatis mengirimkannya pada detik tersebut tanpa perlu aplikasi dibuka.
   static Future<Map<String, dynamic>> sendViaFonnteGateway({
     required String phone,
     required String message,
+    int? scheduleUnixTimestamp,
   }) async {
     final cleanPhone = normalizePhoneNumber(phone);
     if (cleanPhone.isEmpty) {
@@ -207,16 +241,25 @@ class WhatsappReminderService {
     }
 
     try {
+      final nowSec = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000;
+      final body = <String, String>{
+        'target': cleanPhone,
+        'message': message,
+        'countryCode': '62',
+      };
+
+      // Jika waktu reminder berada di masa depan (> 20 detik dari sekarang),
+      // jadwalkan di server Fonnte agar otomatis terkirim tanpa campur tangan user
+      if (scheduleUnixTimestamp != null && scheduleUnixTimestamp > (nowSec + 20)) {
+        body['schedule'] = scheduleUnixTimestamp.toString();
+      }
+
       final response = await http.post(
         Uri.parse('https://api.fonnte.com/send'),
         headers: {
           'Authorization': ApiConstants.fonnteToken,
         },
-        body: {
-          'target': cleanPhone,
-          'message': message,
-          'countryCode': '62',
-        },
+        body: body,
       ).timeout(const Duration(seconds: 10));
 
       final json = jsonDecode(response.body);
@@ -247,6 +290,28 @@ class WhatsappReminderService {
         'target': cleanPhone,
       };
     }
+  }
+
+  /// Menjadwalkan pengingat otomatis di server Fonnte secara langsung saat jadwal dibuat/diedit.
+  /// Pesan akan otomatis terkirim tepat waktu (misal 5 menit sebelum jam 10) tanpa harus pencet tombol apa pun!
+  Future<Map<String, dynamic>> scheduleAutomaticReminder(
+    Map<String, dynamic> schedule, {
+    String? targetPhone,
+  }) async {
+    final phone = await resolveTargetPhone(
+      explicitPhone: targetPhone,
+      schedule: schedule,
+    );
+    if (phone.isEmpty) return {'success': false, 'reason': 'Nomor WhatsApp kosong'};
+
+    final message = formatScheduleMessage(schedule);
+    final reminderTs = calculateReminderUnixTimestamp(schedule);
+
+    return await sendViaFonnteGateway(
+      phone: phone,
+      message: message,
+      scheduleUnixTimestamp: reminderTs,
+    );
   }
 
   /// Mengirim notifikasi konfirmasi pembuatan jadwal baru otomatis ke WhatsApp pengguna

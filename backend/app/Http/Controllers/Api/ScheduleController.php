@@ -183,6 +183,30 @@ class ScheduleController extends Controller
             // Jangan menggagalkan pembuatan jadwal jika pencatatan notifikasi gagal
         }
 
+        // Otomatis jadwalkan pengingat WhatsApp di server Fonnte (jika notifikasi WA diaktifkan)
+        if ($enableWaNotification && !empty($schedule->reminder_at)) {
+            try {
+                $targetPhone = $waPhone
+                    ?: ($request->user() ? ($request->user()->whatsapp_number ?: $request->user()->phone) : null)
+                    ?: '089602692362';
+                $reminderMsg = \App\Services\WhatsappService::formatReminderMessage(
+                    $schedule->title,
+                    $data['category'] ?? 'Kegiatan Dinas Kehutanan',
+                    Carbon::parse($dateOnly)->translatedFormat('l, d F Y'),
+                    $startTime ?: '08:00',
+                    $schedule->location ?: 'Wilayah Kerja CDK Wilayah V',
+                    $reminderMinutes,
+                    $schedule->description
+                );
+                $remTimestamp = $schedule->reminder_at instanceof Carbon
+                    ? $schedule->reminder_at->timestamp
+                    : Carbon::parse($schedule->reminder_at)->timestamp;
+
+                \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+            } catch (\Throwable $e) {
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Jadwal berhasil dibuat',
@@ -270,6 +294,30 @@ class ScheduleController extends Controller
 
         $schedule->update($updateData);
         $schedule->setAttribute('reminder_minutes', $reminderMinutes);
+
+        // Otomatis jadwalkan ulang pengingat WhatsApp di server Fonnte
+        if ($enableWaNotification && !empty($updateData['reminder_at'])) {
+            try {
+                $targetPhone = $waPhone
+                    ?: ($request->user() ? ($request->user()->whatsapp_number ?: $request->user()->phone) : null)
+                    ?: '089602692362';
+                $reminderMsg = \App\Services\WhatsappService::formatReminderMessage(
+                    $title,
+                    $updateData['category'] ?? $schedule->category ?? 'Kegiatan Dinas Kehutanan',
+                    Carbon::parse($dateOnly)->translatedFormat('l, d F Y'),
+                    $startTime ?: '08:00',
+                    $updateData['location'] ?? $schedule->location ?? 'Wilayah Kerja CDK Wilayah V',
+                    $reminderMinutes,
+                    $updateData['description'] ?? $schedule->description
+                );
+                $remTimestamp = $updateData['reminder_at'] instanceof Carbon
+                    ? $updateData['reminder_at']->timestamp
+                    : Carbon::parse($updateData['reminder_at'])->timestamp;
+
+                \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+            } catch (\Throwable $e) {
+            }
+        }
 
         return response()->json([
             'success' => true,
