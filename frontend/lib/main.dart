@@ -8,10 +8,13 @@
 // - Bisa juga di-klik layarnya kalau mau langsung skip Splash Screen.
 // - Menginisialisasi NotificationService global untuk pengelolaan notifikasi
 //   dan penjadwalan reminder otomatis (Asia/Jakarta).
+// - Menggunakan transisi halaman modern (Fade + Scale 0.98->1.0 + Blur-to-Clear)
+//   dengan kurva Cubic(0.22, 1.0, 0.36, 1.0) tanpa efek slide.
 // ============================================================================
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -169,6 +172,8 @@ class PhonebookApp extends StatelessWidget {
 class _SmoothCihuyPageTransitionBuilder extends PageTransitionsBuilder {
   const _SmoothCihuyPageTransitionBuilder();
 
+  static const Cubic _easing = Cubic(0.22, 1.0, 0.36, 1.0);
+
   @override
   Widget buildTransitions<T>(
     PageRoute<T> route,
@@ -179,21 +184,46 @@ class _SmoothCihuyPageTransitionBuilder extends PageTransitionsBuilder {
   ) {
     final curvedIn = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutCubic,
+      curve: _easing,
+      reverseCurve: Curves.easeInCubic,
     );
 
-    return FadeTransition(
-      opacity: curvedIn,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0.03, 0.01),
-          end: Offset.zero,
-        ).animate(curvedIn),
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.96, end: 1.0).animate(curvedIn),
-          child: child,
-        ),
-      ),
+    final curvedSecondary = CurvedAnimation(
+      parent: secondaryAnimation,
+      curve: _easing,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([curvedIn, curvedSecondary]),
+      builder: (context, _) {
+        final double inVal = curvedIn.value.clamp(0.0, 1.0);
+        final double secVal = curvedSecondary.value.clamp(0.0, 1.0);
+
+        final double opacity = (inVal * (1.0 - (secVal * 0.12))).clamp(0.0, 1.0);
+        final double scale =
+            (0.98 + (0.02 * inVal)) * (1.0 - (0.015 * secVal));
+        final double blurSigma = ((1.0 - inVal) * 3.0).clamp(0.0, 3.0);
+
+        Widget result = child;
+        if (blurSigma > 0.08 && inVal < 0.98) {
+          result = ImageFiltered(
+            imageFilter: ImageFilter.blur(
+              sigmaX: blurSigma,
+              sigmaY: blurSigma,
+            ),
+            child: result,
+          );
+        }
+
+        return FadeTransition(
+          opacity: AlwaysStoppedAnimation<double>(opacity),
+          child: ScaleTransition(
+            scale: AlwaysStoppedAnimation<double>(scale),
+            child: result,
+          ),
+        );
+      },
     );
   }
 }
@@ -312,17 +342,18 @@ class _SplashScreenState extends State<SplashScreen>
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 700),
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
         pageBuilder: (context, animation, secondaryAnimation) => targetPage,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
             parent: animation,
-            curve: Curves.easeOutCubic,
+            curve: const Cubic(0.22, 1.0, 0.36, 1.0),
           );
           return FadeTransition(
             opacity: curved,
             child: ScaleTransition(
-              scale: Tween<double>(begin: 0.95, end: 1.0).animate(curved),
+              scale: Tween<double>(begin: 0.98, end: 1.0).animate(curved),
               child: child,
             ),
           );
