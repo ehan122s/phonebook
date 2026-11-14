@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../dashboard/dashboard.dart';
@@ -17,14 +18,24 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
+  // Timing & Easing sesuai spesifikasi:
+  // Total durasi: 420ms (Page exit selesai pada ~180ms pertama, Page enter berjalan mulus hingga 420ms)
+  // Easing: cubic-bezier(0.22, 1, 0.36, 1)
+  static const Duration _transitionDuration = Duration(milliseconds: 420);
+  static const Cubic _smoothEasing = Cubic(0.22, 1.0, 0.36, 1.0);
+
   int selectedIndex = 0;
   int? _previousIndex;
-  int _slideDirection = 1; // 1 = halaman baru masuk dari kanan, -1 = masuk dari kiri
+  bool _isAnimating = false;
   final List<int> _tabHistory = [0];
 
   late final List<Widget?> _pages;
   late final AnimationController _transitionCtrl;
-  late final Animation<double> _curvedAnim;
+  late final Animation<double> _enterFadeAnim;
+  late final Animation<double> _enterScaleAnim;
+  late final Animation<double> _enterBlurAnim;
+  late final Animation<double> _exitFadeAnim;
+  late final Animation<double> _exitScaleAnim;
 
   @override
   void initState() {
@@ -32,23 +43,54 @@ class _HomePageState extends State<HomePage>
     _pages = List<Widget?>.filled(5, null);
     _pages[0] = DashboardPage(onNavigate: changePage);
 
-    // Revisi Animasi Bottom Navigation Bar:
-    // Durasi 400ms (0,4 detik) dengan kurva Curves.easeInOutCubic
     _transitionCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: _transitionDuration,
     );
 
-    _curvedAnim = CurvedAnimation(
-      parent: _transitionCtrl,
-      curve: Curves.easeInOutCubic,
+    // Page Exit: ~180ms (rasio 180 / 420 ≈ 0.43)
+    _exitFadeAnim = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _transitionCtrl,
+        curve: const Interval(0.0, 0.43, curve: _smoothEasing),
+      ),
     );
 
+    _exitScaleAnim = Tween<double>(begin: 1.0, end: 0.985).animate(
+      CurvedAnimation(
+        parent: _transitionCtrl,
+        curve: const Interval(0.0, 0.43, curve: _smoothEasing),
+      ),
+    );
+
+    // Page Enter: 420ms (Smooth Fade + Scale 0.98 -> 1.0 + Subtle Blur-to-Clear)
+    _enterFadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _transitionCtrl,
+        curve: const Interval(0.08, 1.0, curve: _smoothEasing),
+      ),
+    );
+
+    _enterScaleAnim = Tween<double>(begin: 0.98, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _transitionCtrl,
+        curve: _smoothEasing,
+      ),
+    );
+
+    _enterBlurAnim = Tween<double>(begin: 3.5, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _transitionCtrl,
+        curve: const Interval(0.0, 0.75, curve: _smoothEasing),
+      ),
+    );
+
+    // Hanya bersihkan _previousIndex saat animasi benar-benar COMPLETED
     _transitionCtrl.addStatusListener((status) {
-      if (status == AnimationStatus.completed ||
-          status == AnimationStatus.dismissed) {
-        if (mounted && _previousIndex != null) {
+      if (status == AnimationStatus.completed) {
+        if (mounted) {
           setState(() {
+            _isAnimating = false;
             _previousIndex = null;
           });
         }
@@ -94,15 +136,16 @@ class _HomePageState extends State<HomePage>
   void changePage(int index, {bool recordHistory = true}) {
     if (index < 0 || index > 4 || index == selectedIndex) return;
 
-    // Pastikan widget halaman tujuan sudah dibuat di cache sebelum animasi dimulai
+    // Pastikan widget halaman tujuan sudah siap di cache sebelum transisi dimulai
     _pageAt(index);
 
+    final int oldIndex = selectedIndex;
+    _transitionCtrl.stop();
+
     setState(() {
-      // Jika berpindah ke menu dengan indeks lebih besar -> halaman baru masuk dari kanan (+1)
-      // Jika berpindah ke menu dengan indeks lebih kecil -> halaman baru masuk dari kiri (-1)
-      _slideDirection = index > selectedIndex ? 1 : -1;
-      _previousIndex = selectedIndex;
+      _previousIndex = oldIndex;
       selectedIndex = index;
+      _isAnimating = true;
 
       if (recordHistory) {
         if (_tabHistory.isEmpty || _tabHistory.last != index) {
@@ -112,6 +155,58 @@ class _HomePageState extends State<HomePage>
     });
 
     _transitionCtrl.forward(from: 0.0);
+  }
+
+  Widget _buildTransitionedPage({
+    required Widget child,
+    required Color bgColor,
+    required bool isCurrent,
+    required bool isPrevious,
+    required bool activeTransition,
+  }) {
+    Widget content = RepaintBoundary(
+      child: ColoredBox(
+        color: bgColor,
+        child: child,
+      ),
+    );
+
+    if (!activeTransition) {
+      return content;
+    }
+
+    if (isCurrent) {
+      final double sigma = _enterBlurAnim.value;
+      if (sigma > 0.08) {
+        content = ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+          child: content,
+        );
+      }
+      return Opacity(
+        opacity: _enterFadeAnim.value.clamp(0.0, 1.0),
+        child: Transform.scale(
+          scale: _enterScaleAnim.value,
+          alignment: Alignment.center,
+          child: content,
+        ),
+      );
+    }
+
+    if (isPrevious) {
+      return IgnorePointer(
+        child: Opacity(
+          opacity: _exitFadeAnim.value.clamp(0.0, 1.0),
+          child: Transform.scale(
+            scale: _exitScaleAnim.value,
+            alignment: Alignment.center,
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    return content;
   }
 
   @override
@@ -127,15 +222,16 @@ class _HomePageState extends State<HomePage>
       },
       child: Scaffold(
         backgroundColor: bgColor,
+        extendBody: true,
         body: ColoredBox(
           color: bgColor,
           child: ClipRect(
             child: AnimatedBuilder(
-              animation: _curvedAnim,
+              animation: _transitionCtrl,
               builder: (context, _) {
-                final isAnimating =
-                    _transitionCtrl.isAnimating && _previousIndex != null;
-                final progress = _curvedAnim.value;
+                final bool activeTransition = _isAnimating &&
+                    _previousIndex != null &&
+                    _previousIndex != selectedIndex;
 
                 return Stack(
                   fit: StackFit.expand,
@@ -146,42 +242,22 @@ class _HomePageState extends State<HomePage>
                     }
 
                     final resolvedPage = _pageAt(index);
-                    final isCurrent = index == selectedIndex;
-                    final isPrevious = isAnimating && index == _previousIndex;
-                    final isVisible = isCurrent || isPrevious;
+                    final bool isCurrent = index == selectedIndex;
+                    final bool isPrevious =
+                        activeTransition && index == _previousIndex;
+                    final bool isVisible = isCurrent || isPrevious;
 
-                    Offset offset = Offset.zero;
-                    if (isAnimating) {
-                      if (isCurrent) {
-                        // Halaman baru masuk dari kanan (jika _slideDirection == 1)
-                        // atau masuk dari kiri (jika _slideDirection == -1)
-                        offset = Offset(
-                          _slideDirection * (1.0 - progress),
-                          0.0,
-                        );
-                      } else if (isPrevious) {
-                        // Halaman lama bergeser keluar ke arah berlawanan
-                        offset = Offset(
-                          -_slideDirection * progress,
-                          0.0,
-                        );
-                      }
-                    }
-
-                    // Pertahankan state seluruh halaman yang sudah dibuka dengan Offstage + TickerMode + RepaintBoundary
                     return Offstage(
                       key: ValueKey<String>('home_tab_slot_$index'),
                       offstage: !isVisible,
                       child: TickerMode(
                         enabled: isVisible,
-                        child: FractionalTranslation(
-                          translation: offset,
-                          child: RepaintBoundary(
-                            child: ColoredBox(
-                              color: bgColor,
-                              child: resolvedPage,
-                            ),
-                          ),
+                        child: _buildTransitionedPage(
+                          child: resolvedPage,
+                          bgColor: bgColor,
+                          isCurrent: isCurrent,
+                          isPrevious: isPrevious,
+                          activeTransition: activeTransition,
                         ),
                       ),
                     );
@@ -191,12 +267,9 @@ class _HomePageState extends State<HomePage>
             ),
           ),
         ),
-        bottomNavigationBar: SizedBox(
-          height: 72 + MediaQuery.paddingOf(context).bottom,
-          child: BottomNav(
-            selectedIndex: selectedIndex,
-            onChanged: changePage,
-          ),
+        bottomNavigationBar: BottomNav(
+          selectedIndex: selectedIndex,
+          onChanged: changePage,
         ),
       ),
     );

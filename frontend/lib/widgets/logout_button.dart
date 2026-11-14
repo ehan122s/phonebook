@@ -7,136 +7,107 @@ import '../pages/login/login.dart';
 import '../services/google_auth_service.dart';
 
 class LogoutButton extends StatelessWidget {
-  const LogoutButton({super.key});
+  final VoidCallback? onLoggedOut;
+
+  const LogoutButton({
+    super.key,
+    this.onLoggedOut,
+  });
 
   Future<void> logout(BuildContext context) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Keluar Aplikasi'),
-          content: const Text(
-            'Apakah kamu yakin ingin keluar dari akun?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD32F2F),
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Keluar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirm != true) return;
-
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token') ?? '';
+    final token = prefs.getString('token');
 
-    // 1. Cabut token Sanctum resmi di server backend (jika ada dan online)
-    if (token.isNotEmpty && !token.startsWith('offline_') && !token.startsWith('google_session_')) {
+    // Panggil endpoint logout backend secara asynchronous dengan timeout singkat
+    if (token != null && token.isNotEmpty) {
       try {
-        await http.post(
-          Uri.parse('${ApiConstants.baseUrl}/api/logout'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        ).timeout(const Duration(seconds: 3));
-      } catch (_) {}
+        await http
+            .post(
+              Uri.parse('${ApiConstants.baseUrl}/logout'),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
+            .timeout(const Duration(seconds: 4));
+      } catch (_) {
+        // Tetap lanjutkan proses logout lokal meskipun jaringan sedang offline
+      }
     }
 
-    // 2. Putuskan sesi Google Sign-In agar Account Chooser muncul lagi di login berikutnya
-    await GoogleAuthService.signOut();
-
-    bool isRemember = false;
+    // Putuskan sesi Google Sign-In bila pengguna login menggunakan Google
     try {
-      isRemember = prefs.getBool('remember_me') ?? false;
-    } catch (_) {
-      isRemember = prefs.getString('remember_me') == 'true';
-    }
-    // Hapus hanya data sesi pengguna yang sedang login,
-    // JANGAN memanggil prefs.clear() agar data database pengguna, arsip folder,
-    // materi, dan draft laporan tidak hilang saat logout.
-    const sessionKeys = [
-      'token',
-      'name',
-      'email',
-      'role',
-      'login_method',
-      'profil_nama',
-      'profil_nip',
-      'profil_jabatan',
-      'profil_wilayah',
-      'profil_email_nip',
-      'profil_whatsapp',
-      'profil_avatar',
-    ];
+      await GoogleAuthService.signOut();
+    } catch (_) {}
 
-    for (final key in sessionKeys) {
-      await prefs.remove(key);
-    }
+    // Bersihkan kredensial sesi login tanpa menghapus pengaturan tema/preferensi perangkat
+    await prefs.remove('token');
+    await prefs.remove('user_id');
+    await prefs.remove('name');
+    await prefs.remove('email');
+    await prefs.remove('role');
+    await prefs.remove('whatsapp_number');
 
-    if (!isRemember) {
-      await prefs.remove('remember_me');
-      await prefs.remove('remember_email');
-      await prefs.remove('remember_password');
-    }
+    onLoggedOut?.call();
 
     if (!context.mounted) return;
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginPage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.98, end: 1.0).animate(curved),
+              child: child,
+            ),
+          );
+        },
       ),
-      (_) => false,
+      (route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => logout(context),
-        borderRadius: BorderRadius.circular(15),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 11,
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () => logout(context),
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        label: const Text(
+          'Keluar dari Akun',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
           ),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E2822) : Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: isDark ? const Color(0xFF2E3D34) : const Color(0xFFE0E7E1),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isDark
+              ? const Color(0xFF3B1E1E)
+              : const Color(0xFFFFEBEE),
+          foregroundColor: isDark
+              ? const Color(0xFFEF9A9A)
+              : const Color(0xFFC62828),
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: isDark
+                  ? const Color(0xFFEF9A9A).withValues(alpha: 0.25)
+                  : const Color(0xFFEF5350).withValues(alpha: 0.30),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.08),
-                blurRadius: 9,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.logout_rounded,
-            color: Color(0xFFD32F2F),
-            size: 22,
           ),
         ),
       ),
