@@ -1,5 +1,8 @@
-import 'dart:io';
+import 'dart:convert';
+import 'dart:io' as io;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../constants/api_constants.dart';
 
 class ProfileIdentityCard extends StatelessWidget {
   final String nama;
@@ -34,13 +37,24 @@ class ProfileIdentityCard extends StatelessWidget {
 
     ImageProvider? imageProvider;
     if (avatar.isNotEmpty) {
-      if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+      if (avatar.startsWith('http://') ||
+          avatar.startsWith('https://') ||
+          avatar.startsWith('blob:')) {
         imageProvider = NetworkImage(avatar);
-      } else {
-        final file = File(avatar);
-        if (file.existsSync()) {
-          imageProvider = FileImage(file);
-        }
+      } else if (avatar.startsWith('data:image')) {
+        try {
+          final base64Data = avatar.split(',').last;
+          imageProvider = MemoryImage(base64Decode(base64Data));
+        } catch (_) {}
+      } else if (avatar.startsWith('storage/') || avatar.startsWith('avatars/')) {
+        imageProvider = NetworkImage('${ApiConstants.baseUrl}/$avatar');
+      } else if (!kIsWeb) {
+        try {
+          final file = io.File(avatar);
+          if (file.existsSync()) {
+            imageProvider = FileImage(file);
+          }
+        } catch (_) {}
       }
     }
 
@@ -75,6 +89,9 @@ class ProfileIdentityCard extends StatelessWidget {
               radius: 46,
               backgroundColor: avatarInnerBg,
               backgroundImage: imageProvider,
+              onBackgroundImageError: imageProvider != null
+                  ? (exception, stackTrace) {}
+                  : null,
               child: imageProvider == null
                   ? Text(
                       initials,

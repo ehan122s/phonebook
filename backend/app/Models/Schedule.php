@@ -21,6 +21,8 @@ class Schedule extends Model
         'reminder_enabled',
         'reminder_minutes',
         'reminder_at',
+        'enable_wa_notification',
+        'wa_phone',
         'whatsapp_sent',
         'is_completed',
     ];
@@ -30,6 +32,7 @@ class Schedule extends Model
         'reminder_enabled' => 'boolean',
         'reminder_minutes' => 'integer',
         'reminder_at' => 'datetime',
+        'enable_wa_notification' => 'boolean',
         'whatsapp_sent' => 'boolean',
         'is_completed' => 'boolean',
     ];

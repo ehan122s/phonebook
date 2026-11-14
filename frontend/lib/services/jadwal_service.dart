@@ -6,6 +6,7 @@ import '../constants/api_constants.dart';
 import '../constants/jadwal_constants.dart';
 import 'connectivity_service.dart';
 import 'notification_service.dart';
+import 'whatsapp_reminder_service.dart';
 
 class JadwalService {
   static const String storageKey = 'phonebook_jadwal_items_v1';
@@ -188,13 +189,18 @@ class JadwalService {
         existingLocal?['reminderEnabled'] ??
         true;
 
-    final enableWaNotification = raw['enableWaNotification'] ??
-        existingLocal?['enableWaNotification'] ??
-        true;
+    final enableWaNotification = raw['enableWaNotification'] == true ||
+        raw['enable_wa_notification'] == true ||
+        (raw['enableWaNotification'] == null &&
+            raw['enable_wa_notification'] == null &&
+            (existingLocal?['enableWaNotification'] ?? true) == true);
 
-    final waPhone =
-        (raw['waPhone'] ?? existingLocal?['waPhone'] ?? '089602976525')
-            .toString();
+    final waPhone = (raw['waPhone'] ??
+            raw['wa_phone'] ??
+            existingLocal?['waPhone'] ??
+            existingLocal?['wa_phone'] ??
+            '')
+        .toString();
 
     final reminderTriggered = raw['reminderTriggered'] == true ||
         existingLocal?['reminderTriggered'] == true;
@@ -352,6 +358,8 @@ class JadwalService {
           'description': item['catatan'],
           'reminder_enabled': item['reminderEnabled'] ?? true,
           'reminder_minutes': item['reminderMinutes'],
+          'enable_wa_notification': item['enableWaNotification'] ?? true,
+          'wa_phone': item['waPhone'],
         };
 
         final response = await http.post(
@@ -398,6 +406,18 @@ class JadwalService {
     await NotificationService.instance.addScheduleCreatedNotification(item);
     // 2. Jadwalkan reminder otomatis sesuai waktu jadwal & interval pilihan pengguna
     await NotificationService.instance.scheduleReminderForItem(item);
+    // 3. Kirim pengingat / notifikasi otomatis langsung ke WhatsApp pengguna tanpa harus dipencet manual
+    final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
+    final bool enableWa = rawWa == null ||
+        rawWa == true ||
+        rawWa == 1 ||
+        rawWa == '1' ||
+        rawWa.toString().toLowerCase() == 'true';
+    if (enableWa) {
+      WhatsappReminderService.instance
+          .sendScheduleCreatedNotification(item)
+          .catchError((_) => <String, dynamic>{});
+    }
 
     return item;
   }
@@ -443,6 +463,8 @@ class JadwalService {
           'description': item['catatan'],
           'reminder_enabled': item['reminderEnabled'] ?? true,
           'reminder_minutes': item['reminderMinutes'],
+          'enable_wa_notification': item['enableWaNotification'] ?? true,
+          'wa_phone': item['waPhone'],
           'is_completed': item['isCompleted'] ?? false,
         };
 
@@ -468,6 +490,19 @@ class JadwalService {
 
     // Jadwalkan reminder baru
     await NotificationService.instance.scheduleReminderForItem(item);
+
+    // Kirim notifikasi WhatsApp otomatis saat jadwal diperbarui
+    final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
+    final bool enableWa = rawWa == null ||
+        rawWa == true ||
+        rawWa == 1 ||
+        rawWa == '1' ||
+        rawWa.toString().toLowerCase() == 'true';
+    if (enableWa) {
+      WhatsappReminderService.instance
+          .sendScheduleCreatedNotification(item)
+          .catchError((_) => <String, dynamic>{});
+    }
 
     return item;
   }

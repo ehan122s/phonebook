@@ -29,15 +29,30 @@ class SendScheduleReminders extends Command
             $user = $schedule->user;
             $timeStr = $schedule->start_time ?? '08:00';
             $location = $schedule->location ?? '-';
+            $category = $schedule->category ?? 'Penyuluhan';
             $reminderMinutes = $schedule->reminder_minutes ?? 30;
 
-            $message = "Pengingat Jadwal Kegiatan: \"{$schedule->title}\" akan dilaksanakan pada {$schedule->date->format('Y-m-d')} pukul {$timeStr} WIB di {$location} (Pengingat {$reminderMinutes} menit sebelum jadwal).";
+            $message = WhatsappService::formatReminderMessage(
+                $schedule->title,
+                $category,
+                $schedule->date->format('d F Y'),
+                $timeStr,
+                $location,
+                $reminderMinutes,
+                $schedule->description
+            );
 
-            if ($user && !empty($user->whatsapp_number)) {
+            $targetPhone = !empty($schedule->wa_phone)
+                ? $schedule->wa_phone
+                : ($user ? $user->whatsapp_number : null);
+
+            $waDelivered = false;
+            if (!empty($targetPhone)) {
                 try {
-                    WhatsappService::sendReminder($user->whatsapp_number, $message);
+                    $res = WhatsappService::sendReminder($targetPhone, $message);
+                    $waDelivered = !empty($res['success']);
                 } catch (\Throwable $e) {
-                    // Lanjutkan meskipun pengiriman WA gagal
+                    // Lanjutkan jika exception
                 }
             }
 
@@ -55,6 +70,7 @@ class SendScheduleReminders extends Command
                             'start_time' => $timeStr,
                             'reminder_minutes' => $reminderMinutes,
                             'location' => $location,
+                            'whatsapp_delivered' => $waDelivered,
                         ],
                         'is_read' => false,
                     ]);
@@ -62,7 +78,9 @@ class SendScheduleReminders extends Command
             } catch (\Throwable $e) {
             }
 
-            $schedule->update(['whatsapp_sent' => true]);
+            if ($waDelivered) {
+                $schedule->update(['whatsapp_sent' => true]);
+            }
         }
 
         return Command::SUCCESS;

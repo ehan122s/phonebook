@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import '../constants/jadwal_constants.dart';
 import 'connectivity_service.dart';
+import 'whatsapp_reminder_service.dart';
 
 /// Service terpusat untuk:
 /// 1. Mengelola daftar Notifikasi aplikasi (Laporan baru, Jadwal baru, Reminder jadwal, Sinkronisasi).
@@ -884,14 +885,40 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
       triggerSystemNotification: true,
     );
 
+    final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
+    final bool enableWa = rawWa == null ||
+        rawWa == true ||
+        rawWa == 1 ||
+        rawWa == '1' ||
+        rawWa.toString().toLowerCase() == 'true';
+    if (enableWa) {
+      // Picu pengiriman WhatsApp reminder otomatis via Fonnte tanpa perlu ditekan
+      WhatsappReminderService.instance.sendOrLaunchReminder(
+        item,
+        showFeedback: false,
+      ).catchError((_) => <String, dynamic>{});
+    }
+
     // Tampilkan notifikasi in-app melalui global ScaffoldMessenger (muncul di halaman mana pun)
     final messenger = scaffoldMessengerKey.currentState;
     if (messenger != null) {
       messenger.showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 6),
+          duration: const Duration(seconds: 8),
           backgroundColor: const Color(0xFF245C3A),
           behavior: SnackBarBehavior.floating,
+          action: enableWa
+              ? SnackBarAction(
+                  label: 'Kirim WA',
+                  textColor: const Color(0xFF81C784),
+                  onPressed: () {
+                    WhatsappReminderService.instance.sendOrLaunchReminder(
+                      item,
+                      showFeedback: true,
+                    );
+                  },
+                )
+              : null,
           content: Row(
             children: [
               const Icon(

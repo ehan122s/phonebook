@@ -116,6 +116,8 @@ class ScheduleController extends Controller
             'description' => 'nullable|string',
             'reminder_enabled' => 'nullable|boolean',
             'reminder_minutes' => 'nullable|integer|min:1|max:10080',
+            'enable_wa_notification' => 'nullable|boolean',
+            'wa_phone' => 'nullable|string|max:25',
             'is_completed' => 'nullable|boolean',
         ]);
 
@@ -123,6 +125,8 @@ class ScheduleController extends Controller
         $reminderMinutes = (int) ($validated['reminder_minutes'] ?? 30);
         $dateOnly = Carbon::parse($validated['date'], self::TIMEZONE)->format('Y-m-d');
         $startTime = $validated['start_time'] ?? null;
+        $enableWaNotification = (bool) ($validated['enable_wa_notification'] ?? false);
+        $waPhone = $validated['wa_phone'] ?? null;
 
         $data = [
             'user_id' => $request->user()->id,
@@ -134,6 +138,8 @@ class ScheduleController extends Controller
             'description' => $validated['description'] ?? null,
             'reminder_enabled' => $reminderEnabled,
             'reminder_at' => $this->calculateReminderAt($dateOnly, $startTime, $reminderEnabled, $reminderMinutes),
+            'enable_wa_notification' => $enableWaNotification,
+            'wa_phone' => $waPhone,
             'whatsapp_sent' => false,
         ];
 
@@ -217,6 +223,8 @@ class ScheduleController extends Controller
             'description' => 'nullable|string',
             'reminder_enabled' => 'nullable|boolean',
             'reminder_minutes' => 'nullable|integer|min:1|max:10080',
+            'enable_wa_notification' => 'nullable|boolean',
+            'wa_phone' => 'nullable|string|max:25',
             'is_completed' => 'nullable|boolean',
         ]);
 
@@ -229,6 +237,12 @@ class ScheduleController extends Controller
             : $schedule->start_time;
         $reminderEnabled = $validated['reminder_enabled'] ?? $schedule->reminder_enabled ?? true;
         $reminderMinutes = (int) ($validated['reminder_minutes'] ?? $schedule->reminder_minutes ?? 30);
+        $enableWaNotification = array_key_exists('enable_wa_notification', $validated)
+            ? (bool) $validated['enable_wa_notification']
+            : ($schedule->enable_wa_notification ?? false);
+        $waPhone = array_key_exists('wa_phone', $validated)
+            ? $validated['wa_phone']
+            : $schedule->wa_phone;
 
         $updateData = [
             'title' => $title,
@@ -239,6 +253,8 @@ class ScheduleController extends Controller
             'description' => array_key_exists('description', $validated) ? $validated['description'] : $schedule->description,
             'reminder_enabled' => $reminderEnabled,
             'reminder_at' => $this->calculateReminderAt($dateOnly, $startTime, $reminderEnabled, $reminderMinutes),
+            'enable_wa_notification' => $enableWaNotification,
+            'wa_phone' => $waPhone,
             'whatsapp_sent' => false,
         ];
 
@@ -279,6 +295,122 @@ class ScheduleController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Jadwal berhasil dihapus',
+        ]);
+    }
+
+    /**
+     * Kirim pengingat WhatsApp untuk jadwal tertentu.
+     * Menggunakan gateway Fonnte (jika online) dan mengembalikan fallback wa_url
+     * sehingga aplikasi mobile dapat membuka WhatsApp langsung tanpa gagal.
+     */
+    public function sendWhatsapp(Request $request, $id)
+    {
+        $schedule = Schedule::where('user_id', $request->user()->id)->find($id);
+
+        if (!$schedule) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal tidak ditemukan',
+            ], 404);
+        }
+
+        $targetPhone = $request->input('target_phone')
+            ?: $schedule->wa_phone
+            ?: $request->user()->whatsapp_number
+            ?: $request->user()->phone
+            ?: $request->user()->no_hp;
+
+        if (empty($targetPhone)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Nomor WhatsApp belum ditentukan. Silakan isi nomor WhatsApp penerima.',
+            ], 422);
+        }
+
+        $title = $schedule->title;
+        $category = $schedule->category ?? 'Kegiatan Dinas Kehutanan';
+        $date = Carbon::parse($schedule->date)->translatedFormat('l, d F Y');
+        $time = $schedule->start_time ?: '08:00';
+        $location = $schedule->location ?: 'Sesuai agenda lapangan';
+        $reminderMinutes = (int) ($schedule->reminder_minutes ?? 30);
+        $notes = $schedule->description;
+
+        $message = \App\Services\WhatsappService::formatReminderMessage(
+            $title,
+            $category,
+            $date,
+            $time,
+            $location,
+            $reminderMinutes,
+            $notes
+        );
+
+        $result = \App\Services\WhatsappService::sendReminder($targetPhone, $message);
+
+        if (!empty($result['success'])) {
+            $schedule->update(['whatsapp_sent' => true]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'server_delivered' => !empty($result['success']),
+            'message' => !empty($result['success'])
+                ? 'Pengingat WhatsApp berhasil dikirim dari server!'
+                : 'Pengingat WhatsApp siap dikirim langsung melalui aplikasi WhatsApp.',
+            'gateway_result' => $result,
+            'target_phone' => $result['target'] ?? $targetPhone,
+            'wa_url' => $result['wa_url'] ?? null,
+            'message_text' => $message,
+        ]);
+    }
+
+    /**
+     * Pengiriman langsung pengingat WhatsApp (tes atau manual).
+     */
+    public function directSend(Request $request)
+    {
+        $validated = $request->validate([
+            'target_phone' => 'required|string',
+            'message' => 'nullable|string',
+            'title' => 'nullable|string',
+            'date' => 'nullable|string',
+            'time' => 'nullable|string',
+            'location' => 'nullable|string',
+        ]);
+
+        $message = $validated['message'] ?? null;
+        if (empty($message)) {
+            $title = $validated['title'] ?? 'Kegiatan Dinas CDK Wilayah V';
+            $category = $request->input('category', 'Kegiatan Dinas Kehutanan');
+            $date = $validated['date'] ?? Carbon::now()->translatedFormat('l, d F Y');
+            $time = $validated['time'] ?? '08:00';
+            $location = $validated['location'] ?? 'Wilayah Kerja CDK Wilayah V';
+            $reminderMinutes = (int) $request->input('reminder_minutes', 30);
+            $notes = $request->input('notes', null);
+
+            $message = \App\Services\WhatsappService::formatReminderMessage(
+                $title,
+                $category,
+                $date,
+                $time,
+                $location,
+                $reminderMinutes,
+                $notes
+            );
+        }
+
+        $result = \App\Services\WhatsappService::sendReminder($validated['target_phone'], $message);
+
+        return response()->json([
+            'success' => true,
+            'server_delivered' => !empty($result['success']),
+            'message' => !empty($result['success'])
+                ? 'Pesan WhatsApp berhasil dikirim dari server!'
+                : 'Pesan WhatsApp siap dikirim langsung via WhatsApp.',
+            'gateway_result' => $result,
+            'target_phone' => $result['target'],
+            'wa_url' => $result['wa_url'],
+            'message_text' => $message,
         ]);
     }
 }

@@ -18,6 +18,9 @@ abstract final class ApiConstants {
   static String get clearAllNotificationsUrl =>
       '$baseUrl/api/notifications/clear-all';
 
+  /// Fonnte WhatsApp Gateway Token
+  static const String fonnteToken = 'zN7n8bZVJE9N52ftjUuX';
+
   /// Helper untuk merangkai token tanpa memicu filter push protection Git
   static String _join(List<String> parts) => parts.join();
 

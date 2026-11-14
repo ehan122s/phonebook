@@ -71,9 +71,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Schedules
+| Schedules & WhatsApp Reminders
 |--------------------------------------------------------------------------
 */
+
+Route::post('/whatsapp/send-reminder', [ScheduleController::class, 'directSend']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/schedules', [ScheduleController::class, 'index']);
@@ -81,6 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/schedules', [ScheduleController::class, 'store']);
     Route::put('/schedules/{id}', [ScheduleController::class, 'update']);
     Route::delete('/schedules/{id}', [ScheduleController::class, 'destroy']);
+    Route::post('/schedules/{id}/send-whatsapp', [ScheduleController::class, 'sendWhatsapp']);
 });
 
 /*

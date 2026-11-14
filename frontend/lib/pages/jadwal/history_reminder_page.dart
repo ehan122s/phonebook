@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../../constants/jadwal_constants.dart';
 import '../../services/jadwal_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/whatsapp_reminder_service.dart';
 
 class HistoryReminderPage extends StatefulWidget {
   final VoidCallback? onBack;
@@ -31,7 +32,6 @@ class HistoryReminderPage extends StatefulWidget {
 class _HistoryReminderPageState extends State<HistoryReminderPage> {
   static const Color green = Color(0xFF245C3A);
   static const Color secondaryGreen = Color(0xFF4F8A5B);
-  static const Color lightGreen = Color(0xFFE8F2E8);
   static const Color softGreen = Color(0xFFF2F7F0);
 
   final List<Map<String, dynamic>> _schedules = [];
@@ -510,6 +510,31 @@ class _HistoryReminderPageState extends State<HistoryReminderPage> {
                   ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF25D366),
+                side: const BorderSide(color: Color(0xFF25D366)),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () {
+                WhatsappReminderService.instance.sendOrLaunchReminder(
+                  item,
+                  context: context,
+                );
+              },
+              icon: const Icon(Icons.send_rounded, size: 15),
+              label: const Text(
+                'Kirim Pengingat WA',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],

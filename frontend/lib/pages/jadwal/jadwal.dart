@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import '../../constants/jadwal_constants.dart';
 import '../../services/jadwal_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/whatsapp_reminder_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../notifikasi/notifikasi_page.dart';
 import 'history_reminder_page.dart';
 
@@ -263,11 +265,21 @@ class _JadwalPageState extends State<JadwalPage> {
           : '',
     );
     final timeController = TextEditingController(text: initialTimeStr);
-    final waPhoneController = TextEditingController(
-      text: isEditing
-          ? (existingItem['waPhone'] ?? '089602976525').toString()
-          : '089602976525',
-    );
+    final prefs = await SharedPreferences.getInstance();
+    final userPhone = prefs.getString('profil_whatsapp') ??
+        prefs.getString('whatsapp_number') ??
+        prefs.getString('telepon') ??
+        prefs.getString('phone') ??
+        '';
+
+    final initialWaPhone = isEditing
+        ? (existingItem['waPhone'] ??
+                existingItem['wa_phone'] ??
+                (userPhone.isNotEmpty ? userPhone : '089602976525'))
+            .toString()
+        : (userPhone.isNotEmpty ? userPhone : '089602976525');
+
+    final waPhoneController = TextEditingController(text: initialWaPhone);
 
     String selectedCategory = isEditing
         ? (existingItem['kategori'] ?? categoryOptions.first['label']).toString()
@@ -1110,12 +1122,39 @@ class _JadwalPageState extends State<JadwalPage> {
                 text:
                     'Pengingat $reminderMinutes menit sebelum jadwal (Pukul $reminderClock WIB)',
               ),
+              if (item['enableWaNotification'] == true || item['enable_wa_notification'] == true)
+                _DetailRow(
+                  icon: Icons.chat_outlined,
+                  text: 'WhatsApp: ${(item['waPhone'] ?? item['wa_phone'] ?? '').toString().isNotEmpty ? (item['waPhone'] ?? item['wa_phone']) : 'Nomor Profil Pengguna'}',
+                ),
               if (description.isNotEmpty)
                 _DetailRow(
                   icon: Icons.notes,
                   text: description,
                 ),
               const SizedBox(height: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () {
+                  WhatsappReminderService.instance.sendOrLaunchReminder(
+                    item,
+                    context: context,
+                  );
+                },
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: const Text(
+                  'Kirim Pengingat WhatsApp',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
@@ -1816,7 +1855,27 @@ class _JadwalPageState extends State<JadwalPage> {
                                   ],
                                 ),
                               ),
-                              trailing: const Icon(Icons.chevron_right),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.send_rounded,
+                                      color: Color(0xFF25D366),
+                                      size: 19,
+                                    ),
+                                    tooltip: 'Kirim Pengingat WhatsApp',
+                                    onPressed: () {
+                                      WhatsappReminderService.instance
+                                          .sendOrLaunchReminder(
+                                        item,
+                                        context: context,
+                                      );
+                                    },
+                                  ),
+                                  const Icon(Icons.chevron_right),
+                                ],
+                              ),
                             ),
                           );
                         },
