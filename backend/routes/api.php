@@ -37,6 +37,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/report-photos/{id}', [ReportPhotoController::class, 'destroy']);
 });
 
+// Endpoint publik penyajian berkas foto lampiran laporan (untuk preview Flutter Image.network / browser)
+Route::get('/report-photos/{id}/file', [ReportPhotoController::class, 'file']);
+Route::get('/reports/{reportId}/photos/{photoId}/file', [ReportPhotoController::class, 'file']);
+
 
 /*
 |--------------------------------------------------------------------------

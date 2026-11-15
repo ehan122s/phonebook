@@ -24,6 +24,9 @@ class ReportCard extends StatelessWidget {
     final String status = laporan['status'];
     final bool isOffline = laporan['isOffline'] == true;
     final String? syncStatus = laporan['syncStatus']?.toString();
+    final bool hasPhoto = (laporan['foto'] != null && laporan['foto'].toString().trim().isNotEmpty) ||
+        (laporan['localPhotoPath'] != null && laporan['localPhotoPath'].toString().trim().isNotEmpty) ||
+        (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty);
 
     final (Color statusColor, Color statusBg) = switch (status) {
       'Selesai' => (
@@ -179,6 +182,15 @@ class ReportCard extends StatelessWidget {
             text: laporan['lokasi'],
             iconSize: 17,
           ),
+
+          if (hasPhoto) ...[
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.photo_camera_outlined,
+              text: 'Foto lampiran terlampir',
+              iconSize: 16,
+            ),
+          ],
 
           const SizedBox(height: 16),
 

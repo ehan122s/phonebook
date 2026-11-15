@@ -217,8 +217,8 @@ class _MateriPageState extends State<MateriPage> {
         'category': 'Penyuluhan',
         'description':
             'Panduan teknis kegiatan penyuluhan kehutanan lapangan, pembentukan kelompok tani hutan, peningkatan kelas kelembagaan dari Pemula ke Madya, serta pengembangan agroforestri produktif.',
-        'uploader_name': 'Rizky Pratama, S.Hut.',
-        'uploader_role': 'Penyuluh Kehutanan (CDK Garut)',
+        'uploader_name': 'CDK Wilayah V Garut',
+        'uploader_role': 'Cabang Dinas Kehutanan',
         'file_name': 'Buku_Pedoman_Penyuluhan_Kehutanan_2026.pdf',
         'uploaded_at': '3 Nov 2026, 09:15',
       },
@@ -229,8 +229,8 @@ class _MateriPageState extends State<MateriPage> {
         'category': 'Konservasi & Ekosistem',
         'description':
             'Metodologi pemetaan koridor satwa, identifikasi flora langka dilindungi, pencegahan perambahan kawasan konservasi, serta inventarisasi keanekaragaman hayati.',
-        'uploader_name': 'Siti Nurhaliza, S.Hut.',
-        'uploader_role': 'Penyuluh Kehutanan (Kec. Cisurupan)',
+        'uploader_name': 'CDK Wilayah V Garut',
+        'uploader_role': 'Cabang Dinas Kehutanan',
         'file_name': 'Manual_Konservasi_Hutan_Lindung.pdf',
         'uploaded_at': '2 Nov 2026, 14:20',
       },
@@ -253,8 +253,8 @@ class _MateriPageState extends State<MateriPage> {
         'category': 'Rehabilitasi Hutan',
         'description':
             'Teknik pembibitan bibit tanaman hutan unggul MPTS (Multi-Purpose Tree Species), teknik penanaman kontur lereng curam, dan pemeliharaan tegakan.',
-        'uploader_name': 'Budi Santoso, M.Si.',
-        'uploader_role': 'Koordinator CDK Wilayah',
+        'uploader_name': 'CDK Wilayah V Garut',
+        'uploader_role': 'Cabang Dinas Kehutanan',
         'file_name': 'Presentasi_Teknik_RHL_2026.pptx',
         'uploaded_at': '28 Okt 2026, 11:45',
       },

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Report;
+use App\Models\ReportPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -91,6 +92,26 @@ class ReportController extends Controller
             // Abaikan jika tabel belum tersedia
         }
 
+        // Simpan lampiran foto jika dikirimkan bersamaan dengan form laporan
+        if ($request->hasFile('photo')) {
+            try {
+                $photoFile = $request->file('photo');
+                $path = $photoFile->store('reports', 'public');
+                $photoBytes = file_get_contents($photoFile->getRealPath());
+                $base64 = base64_encode($photoBytes);
+
+                ReportPhoto::create([
+                    'report_id' => $report->id,
+                    'photo' => $path,
+                    'photo_base64' => $base64,
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                ]);
+            } catch (\Throwable $e) {}
+        }
+
+        $report->load(['user', 'category', 'photos']);
+
         return response()->json([
             'success' => true,
             'message' => 'Laporan berhasil dibuat',
@@ -131,6 +152,25 @@ class ReportController extends Controller
             'description' => $validated['description'] ?? null,
             'status' => $validated['status'] ?? $report->status,
         ]);
+
+        if ($request->hasFile('photo')) {
+            try {
+                $photoFile = $request->file('photo');
+                $path = $photoFile->store('reports', 'public');
+                $photoBytes = file_get_contents($photoFile->getRealPath());
+                $base64 = base64_encode($photoBytes);
+
+                ReportPhoto::create([
+                    'report_id' => $report->id,
+                    'photo' => $path,
+                    'photo_base64' => $base64,
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                ]);
+            } catch (\Throwable $e) {}
+        }
+
+        $report->load(['user', 'category', 'photos']);
 
         return response()->json([
             'success' => true,

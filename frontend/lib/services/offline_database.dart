@@ -35,8 +35,17 @@ class OfflineDatabase {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN photo_path TEXT',
+            );
+          } catch (_) {}
+        }
+      },
     );
   }
 
@@ -55,6 +64,7 @@ class OfflineDatabase {
         jenis_laporan TEXT,
         sync_status TEXT DEFAULT 'pending',
         server_id INTEGER,
+        photo_path TEXT,
         created_at TEXT,
         updated_at TEXT
       )
@@ -79,6 +89,7 @@ class OfflineDatabase {
       'jenis_laporan': data['jenis_laporan'],
       'sync_status': data['sync_status'] ?? 'pending',
       'server_id': data['server_id'],
+      'photo_path': data['photo_path'],
       'created_at': data['created_at'] ?? now,
       'updated_at': now,
     };

@@ -229,10 +229,11 @@ class _LaporanPageState extends State<LaporanPage> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
+      final email = prefs.getString('email');
       final defaultUserName =
           prefs.getString('profil_nama') ??
           prefs.getString('name') ??
-          'Rizky Pratama, S.Hut.';
+          (email != null && email.isNotEmpty ? email.split('@').first : 'Pengguna');
 
       if (token == null || token.isEmpty) {
         if (!mounted) return;
@@ -281,8 +282,11 @@ class _LaporanPageState extends State<LaporanPage> {
           'isi': local['description'] ?? '',
           'latitude': local['latitude']?.toString() ?? '',
           'longitude': local['longitude']?.toString() ?? '',
-          'foto': '',
-          'photos': <dynamic>[],
+          'foto': local['photo_path'] ?? '',
+          'photos': local['photo_path'] != null && (local['photo_path'] as String).isNotEmpty
+              ? [{'local_path': local['photo_path']}]
+              : <dynamic>[],
+          'localPhotoPath': local['photo_path'],
           'status': LaporanDateUtils.displayStatus(rawStatus),
           'statusApi': rawStatus,
           'isOffline': true,
@@ -395,12 +399,6 @@ class _LaporanPageState extends State<LaporanPage> {
             }
           } catch (_) {}
         }
-
-        if (allReports.isEmpty) {
-          for (final sample in _buildDefaultMonitoredUserReports()) {
-            addUniqueReport(sample);
-          }
-        }
       }
 
       if (!mounted) return;
@@ -476,98 +474,6 @@ class _LaporanPageState extends State<LaporanPage> {
       return 'Laporan Kegiatan';
     }
     return 'Laporan Penyuluhan';
-  }
-
-  List<Map<String, dynamic>> _buildDefaultMonitoredUserReports() {
-    return [
-      {
-        'id': 'mon_1',
-        'judul': 'Penyuluhan Perhutanan Sosial KTH Makmur',
-        'jenis': 'Laporan Penyuluhan',
-        'pelapor': 'Rizky Pratama, S.Hut.',
-        'tanggal': '20 Oktober 2026',
-        'tanggalApi': '2026-10-20',
-        'lokasi': 'Kecamatan Garut',
-        'isi':
-            'LAPORAN KEGIATAN PENYULUHAN KEHUTANAN\n'
-            'Cabang Dinas Kehutanan Wilayah V\n\n'
-            '1. Kelompok Sasaran / KTH : KTH Makmur Desa Sukamaju\n'
-            '2. Materi Penyuluhan      : Penyusunan Rencana Kerja Tahunan & Agroforestri\n'
-            '3. Jumlah Peserta         : 28 Orang\n'
-            '4. Hasil & Tindak Lanjut  :\nPeserta memahami tata kelola perhutanan sosial dan jadwal distribusi bibit.',
-        'latitude': '-7.227900',
-        'longitude': '107.908700',
-        'foto': '',
-        'photos': <dynamic>[],
-        'status': 'Selesai',
-        'isOffline': false,
-      },
-      {
-        'id': 'mon_2',
-        'judul': 'Pelaksanaan TRK & Rehabilitasi Lahan Kritis Cisurupan',
-        'jenis': 'Laporan TRK',
-        'pelapor': 'Siti Nurhaliza, S.Hut.',
-        'tanggal': '19 Oktober 2026',
-        'tanggalApi': '2026-10-19',
-        'lokasi': 'Kecamatan Cisurupan',
-        'isi':
-            'LAPORAN PELAKSANAAN TRK & REHABILITASI HUTAN\n'
-            'Cabang Dinas Kehutanan Wilayah V\n\n'
-            '1. Blok / Petak Kawasan : Blok Selatan Petak 14\n'
-            '2. Jenis & Jumlah Bibit : Puspa & Rasamala (600 Batang)\n'
-            '3. Luas Area (Ha)       : 2,5 Ha\n'
-            '4. Kondisi & Evaluasi   :\nPenanaman berjalan lancar bersama KTH setempat, daya tumbuh mencapai 92%.',
-        'latitude': '-7.316400',
-        'longitude': '107.792100',
-        'foto': '',
-        'photos': <dynamic>[],
-        'status': 'Diproses',
-        'isOffline': false,
-      },
-      {
-        'id': 'mon_3',
-        'judul': 'Monitoring Patok Batas & Tegakan Kawasan Cikuray',
-        'jenis': 'Laporan Monitoring',
-        'pelapor': 'Budi Santoso, M.Si.',
-        'tanggal': '18 Oktober 2026',
-        'tanggalApi': '2026-10-18',
-        'lokasi': 'Kawasan Hutan Cikuray',
-        'isi':
-            'LAPORAN MONITORING KAWASAN HUTAN\n'
-            'Cabang Dinas Kehutanan Wilayah V\n\n'
-            '1. Kawasan / Titik Pantau  : Jalur Patok B-12 s/d B-19\n'
-            '2. Kondisi Tegakan & Patok : Baik dan lengkap\n'
-            '3. Temuan Lapangan         : Tidak ditemukan perambahan\n'
-            '4. Rekomendasi Tindakan    :\nPatroli rutin dilanjutkan setiap dua pekan.',
-        'latitude': '-7.322500',
-        'longitude': '107.860100',
-        'foto': '',
-        'photos': <dynamic>[],
-        'status': 'Selesai',
-        'isOffline': false,
-      },
-      {
-        'id': 'mon_4',
-        'judul': 'Pendataan Kelompok & Potensi Hasil Hutan Bukan Kayu',
-        'jenis': 'Laporan Kegiatan',
-        'pelapor': 'Andi Wijaya, S.Hut.',
-        'tanggal': '16 Oktober 2026',
-        'tanggalApi': '2026-10-16',
-        'lokasi': 'Lereng Gunung Guntur',
-        'isi':
-            'LAPORAN KEGIATAN LAPANGAN\n'
-            'Cabang Dinas Kehutanan Wilayah V\n\n'
-            '1. Kegiatan & Pihak Terkait : Pendataan Produksi Madu Hutan KTH Lestari\n'
-            '2. Tujuan Kegiatan          : Inventarisasi stup lebah dan hasil panen triwulan\n'
-            '3. Ringkasan Hasil          :\nTercatat 45 stup aktif dengan rata-rata produksi stabil.',
-        'latitude': '-7.152400',
-        'longitude': '107.842000',
-        'foto': '',
-        'photos': <dynamic>[],
-        'status': 'Draft',
-        'isOffline': false,
-      },
-    ];
   }
 
   Future<void> _persistReports() async {

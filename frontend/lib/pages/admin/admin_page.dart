@@ -68,90 +68,31 @@ class _AdminPageState extends State<AdminPage> {
   String _reportFilterStatus = 'Semua';
   bool _isSyncingUsers = false;
 
-  int _totalJadwalCount = 6;
-  int _totalMateriCount = 4;
+  int _totalJadwalCount = 0;
+  int _totalMateriCount = 0;
 
-  final List<Map<String, String>> _defaultUsers = [
-    {
-      'id': 'USR-001',
-      'nip': '19940812 202012 1 004',
-      'name': 'Rizky Pratama, S.Hut.',
-      'email': 'rizky@kehutanan.go.id',
-      'whatsapp': '0812-3456-7890',
-      'wilayah': 'CDK Wilayah Garut',
-      'role': 'Penyuluh',
-      'status': 'Aktif',
-    },
-    {
-      'id': 'USR-002',
-      'nip': '19910523 201903 2 008',
-      'name': 'Siti Nurhaliza, S.Hut.',
-      'email': 'siti.nur@kehutanan.go.id',
-      'whatsapp': '0813-2244-6688',
-      'wilayah': 'Kecamatan Cisurupan',
-      'role': 'Penyuluh',
-      'status': 'Aktif',
-    },
-    {
-      'id': 'USR-003',
-      'nip': '19891104 201801 1 002',
-      'name': 'Budi Santoso, M.Si.',
-      'email': 'budi.santoso@kehutanan.go.id',
-      'whatsapp': '0857-9876-5432',
-      'wilayah': 'Kawasan Hutan Cikuray',
-      'role': 'Koordinator',
-      'status': 'Aktif',
-    },
-    {
-      'id': 'USR-004',
-      'nip': '19960219 202203 1 011',
-      'name': 'Andi Wijaya, S.Hut.',
-      'email': 'andi.wijaya@kehutanan.go.id',
-      'whatsapp': '0821-1122-3344',
-      'wilayah': 'Lereng Gunung Guntur',
-      'role': 'Penyuluh',
-      'status': 'Nonaktif',
-    },
-  ];
+  static bool _isDummyUser(String email, String id) {
+    final lower = email.toLowerCase().trim();
+    final lowerId = id.toLowerCase().trim();
+    return lower == 'rizky@kehutanan.go.id' ||
+        lower == 'siti.nur@kehutanan.go.id' ||
+        lower == 'budi.santoso@kehutanan.go.id' ||
+        lower == 'andi.wijaya@kehutanan.go.id' ||
+        lower == 'atmin@gmail.com' ||
+        lower == 'r4yy73@gmail.com' ||
+        lower == 'r4yy73@gmailcom' ||
+        lower == 'test@example.com' ||
+        lowerId == 'usr-001' ||
+        lowerId == 'usr-002' ||
+        lowerId == 'usr-003' ||
+        lowerId == 'usr-004' ||
+        lowerId == 'rep_1' ||
+        lowerId == 'rep_2' ||
+        lowerId == 'rep_3' ||
+        lowerId == 'rep_4';
+  }
 
-  final List<Map<String, String>> _defaultRecentReports = [
-    {
-      'id': 'rep_1',
-      'judul': 'Penyuluhan Perhutanan Sosial KTH Makmur',
-      'pelapor': 'Rizky Pratama, S.Hut.',
-      'lokasi': 'Kecamatan Garut',
-      'kategori': 'Penyuluhan',
-      'tanggal': '20 Oktober 2026',
-      'status': 'Selesai',
-    },
-    {
-      'id': 'rep_2',
-      'judul': 'Monitoring Patok Batas Kawasan Hutan',
-      'pelapor': 'Siti Nurhaliza, S.Hut.',
-      'lokasi': 'Kecamatan Cisurupan',
-      'kategori': 'Monitoring & Patroli',
-      'tanggal': '19 Oktober 2026',
-      'status': 'Diproses',
-    },
-    {
-      'id': 'rep_3',
-      'judul': 'Rehabilitasi Lahan Kritis Blok Selatan',
-      'pelapor': 'Budi Santoso, M.Si.',
-      'lokasi': 'Kawasan Hutan Cikuray',
-      'kategori': 'Rehabilitasi Hutan',
-      'tanggal': '18 Oktober 2026',
-      'status': 'Selesai',
-    },
-    {
-      'id': 'rep_4',
-      'judul': 'Pendataan Produksi Madu Hutan Lestari',
-      'pelapor': 'Andi Wijaya, S.Hut.',
-      'lokasi': 'Lereng Gunung Guntur',
-      'kategori': 'Ekosistem & Konservasi',
-      'tanggal': '16 Oktober 2026',
-      'status': 'Draft',
-    },
-  ];
+  final List<Map<String, String>> _defaultUsers = const [];
 
   final List<Map<String, String>> _users = [];
   final List<Map<String, String>> _recentReports = [];
@@ -192,17 +133,18 @@ class _AdminPageState extends State<AdminPage> {
                 ),
               ),
             )
+            .where((u) => !_isDummyUser(u['email'] ?? '', u['id'] ?? ''))
             .toList();
       } catch (_) {}
     }
 
     // Muat & sinkronkan ringkasan laporan, jadwal, dan materi dari penyimpanan lokal
-    final List<Map<String, String>> loadedReports = List.from(_defaultRecentReports);
+    final List<Map<String, String>> loadedReports = [];
     final rawLaporan = prefs.getString(_laporanDraftKey);
     if (rawLaporan != null && rawLaporan.isNotEmpty) {
       try {
         final List<dynamic> decodedLaporan = jsonDecode(rawLaporan);
-        final userName = savedName ?? 'Rizky Pratama, S.Hut.';
+        final userName = savedName ?? 'Pengguna';
         for (final item in decodedLaporan.reversed) {
           final map = Map<String, dynamic>.from(item);
           final id = 'local_${map['id'] ?? map['judul']}';
@@ -210,7 +152,7 @@ class _AdminPageState extends State<AdminPage> {
             loadedReports.insert(0, {
               'id': id,
               'judul': (map['judul'] ?? 'Laporan Kegiatan').toString(),
-              'pelapor': userName,
+              'pelapor': (map['pelapor'] ?? map['userName'] ?? userName).toString(),
               'lokasi': (map['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
               'kategori': (map['jenis'] ?? 'Penyuluhan').toString(),
               'tanggal': (map['tanggal'] ?? 'Baru saja').toString(),
@@ -308,7 +250,10 @@ class _AdminPageState extends State<AdminPage> {
               for (final su in serverUsers) {
                 final email =
                     (su['email'] ?? '').toString().trim().toLowerCase();
-                if (email.isNotEmpty && !existingEmails.contains(email)) {
+                final id = (su['id'] ?? '').toString().trim();
+                if (email.isNotEmpty &&
+                    !_isDummyUser(email, id) &&
+                    !existingEmails.contains(email)) {
                   existingEmails.add(email);
                   merged.add({
                     'id': (su['id'] ??
@@ -329,7 +274,10 @@ class _AdminPageState extends State<AdminPage> {
               for (final lu in _users) {
                 final email =
                     (lu['email'] ?? '').toString().trim().toLowerCase();
-                if (email.isNotEmpty && !existingEmails.contains(email)) {
+                final id = (lu['id'] ?? '').toString().trim();
+                if (email.isNotEmpty &&
+                    !_isDummyUser(email, id) &&
+                    !existingEmails.contains(email)) {
                   existingEmails.add(email);
                   merged.add(lu);
                 }
@@ -553,7 +501,7 @@ class _AdminPageState extends State<AdminPage> {
                         style: TextStyle(color: _textPrimary),
                         decoration: fieldDecoration(
                           'Nama Lengkap & Gelar',
-                          'Contoh: Rizky Pratama, S.Hut.',
+                          'Nama lengkap beserta gelar',
                           Icons.badge_outlined,
                         ),
                       ),

@@ -27,6 +27,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/laporan_service.dart';
@@ -179,6 +180,24 @@ Future<void> showReportForm(
 
   XFile? pickedPhotoFile;
   Uint8List? pickedPhotoBytes;
+  String? existingPhotoUrl;
+  if (existing != null) {
+    if (existing['foto'] != null && existing['foto'].toString().trim().isNotEmpty) {
+      existingPhotoUrl = existing['foto'].toString().trim();
+    } else if (existing['photos'] is List && (existing['photos'] as List).isNotEmpty) {
+      final first = (existing['photos'] as List).first;
+      if (first is Map) {
+        final raw = (first['url'] ?? first['photo'] ?? first['local_path'] ?? '').toString().trim();
+        if (raw.isNotEmpty) {
+          existingPhotoUrl = raw.startsWith('http')
+              ? raw
+              : (raw.startsWith('/') ? raw : '${ApiConstants.baseUrl}/storage/$raw');
+        }
+      }
+    } else if (existing['localPhotoPath'] != null && existing['localPhotoPath'].toString().trim().isNotEmpty) {
+      existingPhotoUrl = existing['localPhotoPath'].toString().trim();
+    }
+  }
   bool isGettingLocation = false;
   bool showCoordinateInputs =
       latCtrl.text.isNotEmpty || lngCtrl.text.isNotEmpty;
@@ -976,7 +995,7 @@ Future<void> showReportForm(
                                                     Expanded(
                                                       child: Text(
                                                         pickedPhotoFile?.name ??
-                                                            'Foto Bukti Kegiatan',
+                                                            'Foto Bukti Baru',
                                                         maxLines: 1,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -1030,7 +1049,93 @@ Future<void> showReportForm(
                                             ],
                                           ),
                                         )
-                                      : _PhotoButton(onTap: pickPhoto),
+                                      : (existingPhotoUrl != null && existingPhotoUrl!.isNotEmpty)
+                                          ? Container(
+                                              width: double.infinity,
+                                              decoration: BoxDecoration(
+                                                color: isDark
+                                                    ? const Color(0xFF18221B)
+                                                    : LaporanColors.fieldFill,
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(color: borderCol),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius: const BorderRadius.vertical(
+                                                      top: Radius.circular(14),
+                                                    ),
+                                                    child: existingPhotoUrl!.startsWith('http')
+                                                        ? Image.network(
+                                                            existingPhotoUrl!,
+                                                            height: 180,
+                                                            width: double.infinity,
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder: (_, __, ___) => Container(
+                                                              height: 120,
+                                                              color: Colors.grey.shade200,
+                                                              alignment: Alignment.center,
+                                                              child: const Icon(Icons.broken_image_outlined, color: Colors.grey, size: 38),
+                                                            ),
+                                                          )
+                                                        : (!kIsWeb && File(existingPhotoUrl!).existsSync())
+                                                            ? Image.file(
+                                                                File(existingPhotoUrl!),
+                                                                height: 180,
+                                                                width: double.infinity,
+                                                                fit: BoxFit.cover,
+                                                              )
+                                                            : Image.network(
+                                                                '${ApiConstants.baseUrl}/storage/${existingPhotoUrl!}',
+                                                                height: 180,
+                                                                width: double.infinity,
+                                                                fit: BoxFit.cover,
+                                                                errorBuilder: (_, __, ___) => Container(
+                                                                  height: 120,
+                                                                  color: Colors.grey.shade200,
+                                                                  alignment: Alignment.center,
+                                                                  child: const Icon(Icons.broken_image_outlined, color: Colors.grey, size: 38),
+                                                                ),
+                                                              ),
+                                                  ),
+                                                  Padding(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                                    child: Row(
+                                                      children: [
+                                                        const Expanded(
+                                                          child: Text(
+                                                            'Foto Lampiran Tersimpan',
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              fontWeight: FontWeight.w600,
+                                                              fontSize: 13,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        TextButton.icon(
+                                                          onPressed: pickPhoto,
+                                                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                                                          label: const Text('Ganti'),
+                                                          style: TextButton.styleFrom(foregroundColor: primaryGreen),
+                                                        ),
+                                                        TextButton.icon(
+                                                          onPressed: () {
+                                                            setModalState(() {
+                                                              existingPhotoUrl = null;
+                                                            });
+                                                          },
+                                                          icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                                          label: const Text('Hapus', style: TextStyle(color: Colors.red)),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          : _PhotoButton(onTap: pickPhoto),
                                 ),
                               ],
                             );
@@ -2727,6 +2832,18 @@ void showReportDetail(
                         : 'Belum tersedia',
                   ),
 
+                  // ── LAMPIRAN FOTO DOKUMENTASI KEGIATAN ──
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Lampiran Foto Dokumentasi',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildReportPhotoSection(ctx, laporan, isDark),
+
                   const SizedBox(height: 20),
 
                   if (isAdmin && onUpdateStatus != null) ...[
@@ -2856,6 +2973,206 @@ void showReportDetail(
 }
 
 // ---------------------------------------------------------------------------
+// Komponen Penampil Foto Dokumentasi Laporan (Detail View & Fullscreen Zoom)
+// ---------------------------------------------------------------------------
+
+Widget _buildReportPhotoSection(
+  BuildContext context,
+  Map<String, dynamic> laporan,
+  bool isDark,
+) {
+  String? photoUrl;
+  final rawFoto = (laporan['foto'] ?? '').toString().trim();
+  if (rawFoto.isNotEmpty) {
+    photoUrl = rawFoto.startsWith('http')
+        ? rawFoto
+        : (rawFoto.startsWith('/') ? rawFoto : '${ApiConstants.baseUrl}/storage/$rawFoto');
+  }
+
+  if ((photoUrl == null || photoUrl.isEmpty) &&
+      laporan['photos'] is List &&
+      (laporan['photos'] as List).isNotEmpty) {
+    final first = (laporan['photos'] as List).first;
+    if (first is Map) {
+      final raw =
+          (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
+              .toString()
+              .trim();
+      if (raw.isNotEmpty) {
+        photoUrl = raw.startsWith('http')
+            ? raw
+            : (raw.startsWith('/') ? raw : '${ApiConstants.baseUrl}/storage/$raw');
+      }
+    }
+  }
+
+  if ((photoUrl == null || photoUrl.isEmpty) &&
+      laporan['localPhotoPath'] != null) {
+    final raw = laporan['localPhotoPath'].toString().trim();
+    if (raw.isNotEmpty) photoUrl = raw;
+  }
+
+  if (photoUrl == null || photoUrl.isEmpty) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF18221B) : LaporanColors.fieldFill,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2E3D34) : LaporanColors.borderDetail,
+        ),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.photo_outlined, color: Colors.grey, size: 24),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Tidak ada lampiran foto untuk laporan ini.',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  final String activePhotoUrl = photoUrl;
+
+  Widget buildImageWidget() {
+    if (activePhotoUrl.startsWith('http')) {
+      return Image.network(
+        activePhotoUrl,
+        height: 220,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            height: 220,
+            color: isDark ? const Color(0xFF1B261F) : Colors.grey.shade100,
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(strokeWidth: 2.2),
+          );
+        },
+        errorBuilder: (ctx, err, stack) {
+          return Container(
+            height: 140,
+            color: isDark ? const Color(0xFF2E1A1A) : Colors.red.shade50,
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.broken_image_rounded,
+                  color: Colors.red.shade300,
+                  size: 36,
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Foto lampiran tidak dapat dimuat dari server',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } else if (!kIsWeb && File(activePhotoUrl).existsSync()) {
+      return Image.file(
+        File(activePhotoUrl),
+        height: 220,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      );
+    } else {
+      return Image.network(
+        '${ApiConstants.baseUrl}/storage/$activePhotoUrl',
+        height: 220,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          height: 140,
+          color: isDark ? const Color(0xFF2E1A1A) : Colors.red.shade50,
+          alignment: Alignment.center,
+          child: const Text(
+            'Berkas fisik foto tidak ditemukan',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+        ),
+      );
+    }
+  }
+
+  return InkWell(
+    onTap: () {
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(12),
+          child: Stack(
+            alignment: Alignment.topRight,
+            children: [
+              InteractiveViewer(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: buildImageWidget(),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+    borderRadius: BorderRadius.circular(14),
+    child: Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: buildImageWidget(),
+        ),
+        Positioned(
+          bottom: 10,
+          right: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
+                SizedBox(width: 4),
+                Text(
+                  'Ketuk untuk perbesar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Submit handler (shared between draft & final submit)
 // ---------------------------------------------------------------------------
 
@@ -2914,7 +3231,9 @@ Future<void> _handleSubmit({
   final currentUserName =
       prefs.getString('profil_nama') ??
       prefs.getString('name') ??
-      'Rizky Pratama, S.Hut.';
+      (prefs.getString('email')?.isNotEmpty == true
+          ? prefs.getString('email')!.split('@').first
+          : 'Pengguna');
 
   final payload = <String, dynamic>{
     'title': title,
@@ -2930,7 +3249,10 @@ Future<void> _handleSubmit({
     'status': apiStatus,
   };
 
-  Future<void> syncToLocalMonitoringStorage(String recordId) async {
+  Future<void> syncToLocalMonitoringStorage(
+    String recordId, {
+    String? localPhotoPath,
+  }) async {
     try {
       const draftKey = 'phonebook_laporan_drafts_v1';
       final rawDrafts = prefs.getString(draftKey);
@@ -2952,6 +3274,9 @@ Future<void> _handleSubmit({
         'latitude': latCtrl.text.trim(),
         'longitude': lngCtrl.text.trim(),
         'status': status,
+        'localPhotoPath': localPhotoPath ?? existing?['localPhotoPath'],
+        'foto': localPhotoPath ?? existing?['foto'] ?? '',
+        'photos': existing?['photos'] ?? <dynamic>[],
       };
       final existingIdx = drafts.indexWhere(
         (d) => d['id'].toString() == recordId || d['judul'] == title,
@@ -2972,6 +3297,8 @@ Future<void> _handleSubmit({
       final insertedId = await LaporanService.saveOffline(
         payload: payload,
         jenisLaporan: jenisLaporan,
+        photoBytes: photoBytes,
+        photoFilename: photoFilename,
       );
       await syncToLocalMonitoringStorage('local_$insertedId');
 
@@ -2979,10 +3306,11 @@ Future<void> _handleSubmit({
 
       if (!parentContext.mounted) return;
       ScaffoldMessenger.of(parentContext).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Laporan disimpan secara offline. '
-            'Akan otomatis dikirim saat ada koneksi.',
+            photoBytes != null
+                ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan saat online.'
+                : 'Laporan disimpan secara offline. Akan otomatis dikirim saat ada koneksi.',
           ),
         ),
       );
@@ -3018,9 +3346,12 @@ Future<void> _handleSubmit({
           ? int.tryParse(body['data']['id'].toString())
           : existingId;
 
+      bool photoUploaded = false;
+      String? photoError;
+
       if (reportId != null && photoBytes != null) {
         try {
-          await LaporanService.uploadReportPhoto(
+          final photoRes = await LaporanService.uploadReportPhoto(
             token: token,
             reportId: reportId,
             photoBytes: photoBytes,
@@ -3030,7 +3361,14 @@ Future<void> _handleSubmit({
             latitude: double.tryParse(latCtrl.text.trim()),
             longitude: double.tryParse(lngCtrl.text.trim()),
           );
-        } catch (_) {}
+          if (photoRes.statusCode == 200 || photoRes.statusCode == 201) {
+            photoUploaded = true;
+          } else {
+            photoError = 'HTTP ${photoRes.statusCode}';
+          }
+        } catch (pe) {
+          photoError = pe.toString();
+        }
       }
 
       await syncToLocalMonitoringStorage(
@@ -3039,16 +3377,28 @@ Future<void> _handleSubmit({
       await onReportSaved();
 
       if (!parentContext.mounted) return;
+
+      final String notifyMsg;
+      if (apiStatus == 'draft') {
+        if (photoBytes != null && photoUploaded) {
+          notifyMsg = 'Draft laporan dan foto berhasil disimpan ke database.';
+        } else if (photoError != null) {
+          notifyMsg = 'Draft disimpan, namun upload foto gagal ($photoError).';
+        } else {
+          notifyMsg = 'Draft berhasil disimpan ke database.';
+        }
+      } else {
+        if (photoBytes != null && photoUploaded) {
+          notifyMsg = 'Laporan dan foto bukti kegiatan berhasil dikirim.';
+        } else if (photoError != null) {
+          notifyMsg = 'Laporan terkirim, namun upload foto gagal ($photoError).';
+        } else {
+          notifyMsg = 'Laporan berhasil dikirim ke database.';
+        }
+      }
+
       ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(
-          content: Text(
-            apiStatus == 'draft'
-                ? 'Draft berhasil disimpan ke database.'
-                : (photoBytes != null
-                      ? 'Laporan dan foto bukti berhasil dikirim.'
-                      : 'Laporan berhasil dikirim ke database.'),
-          ),
-        ),
+        SnackBar(content: Text(notifyMsg)),
       );
 
       if (closeOnSuccess && context.mounted) {
@@ -3058,6 +3408,8 @@ Future<void> _handleSubmit({
       final insertedId = await LaporanService.saveOffline(
         payload: payload,
         jenisLaporan: jenisLaporan,
+        photoBytes: photoBytes,
+        photoFilename: photoFilename,
       );
       await syncToLocalMonitoringStorage('local_$insertedId');
       await onReportSaved();
@@ -3067,8 +3419,8 @@ Future<void> _handleSubmit({
         SnackBar(
           content: Text(
             status == 'Draft'
-                ? 'Draft laporan berhasil disimpan.'
-                : 'Laporan berhasil disimpan dan siap diunduh / dipantau Admin.',
+                ? 'Draft laporan disimpan lokal di perangkat.'
+                : 'Laporan disimpan lokal di perangkat dan siap diunduh.',
           ),
         ),
       );
@@ -3081,6 +3433,8 @@ Future<void> _handleSubmit({
       final insertedId = await LaporanService.saveOffline(
         payload: payload,
         jenisLaporan: jenisLaporan,
+        photoBytes: photoBytes,
+        photoFilename: photoFilename,
       );
       await syncToLocalMonitoringStorage('local_$insertedId');
       await onReportSaved();
@@ -3088,7 +3442,7 @@ Future<void> _handleSubmit({
         ScaffoldMessenger.of(parentContext).showSnackBar(
           const SnackBar(
             content: Text(
-              'Laporan disimpan di perangkat dan siap diunduh.',
+              'Koneksi bermasalah. Laporan dan foto disimpan di perangkat.',
             ),
           ),
         );

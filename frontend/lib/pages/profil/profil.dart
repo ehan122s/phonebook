@@ -32,15 +32,15 @@ class ProfilPage extends StatefulWidget {
 
 class _ProfilPageState extends State<ProfilPage> {
   // Identitas & Data Kepegawaian
-  String _nama = 'Rizky Pratama, S.Hut.';
-  String _email = 'rizky@kehutanan.go.id';
-  String _nip = '19940812 202012 1 004';
-  String _jabatan = 'Penyuluh Kehutanan Ahli Pertama';
+  String _nama = '';
+  String _email = '';
+  String _nip = '-';
+  String _jabatan = 'Penyuluh Kehutanan';
   final String _pangkat = 'Penata Muda / III/a';
   final String _instansi = 'Dinas Kehutanan Provinsi Jawa Barat';
   final String _unitKerja = 'Cabang Dinas Kehutanan Wilayah V Garut';
-  String _wilayah = 'CDK Wilayah Garut & Sekitarnya';
-  String _whatsapp = '0812-3456-7890';
+  String _wilayah = 'CDK Wilayah Garut';
+  String _whatsapp = '-';
   String _avatar = '';
   String _role = 'user';
   String _status = 'Aktif';
@@ -109,12 +109,14 @@ class _ProfilPageState extends State<ProfilPage> {
     if (!mounted) return;
 
     final token = prefs.getString('token') ?? '';
-    final email = prefs.getString('email') ?? prefs.getString('profil_email') ?? 'rizky@kehutanan.go.id';
-    final name = prefs.getString('profil_nama') ?? prefs.getString('name') ?? 'Rizky Pratama, S.Hut.';
-    final nip = prefs.getString('profil_nip') ?? prefs.getString('nip') ?? '19940812 202012 1 004';
-    final jabatan = prefs.getString('profil_jabatan') ?? prefs.getString('jabatan') ?? 'Penyuluh Kehutanan Ahli Pertama';
+    final email = prefs.getString('email') ?? prefs.getString('profil_email') ?? '';
+    final name = prefs.getString('profil_nama') ??
+        prefs.getString('name') ??
+        (email.isNotEmpty ? email.split('@').first : 'Pengguna');
+    final nip = prefs.getString('profil_nip') ?? prefs.getString('nip') ?? '-';
+    final jabatan = prefs.getString('profil_jabatan') ?? prefs.getString('jabatan') ?? 'Penyuluh Kehutanan';
     final wilayah = prefs.getString('profil_wilayah') ?? prefs.getString('wilayah') ?? 'CDK Wilayah Garut';
-    final whatsapp = prefs.getString('profil_whatsapp') ?? prefs.getString('whatsapp_number') ?? '0812-3456-7890';
+    final whatsapp = prefs.getString('profil_whatsapp') ?? prefs.getString('whatsapp_number') ?? '-';
     final avatar = prefs.getString('profil_avatar') ?? prefs.getString('avatar') ?? '';
     final role = prefs.getString('role') ?? 'user';
     final loginMethod = prefs.getString('login_method') ?? 'email';

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'offline_database.dart';
 import 'laporan_service.dart';
@@ -68,6 +69,32 @@ class SyncService {
               final body = jsonDecode(response.body);
               serverId = body['data']?['id'] as int?;
             } catch (_) {}
+
+            // Unggah lampiran foto lokal jika ada
+            final localPhotoPath = report['photo_path'] as String?;
+            if (serverId != null &&
+                localPhotoPath != null &&
+                localPhotoPath.isNotEmpty) {
+              final photoFile = File(localPhotoPath);
+              if (photoFile.existsSync()) {
+                try {
+                  final bytes = await photoFile.readAsBytes();
+                  final filename = photoFile.uri.pathSegments.last;
+                  await LaporanService.uploadReportPhoto(
+                    token: token,
+                    reportId: serverId,
+                    photoBytes: bytes,
+                    filename: filename,
+                    latitude: report['latitude'] != null
+                        ? double.tryParse(report['latitude'].toString())
+                        : null,
+                    longitude: report['longitude'] != null
+                        ? double.tryParse(report['longitude'].toString())
+                        : null,
+                  );
+                } catch (_) {}
+              }
+            }
 
             await db.updateSyncStatus(
               report['id'] as int,

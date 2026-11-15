@@ -74,43 +74,27 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
     _loadAllUsersAndArchives();
   }
 
+  static bool _isDummyUser(String email, String id) {
+    final lower = email.toLowerCase().trim();
+    final lowerId = id.toLowerCase().trim();
+    return lower == 'rizky@kehutanan.go.id' ||
+        lower == 'siti.nur@kehutanan.go.id' ||
+        lower == 'budi.santoso@kehutanan.go.id' ||
+        lower == 'andi.wijaya@kehutanan.go.id' ||
+        lower == 'atmin@gmail.com' ||
+        lower == 'r4yy73@gmail.com' ||
+        lower == 'r4yy73@gmailcom' ||
+        lower == 'test@example.com' ||
+        lowerId == 'usr-001' ||
+        lowerId == 'usr-002' ||
+        lowerId == 'usr-003' ||
+        lowerId == 'usr-004';
+  }
+
   Future<void> _loadAllUsersAndArchives() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final defaultUsers = <Map<String, String>>[
-      {
-        'id': 'USR-001',
-        'nip': '19940812 202012 1 004',
-        'name': 'Rizky Pratama, S.Hut.',
-        'email': 'rizky@kehutanan.go.id',
-        'wilayah': 'CDK Wilayah Garut',
-        'role': 'Penyuluh',
-      },
-      {
-        'id': 'USR-002',
-        'nip': '19910523 201903 2 008',
-        'name': 'Siti Nurhaliza, S.Hut.',
-        'email': 'siti.nur@kehutanan.go.id',
-        'wilayah': 'Kecamatan Cisurupan',
-        'role': 'Penyuluh',
-      },
-      {
-        'id': 'USR-003',
-        'nip': '19891104 201801 1 002',
-        'name': 'Budi Santoso, M.Si.',
-        'email': 'budi.santoso@kehutanan.go.id',
-        'wilayah': 'Kawasan Hutan Cikuray',
-        'role': 'Koordinator',
-      },
-      {
-        'id': 'USR-004',
-        'nip': '19960219 202203 1 011',
-        'name': 'Andi Wijaya, S.Hut.',
-        'email': 'andi.wijaya@kehutanan.go.id',
-        'wilayah': 'Lereng Gunung Guntur',
-        'role': 'Penyuluh',
-      },
-    ];
+    final defaultUsers = <Map<String, String>>[];
 
     List<Map<String, String>> loadedUsers = defaultUsers;
     final rawUsers = prefs.getString(_usersStorageKey);
@@ -123,11 +107,12 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
                 (e as Map).map((k, v) => MapEntry(k.toString(), '$v')),
               ),
             )
+            .where((u) => !_isDummyUser(u['email'] ?? '', u['id'] ?? ''))
             .toList();
       } catch (_) {}
     }
 
-    List<Map<String, dynamic>> items = _buildDefaultAllUserArchives();
+    List<Map<String, dynamic>> items = [];
     final rawArchives = prefs.getString(_archiveStorageKey);
     if (rawArchives != null && rawArchives.isNotEmpty) {
       try {
@@ -138,7 +123,7 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
 
     // Sinkronkan juga jadwal & laporan yang dibuat oleh user di perangkat ini
     final lastUserName =
-        prefs.getString('profil_nama') ?? 'Rizky Pratama, S.Hut.';
+        prefs.getString('profil_nama') ?? 'Pengguna';
 
     final rawJadwal = prefs.getString(_jadwalStorageKey);
     if (rawJadwal != null && rawJadwal.isNotEmpty) {
@@ -1183,89 +1168,6 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
         ),
       );
     }).toList();
-  }
-
-  List<Map<String, dynamic>> _buildDefaultAllUserArchives() {
-    return [
-      {
-        'id': 'arc_1',
-        'judul': 'Laporan Penyuluhan Perhutanan Sosial KTH Makmur',
-        'tipe': 'Laporan',
-        'kategori': 'Penyuluhan',
-        'userName': 'Rizky Pratama, S.Hut.',
-        'wilayah': 'Kecamatan Garut',
-        'tanggal': '20 Oktober 2026',
-        'waktu': '08:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Pendampingan penyusunan rencana kerja tahunan dan pembagian bibit produktif pada KTH Makmur.',
-      },
-      {
-        'id': 'arc_2',
-        'judul': 'Arsip Kegiatan Monitoring Lapangan Blok Utara',
-        'tipe': 'Arsip Jadwal',
-        'kategori': 'Monitoring & Patroli',
-        'userName': 'Rizky Pratama, S.Hut.',
-        'wilayah': 'Kawasan Hutan Garut',
-        'tanggal': '18 Oktober 2026',
-        'waktu': '13:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Pengecekan kondisi patok batas kawasan hutan dan pemantauan titik rawan kebakaran.',
-      },
-      {
-        'id': 'arc_3',
-        'judul': 'Laporan Rehabilitasi Lahan Kritis Cisurupan',
-        'tipe': 'Laporan',
-        'kategori': 'Rehabilitasi Hutan',
-        'userName': 'Siti Nurhaliza, S.Hut.',
-        'wilayah': 'Kecamatan Cisurupan',
-        'tanggal': '19 Oktober 2026',
-        'waktu': '09:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Penanaman 600 bibit pohon endemik bersama masyarakat desa sekitar hutan.',
-      },
-      {
-        'id': 'arc_4',
-        'judul': 'Arsip Jadwal Evaluasi Kelembagaan KTH Mandiri',
-        'tipe': 'Arsip Jadwal',
-        'kategori': 'Kelembagaan KTH',
-        'userName': 'Siti Nurhaliza, S.Hut.',
-        'wilayah': 'Kecamatan Cisurupan',
-        'tanggal': '15 Oktober 2026',
-        'waktu': '10:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Verifikasi kelengkapan buku administrasi kelompok tani hutan.',
-      },
-      {
-        'id': 'arc_5',
-        'judul': 'Laporan Inventarisasi Keanekaragaman Hayati Cikuray',
-        'tipe': 'Laporan',
-        'kategori': 'Ekosistem & Konservasi',
-        'userName': 'Budi Santoso, M.Si.',
-        'wilayah': 'Kawasan Hutan Cikuray',
-        'tanggal': '17 Oktober 2026',
-        'waktu': '08:30',
-        'status': 'Diproses',
-        'deskripsi':
-            'Pendataan flora dan fauna dilindungi pada petak konservasi lereng selatan.',
-      },
-      {
-        'id': 'arc_6',
-        'judul': 'Laporan Patroli Terpadu Pencegahan Pembalakan',
-        'tipe': 'Laporan',
-        'kategori': 'Monitoring & Patroli',
-        'userName': 'Andi Wijaya, S.Hut.',
-        'wilayah': 'Lereng Gunung Guntur',
-        'tanggal': '14 Oktober 2026',
-        'waktu': '07:30',
-        'status': 'Selesai',
-        'deskripsi':
-            'Patroli gabungan bersama Polhut dan MMP, kondisi kawasan aman terkendali.',
-      },
-    ];
   }
 }
 

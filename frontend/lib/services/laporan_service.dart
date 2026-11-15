@@ -1,6 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../constants/api_constants.dart';
 import '../constants/laporan_constants.dart';
@@ -70,6 +74,22 @@ class LaporanService {
       final String rawStatus =
           report['status']?.toString() ?? 'draft';
 
+      final List<dynamic> rawPhotos = (report['photos'] is List)
+          ? report['photos']
+          : [];
+      String photoUrl = '';
+      if (rawPhotos.isNotEmpty) {
+        final first = rawPhotos.first;
+        if (first is Map) {
+          final rawUrl = (first['url'] ?? first['photo'] ?? '').toString();
+          if (rawUrl.isNotEmpty) {
+            photoUrl = rawUrl.startsWith('http')
+                ? rawUrl
+                : '$baseUrl/storage/$rawUrl';
+          }
+        }
+      }
+
       return {
         'id': report['id'],
         'judul': report['title'] ?? 'Laporan tanpa judul',
@@ -84,8 +104,8 @@ class LaporanService {
             report['latitude']?.toString() ?? '',
         'longitude':
             report['longitude']?.toString() ?? '',
-        'foto': '',
-        'photos': report['photos'] ?? [],
+        'foto': photoUrl,
+        'photos': rawPhotos,
         'status': LaporanDateUtils.displayStatus(rawStatus),
         'statusApi': rawStatus,
       };
@@ -141,11 +161,25 @@ class LaporanService {
     request.headers['Accept'] = 'application/json';
     request.headers['Authorization'] = 'Bearer $token';
 
+    final cleanFilename = filename.isNotEmpty
+        ? filename
+        : 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    final lower = cleanFilename.toLowerCase();
+    final mimeType = lower.endsWith('.png')
+        ? MediaType('image', 'png')
+        : lower.endsWith('.webp')
+            ? MediaType('image', 'webp')
+            : lower.endsWith('.gif')
+                ? MediaType('image', 'gif')
+                : MediaType('image', 'jpeg');
+
     request.files.add(
       http.MultipartFile.fromBytes(
         'photo',
         photoBytes,
-        filename: filename,
+        filename: cleanFilename,
+        contentType: mimeType,
       ),
     );
 
@@ -195,7 +229,26 @@ class LaporanService {
   static Future<int> saveOffline({
     required Map<String, dynamic> payload,
     required String jenisLaporan,
+    Uint8List? photoBytes,
+    String? photoFilename,
   }) async {
+    String? localPhotoPath;
+    if (photoBytes != null && photoBytes.isNotEmpty) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final photoDir = Directory('${appDir.path}/offline_report_photos');
+        if (!photoDir.existsSync()) {
+          photoDir.createSync(recursive: true);
+        }
+        final safeName = photoFilename != null && photoFilename.isNotEmpty
+            ? photoFilename.replaceAll(RegExp(r'[^\w\.-]'), '_')
+            : 'offline_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final file = File('${photoDir.path}/$safeName');
+        await file.writeAsBytes(photoBytes, flush: true);
+        localPhotoPath = file.path;
+      } catch (_) {}
+    }
+
     final data = <String, dynamic>{
       'title': payload['title'],
       'activity_date': payload['activity_date'],
@@ -207,6 +260,7 @@ class LaporanService {
       'status': payload['status'] ?? 'draft',
       'jenis_laporan': jenisLaporan,
       'sync_status': 'pending',
+      'photo_path': localPhotoPath,
     };
 
     return OfflineDatabase.instance.insertReport(data);
