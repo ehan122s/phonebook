@@ -152,16 +152,53 @@ class _LoginPageState extends State<LoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         final userMap = data['data']['user'] ?? {};
-        final userEmail = (userMap['email'] ?? inputEmail).toString();
-        final userName = (userMap['name'] ?? '').toString();
+        final userEmail = (userMap['email'] ?? inputEmail).toString().trim();
+        final rawName = (userMap['name'] ?? '').toString().trim();
+        final userName = rawName.isNotEmpty
+            ? rawName
+            : userEmail.split('@').first;
         final userRole = (userMap['role'] ?? '').toString();
+        final userNip = (userMap['nip'] ?? '').toString().trim();
+        final userJabatan = (userMap['jabatan'] ?? '').toString().trim();
+        final userWilayah = (userMap['wilayah'] ?? '').toString().trim();
+        final userWhatsapp = (userMap['whatsapp_number'] ?? '').toString().trim();
+        final userAvatar = (userMap['avatar'] ?? '').toString().trim();
 
         final isAdmin = _isAdminAccount(email: userEmail, role: userRole);
 
         await prefs.setString('token', data['data']['token']);
         await prefs.setString('name', userName);
+        await prefs.setString('profil_nama', userName);
         await prefs.setString('email', userEmail);
+        await prefs.setString('profil_email', userEmail);
         await prefs.setString('role', isAdmin ? 'admin' : 'user');
+        await prefs.setString('login_method', 'email');
+        await prefs.setString('nip', userNip);
+        await prefs.setString('profil_nip', userNip);
+        await prefs.setString(
+          'jabatan',
+          userJabatan.isNotEmpty
+              ? userJabatan
+              : (isAdmin ? 'Administrator CDK V' : 'Penyuluh Kehutanan'),
+        );
+        await prefs.setString(
+          'profil_jabatan',
+          userJabatan.isNotEmpty
+              ? userJabatan
+              : (isAdmin ? 'Administrator CDK V' : 'Penyuluh Kehutanan'),
+        );
+        await prefs.setString(
+          'wilayah',
+          userWilayah.isNotEmpty ? userWilayah : 'CDK Wilayah Garut',
+        );
+        await prefs.setString(
+          'profil_wilayah',
+          userWilayah.isNotEmpty ? userWilayah : 'CDK Wilayah Garut',
+        );
+        await prefs.setString('whatsapp_number', userWhatsapp);
+        await prefs.setString('profil_whatsapp', userWhatsapp);
+        await prefs.setString('avatar', userAvatar);
+        await prefs.setString('profil_avatar', userAvatar);
 
         try {
           const userKey = 'phonebook_admin_users_v1';

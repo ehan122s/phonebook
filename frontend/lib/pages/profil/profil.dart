@@ -31,21 +31,25 @@ class ProfilPage extends StatefulWidget {
 }
 
 class _ProfilPageState extends State<ProfilPage> {
-  // Identitas & Data Kepegawaian
-  String _nama = '';
-  String _email = '';
-  String _nip = '-';
-  String _jabatan = 'Penyuluh Kehutanan';
+  // Cache sesi di memori agar saat berpindah tab tidak pernah berkedip atau menampilkan data dummy
+  static Map<String, String>? _cachedProfile;
+
+  // Identitas & Data Kepegawaian (Tanpa Data Dummy)
+  bool _isLoadingProfile = _cachedProfile == null;
+  String _nama = _cachedProfile?['nama'] ?? '';
+  String _email = _cachedProfile?['email'] ?? '';
+  String _nip = _cachedProfile?['nip'] ?? '';
+  String _jabatan = _cachedProfile?['jabatan'] ?? 'Penyuluh Kehutanan';
   final String _pangkat = 'Penata Muda / III/a';
   final String _instansi = 'Dinas Kehutanan Provinsi Jawa Barat';
   final String _unitKerja = 'Cabang Dinas Kehutanan Wilayah V Garut';
-  String _wilayah = 'CDK Wilayah Garut';
-  String _whatsapp = '-';
-  String _avatar = '';
-  String _role = 'user';
+  String _wilayah = _cachedProfile?['wilayah'] ?? 'CDK Wilayah Garut';
+  String _whatsapp = _cachedProfile?['whatsapp'] ?? '';
+  String _avatar = _cachedProfile?['avatar'] ?? '';
+  String _role = _cachedProfile?['role'] ?? 'user';
   String _status = 'Aktif';
-  String _token = '';
-  String _loginMethod = 'email';
+  String _token = _cachedProfile?['token'] ?? '';
+  String _loginMethod = _cachedProfile?['loginMethod'] ?? 'email';
 
   // Ringkasan Aktivitas
   int _totalLaporan = 0;
@@ -104,23 +108,106 @@ class _ProfilPageState extends State<ProfilPage> {
     });
   }
 
+  bool _isDummyString(String? value) {
+    if (value == null) return true;
+    final v = value.trim().toLowerCase();
+    return v.isEmpty ||
+        v == 'rizky pratama, s.hut.' ||
+        v == 'rizky pratama' ||
+        v == 'rizky@kehutanan.go.id' ||
+        v == '19940812 202012 1 004' ||
+        v == '0812-3456-7890';
+  }
+
+  String _formatNameFromEmail(String email) {
+    final trimmed = email.trim();
+    if (trimmed.isEmpty || !trimmed.contains('@')) return 'Pegawai Kehutanan';
+    final localPart = trimmed.split('@').first;
+    final words = localPart
+        .replaceAll(RegExp(r'[._-]+'), ' ')
+        .split(' ')
+        .where((w) => w.trim().isNotEmpty)
+        .map((w) => w[0].toUpperCase() + (w.length > 1 ? w.substring(1) : ''))
+        .toList();
+    return words.isEmpty ? localPart : words.join(' ');
+  }
+
+  void _syncMemoryCache() {
+    _cachedProfile = {
+      'token': _token,
+      'email': _email,
+      'nama': _nama,
+      'nip': _nip,
+      'jabatan': _jabatan,
+      'wilayah': _wilayah,
+      'whatsapp': _whatsapp,
+      'avatar': _avatar,
+      'role': _role,
+      'loginMethod': _loginMethod,
+    };
+  }
+
   Future<void> _loadProfileData() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
-    final token = prefs.getString('token') ?? '';
-    final email = prefs.getString('email') ?? prefs.getString('profil_email') ?? '';
-    final name = prefs.getString('profil_nama') ??
-        prefs.getString('name') ??
-        (email.isNotEmpty ? email.split('@').first : 'Pengguna');
-    final nip = prefs.getString('profil_nip') ?? prefs.getString('nip') ?? '-';
-    final jabatan = prefs.getString('profil_jabatan') ?? prefs.getString('jabatan') ?? 'Penyuluh Kehutanan';
-    final wilayah = prefs.getString('profil_wilayah') ?? prefs.getString('wilayah') ?? 'CDK Wilayah Garut';
-    final whatsapp = prefs.getString('profil_whatsapp') ?? prefs.getString('whatsapp_number') ?? '-';
-    final avatar = prefs.getString('profil_avatar') ?? prefs.getString('avatar') ?? '';
-    final role = prefs.getString('role') ?? 'user';
-    final loginMethod = prefs.getString('login_method') ?? 'email';
-    final lastSync = prefs.getString('last_sync_time') ?? '';
+    final token = (prefs.getString('token') ?? '').trim();
+
+    // Ambil email asli yang sedang login (tanpa fallback ke email dummy)
+    final rawEmail = (prefs.getString('email') ?? '').trim();
+    final rawProfilEmail = (prefs.getString('profil_email') ?? '').trim();
+    final email = !_isDummyString(rawEmail)
+        ? rawEmail
+        : (!_isDummyString(rawProfilEmail) ? rawProfilEmail : '');
+
+    // Bersihkan sisa data dummy lama di SharedPreferences jika masih tersimpan
+    final rawSessionName = (prefs.getString('name') ?? '').trim();
+    final rawProfilName = (prefs.getString('profil_nama') ?? '').trim();
+    if (_isDummyString(rawProfilName) && rawProfilName.isNotEmpty) {
+      await prefs.remove('profil_nama');
+    }
+
+    String name = '';
+    if (!_isDummyString(rawSessionName)) {
+      name = rawSessionName;
+    } else if (!_isDummyString(rawProfilName)) {
+      name = rawProfilName;
+    } else if (email.isNotEmpty) {
+      name = _formatNameFromEmail(email);
+    } else {
+      name = 'Pegawai Kehutanan';
+    }
+
+    final rawNip = (prefs.getString('profil_nip') ?? prefs.getString('nip') ?? '').trim();
+    final nip = _isDummyString(rawNip) ? '' : rawNip;
+    if (_isDummyString(rawNip) && rawNip.isNotEmpty) {
+      await prefs.remove('profil_nip');
+    }
+
+    final rawJabatan =
+        (prefs.getString('profil_jabatan') ?? prefs.getString('jabatan') ?? '').trim();
+    final role = (prefs.getString('role') ?? 'user').trim();
+    final jabatan = rawJabatan.isNotEmpty
+        ? rawJabatan
+        : (role.toLowerCase() == 'admin' ? 'Administrator CDK V' : 'Penyuluh Kehutanan');
+
+    final rawWilayah =
+        (prefs.getString('profil_wilayah') ?? prefs.getString('wilayah') ?? '').trim();
+    final wilayah = rawWilayah.isNotEmpty ? rawWilayah : 'CDK Wilayah Garut';
+
+    final rawWhatsapp = (prefs.getString('profil_whatsapp') ??
+            prefs.getString('whatsapp_number') ??
+            '')
+        .trim();
+    final whatsapp = _isDummyString(rawWhatsapp) ? '' : rawWhatsapp;
+    if (_isDummyString(rawWhatsapp) && rawWhatsapp.isNotEmpty) {
+      await prefs.remove('profil_whatsapp');
+    }
+
+    final avatar =
+        (prefs.getString('profil_avatar') ?? prefs.getString('avatar') ?? '').trim();
+    final loginMethod = (prefs.getString('login_method') ?? 'email').trim();
+    final lastSync = (prefs.getString('last_sync_time') ?? '').trim();
 
     setState(() {
       _token = token;
@@ -135,64 +222,127 @@ class _ProfilPageState extends State<ProfilPage> {
       _loginMethod = loginMethod;
       _lastSyncTime = lastSync;
       _status = 'Aktif';
+      _isLoadingProfile = false;
     });
+    _syncMemoryCache();
 
-    // Jika online dan memiliki token Sanctum resmi, segarkan profil dari backend
-    if (_isOnline && token.isNotEmpty && !token.startsWith('offline_') && !token.startsWith('google_session_')) {
-      _fetchProfileFromBackend(token);
+    // Segarkan profil dari backend (mendukung token Sanctum maupun sesi Google/Email)
+    final online = await ConnectivityService.instance.isOnline();
+    if (online && (token.isNotEmpty || email.isNotEmpty)) {
+      await _fetchProfileFromBackend(token, email);
     }
   }
 
-  Future<void> _fetchProfileFromBackend(String token) async {
-    try {
-      final res = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/api/user'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 4));
+  Future<void> _applyBackendUserMap(Map<String, dynamic> u) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
 
-      if (res.statusCode == 200) {
-        final body = jsonDecode(res.body);
-        if (body['success'] == true && body['data'] != null) {
-          final u = body['data'] as Map<String, dynamic>;
-          final prefs = await SharedPreferences.getInstance();
-
-          if (!mounted) return;
-          setState(() {
-            if (u['name'] != null && u['name'].toString().isNotEmpty) {
-              _nama = u['name'].toString();
-              prefs.setString('profil_nama', _nama);
-            }
-            if (u['nip'] != null && u['nip'].toString().isNotEmpty) {
-              _nip = u['nip'].toString();
-              prefs.setString('profil_nip', _nip);
-            }
-            if (u['jabatan'] != null && u['jabatan'].toString().isNotEmpty) {
-              _jabatan = u['jabatan'].toString();
-              prefs.setString('profil_jabatan', _jabatan);
-            }
-            if (u['wilayah'] != null && u['wilayah'].toString().isNotEmpty) {
-              _wilayah = u['wilayah'].toString();
-              prefs.setString('profil_wilayah', _wilayah);
-            }
-            if (u['whatsapp_number'] != null && u['whatsapp_number'].toString().isNotEmpty) {
-              _whatsapp = u['whatsapp_number'].toString();
-              prefs.setString('profil_whatsapp', _whatsapp);
-            }
-            if (u['avatar'] != null && u['avatar'].toString().isNotEmpty) {
-              _avatar = u['avatar'].toString();
-              prefs.setString('profil_avatar', _avatar);
-            }
-            if (u['role'] != null) {
-              _role = u['role'].toString();
-              prefs.setString('role', _role);
-            }
-          });
-        }
+    setState(() {
+      if (u['name'] != null && !_isDummyString(u['name'].toString())) {
+        _nama = u['name'].toString().trim();
+        prefs.setString('name', _nama);
+        prefs.setString('profil_nama', _nama);
       }
-    } catch (_) {}
+      if (u['email'] != null && !_isDummyString(u['email'].toString())) {
+        _email = u['email'].toString().trim();
+        prefs.setString('email', _email);
+        prefs.setString('profil_email', _email);
+      }
+      if (u['nip'] != null && !_isDummyString(u['nip'].toString())) {
+        _nip = u['nip'].toString().trim();
+        prefs.setString('nip', _nip);
+        prefs.setString('profil_nip', _nip);
+      }
+      if (u['jabatan'] != null && u['jabatan'].toString().trim().isNotEmpty) {
+        _jabatan = u['jabatan'].toString().trim();
+        prefs.setString('jabatan', _jabatan);
+        prefs.setString('profil_jabatan', _jabatan);
+      }
+      if (u['wilayah'] != null && u['wilayah'].toString().trim().isNotEmpty) {
+        _wilayah = u['wilayah'].toString().trim();
+        prefs.setString('wilayah', _wilayah);
+        prefs.setString('profil_wilayah', _wilayah);
+      }
+      if (u['whatsapp_number'] != null &&
+          !_isDummyString(u['whatsapp_number'].toString())) {
+        _whatsapp = u['whatsapp_number'].toString().trim();
+        prefs.setString('whatsapp_number', _whatsapp);
+        prefs.setString('profil_whatsapp', _whatsapp);
+      }
+      if (u['avatar'] != null && u['avatar'].toString().trim().isNotEmpty) {
+        _avatar = u['avatar'].toString().trim();
+        prefs.setString('avatar', _avatar);
+        prefs.setString('profil_avatar', _avatar);
+      }
+      if (u['role'] != null && u['role'].toString().trim().isNotEmpty) {
+        _role = u['role'].toString().trim();
+        prefs.setString('role', _role);
+      }
+    });
+    _syncMemoryCache();
+  }
+
+  Future<void> _fetchProfileFromBackend(String token, String email) async {
+    // 1. Jika menggunakan token Sanctum resmi, ambil dari /api/user
+    if (token.isNotEmpty &&
+        !token.startsWith('offline_') &&
+        !token.startsWith('google_session_') &&
+        !token.startsWith('google_reg_')) {
+      try {
+        final res = await http
+            .get(
+              Uri.parse('${ApiConstants.baseUrl}/api/user'),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
+            .timeout(const Duration(seconds: 5));
+
+        if (res.statusCode == 200) {
+          final body = jsonDecode(res.body);
+          if (body['success'] == true && body['data'] is Map) {
+            await _applyBackendUserMap(
+              Map<String, dynamic>.from(body['data'] as Map),
+            );
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. Fallback sinkronisasi berdasarkan email yang sedang login (/api/google-check)
+    if (email.isNotEmpty) {
+      try {
+        final checkRes = await http
+            .post(
+              Uri.parse('${ApiConstants.baseUrl}/api/google-check'),
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: jsonEncode({'email': email}),
+            )
+            .timeout(const Duration(seconds: 5));
+
+        if (checkRes.statusCode == 200) {
+          final body = jsonDecode(checkRes.body);
+          final userMap = body['data']?['user'];
+          if (body['success'] == true && userMap is Map) {
+            await _applyBackendUserMap(Map<String, dynamic>.from(userMap));
+            final newToken = body['data']?['token']?.toString() ?? '';
+            if (newToken.isNotEmpty) {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('token', newToken);
+              if (mounted) {
+                setState(() => _token = newToken);
+                _syncMemoryCache();
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadActivityStats() async {
@@ -420,8 +570,11 @@ class _ProfilPageState extends State<ProfilPage> {
               Navigator.pop(ctx);
 
               final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('name', newName);
               await prefs.setString('profil_nama', newName);
+              await prefs.setString('whatsapp_number', newWa);
               await prefs.setString('profil_whatsapp', newWa);
+              await prefs.setString('wilayah', newWil);
               await prefs.setString('profil_wilayah', newWil);
 
               if (mounted) {
@@ -430,6 +583,7 @@ class _ProfilPageState extends State<ProfilPage> {
                   _whatsapp = newWa;
                   _wilayah = newWil;
                 });
+                _syncMemoryCache();
               }
 
               // Kirim ke backend jika online
@@ -1330,6 +1484,7 @@ class _ProfilPageState extends State<ProfilPage> {
   // ===========================================================================
 
   Future<void> _handleLogout() async {
+    _cachedProfile = null;
     // Manfaatkan LogoutButton yang sudah teruji dan non-destruktif
     await const LogoutButton().logout(context);
   }
@@ -1418,17 +1573,32 @@ class _ProfilPageState extends State<ProfilPage> {
                 child: Column(
                   children: [
                     // 1. KARTU IDENTITAS PENGGUNA
-                    ProfileIdentityCard(
-                      nama: _nama,
-                      jabatan: _jabatan,
-                      nip: _nip,
-                      wilayah: _wilayah,
-                      avatar: _avatar,
-                      role: _role,
-                      status: _status,
-                      onEditProfile: _showEditProfileDialog,
-                      onChangeAvatar: _handlePickAvatar,
-                    ),
+                    if (_isLoadingProfile)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 48),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E2822) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF285C2E),
+                          ),
+                        ),
+                      )
+                    else
+                      ProfileIdentityCard(
+                        nama: _nama,
+                        jabatan: _jabatan,
+                        nip: _nip,
+                        wilayah: _wilayah,
+                        avatar: _avatar,
+                        role: _role,
+                        status: _status,
+                        onEditProfile: _showEditProfileDialog,
+                        onChangeAvatar: _handlePickAvatar,
+                      ),
                     const SizedBox(height: 16),
 
                     // 2. STATUS KONEKSI & SINKRONISASI
