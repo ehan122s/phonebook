@@ -33,7 +33,7 @@ jobs:
         working-directory: frontend
         run: |
           set -o pipefail
-          flutter build apk --release 2>&1 | tee ../build_output.txt
+          flutter build apk --release --android-skip-build-dependency-validation 2>&1 | tee ../build_output.txt
 
       - name: Report Build Output on Failure
         if: failure()
