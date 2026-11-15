@@ -25,6 +25,10 @@ class Schedule extends Model
         'wa_phone',
         'whatsapp_sent',
         'is_completed',
+        'whatsapp_status',
+        'whatsapp_error',
+        'whatsapp_sent_at',
+        'whatsapp_message_id',
     ];
 
     protected $casts = [
@@ -35,6 +39,7 @@ class Schedule extends Model
         'enable_wa_notification' => 'boolean',
         'whatsapp_sent' => 'boolean',
         'is_completed' => 'boolean',
+        'whatsapp_sent_at' => 'datetime',
     ];
 
     /**

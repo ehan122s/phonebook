@@ -61,11 +61,27 @@ class ScheduleController extends Controller
 
     public function index(Request $request)
     {
+        $now = Carbon::now(self::TIMEZONE);
+
         $schedules = Schedule::with('user')
             ->where('user_id', $request->user()->id)
             ->orderByDesc('date')
             ->orderBy('start_time')
             ->get();
+
+        // Sinkronisasi status pengiriman jika jadwal yang telah dijadwalkan di Fonnte sudah jatuh tempo
+        foreach ($schedules as $s) {
+            if ($s->whatsapp_status === 'pending' && !empty($s->whatsapp_message_id) && !empty($s->reminder_at)) {
+                $remAt = $s->reminder_at instanceof Carbon ? $s->reminder_at : Carbon::parse($s->reminder_at);
+                if ($remAt->lessThanOrEqualTo($now)) {
+                    $s->update([
+                        'whatsapp_status' => 'sent',
+                        'whatsapp_sent' => true,
+                        'whatsapp_sent_at' => $remAt,
+                    ]);
+                }
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -85,6 +101,19 @@ class ScheduleController extends Controller
                 'success' => false,
                 'message' => 'Jadwal tidak ditemukan',
             ], 404);
+        }
+
+        // Sinkronisasi status jadwal jika sudah jatuh tempo
+        if ($schedule->whatsapp_status === 'pending' && !empty($schedule->whatsapp_message_id) && !empty($schedule->reminder_at)) {
+            $now = Carbon::now(self::TIMEZONE);
+            $remAt = $schedule->reminder_at instanceof Carbon ? $schedule->reminder_at : Carbon::parse($schedule->reminder_at);
+            if ($remAt->lessThanOrEqualTo($now)) {
+                $schedule->update([
+                    'whatsapp_status' => 'sent',
+                    'whatsapp_sent' => true,
+                    'whatsapp_sent_at' => $remAt,
+                ]);
+            }
         }
 
         return response()->json([
@@ -141,6 +170,8 @@ class ScheduleController extends Controller
             'enable_wa_notification' => $enableWaNotification,
             'wa_phone' => $waPhone,
             'whatsapp_sent' => false,
+            'whatsapp_status' => $enableWaNotification ? 'pending' : 'disabled',
+            'whatsapp_error' => null,
         ];
 
         if (Schema::hasColumn('schedules', 'category')) {
@@ -183,7 +214,7 @@ class ScheduleController extends Controller
             // Jangan menggagalkan pembuatan jadwal jika pencatatan notifikasi gagal
         }
 
-        // Otomatis jadwalkan pengingat WhatsApp di server Fonnte (jika notifikasi WA diaktifkan)
+        // Otomatis daftarkan pengingat WhatsApp di server Fonnte (jika notifikasi WA diaktifkan)
         if ($enableWaNotification && !empty($schedule->reminder_at)) {
             try {
                 $targetPhone = $waPhone
@@ -202,8 +233,35 @@ class ScheduleController extends Controller
                     ? $schedule->reminder_at->timestamp
                     : Carbon::parse($schedule->reminder_at)->timestamp;
 
-                \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+                $res = \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+
+                if (!empty($res['success'])) {
+                    if (!empty($res['is_scheduled'])) {
+                        $schedule->update([
+                            'whatsapp_status' => 'pending',
+                            'whatsapp_message_id' => $res['message_id'] ?? null,
+                            'whatsapp_error' => null,
+                        ]);
+                    } else {
+                        $schedule->update([
+                            'whatsapp_status' => 'sent',
+                            'whatsapp_sent' => true,
+                            'whatsapp_sent_at' => Carbon::now(self::TIMEZONE),
+                            'whatsapp_message_id' => $res['message_id'] ?? null,
+                            'whatsapp_error' => null,
+                        ]);
+                    }
+                } else {
+                    $schedule->update([
+                        'whatsapp_status' => 'failed',
+                        'whatsapp_error' => $res['reason'] ?? 'Gagal mendaftarkan pengingat ke Fonnte Gateway',
+                    ]);
+                }
             } catch (\Throwable $e) {
+                $schedule->update([
+                    'whatsapp_status' => 'failed',
+                    'whatsapp_error' => 'Exception: ' . $e->getMessage(),
+                ]);
             }
         }
 
@@ -280,6 +338,8 @@ class ScheduleController extends Controller
             'enable_wa_notification' => $enableWaNotification,
             'wa_phone' => $waPhone,
             'whatsapp_sent' => false,
+            'whatsapp_status' => $enableWaNotification ? 'pending' : 'disabled',
+            'whatsapp_error' => null,
         ];
 
         if (Schema::hasColumn('schedules', 'category') && isset($validated['category'])) {
@@ -295,7 +355,7 @@ class ScheduleController extends Controller
         $schedule->update($updateData);
         $schedule->setAttribute('reminder_minutes', $reminderMinutes);
 
-        // Otomatis jadwalkan ulang pengingat WhatsApp di server Fonnte
+        // Otomatis daftarkan ulang pengingat WhatsApp di server Fonnte
         if ($enableWaNotification && !empty($updateData['reminder_at'])) {
             try {
                 $targetPhone = $waPhone
@@ -314,8 +374,35 @@ class ScheduleController extends Controller
                     ? $updateData['reminder_at']->timestamp
                     : Carbon::parse($updateData['reminder_at'])->timestamp;
 
-                \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+                $res = \App\Services\WhatsappService::sendReminder($targetPhone, $reminderMsg, $remTimestamp);
+
+                if (!empty($res['success'])) {
+                    if (!empty($res['is_scheduled'])) {
+                        $schedule->update([
+                            'whatsapp_status' => 'pending',
+                            'whatsapp_message_id' => $res['message_id'] ?? null,
+                            'whatsapp_error' => null,
+                        ]);
+                    } else {
+                        $schedule->update([
+                            'whatsapp_status' => 'sent',
+                            'whatsapp_sent' => true,
+                            'whatsapp_sent_at' => Carbon::now(self::TIMEZONE),
+                            'whatsapp_message_id' => $res['message_id'] ?? null,
+                            'whatsapp_error' => null,
+                        ]);
+                    }
+                } else {
+                    $schedule->update([
+                        'whatsapp_status' => 'failed',
+                        'whatsapp_error' => $res['reason'] ?? 'Gagal mendaftarkan pengingat ke Fonnte Gateway',
+                    ]);
+                }
             } catch (\Throwable $e) {
+                $schedule->update([
+                    'whatsapp_status' => 'failed',
+                    'whatsapp_error' => 'Exception: ' . $e->getMessage(),
+                ]);
             }
         }
 
@@ -396,7 +483,18 @@ class ScheduleController extends Controller
         $result = \App\Services\WhatsappService::sendReminder($targetPhone, $message);
 
         if (!empty($result['success'])) {
-            $schedule->update(['whatsapp_sent' => true]);
+            $schedule->update([
+                'whatsapp_status' => 'sent',
+                'whatsapp_sent' => true,
+                'whatsapp_sent_at' => Carbon::now(self::TIMEZONE),
+                'whatsapp_message_id' => $result['message_id'] ?? null,
+                'whatsapp_error' => null,
+            ]);
+        } else {
+            $schedule->update([
+                'whatsapp_status' => 'failed',
+                'whatsapp_error' => $result['reason'] ?? 'Gagal mengirim pengingat via WhatsApp Gateway',
+            ]);
         }
 
         return response()->json([

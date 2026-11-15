@@ -101,6 +101,11 @@ class JadwalService {
       'isCompleted': item['isCompleted'] ?? false,
       'reminderTriggered': item['reminderTriggered'] ?? false,
       'reminderTriggeredAt': item['reminderTriggeredAt'],
+      'whatsappStatus': item['whatsappStatus'] ?? item['whatsapp_status'],
+      'whatsappError': item['whatsappError'] ?? item['whatsapp_error'],
+      'whatsappSentAt': item['whatsappSentAt'] ?? item['whatsapp_sent_at'],
+      'whatsappMessageId': item['whatsappMessageId'] ?? item['whatsapp_message_id'],
+      'whatsappSent': item['whatsappSent'] ?? item['whatsapp_sent'],
     };
 
     map[idKey] = entry;
@@ -292,6 +297,45 @@ class JadwalService {
             JadwalDateUtils.nowWib().toIso8601String())
         .toString();
 
+    final String? rawWaStatus = (raw['whatsapp_status'] ??
+            raw['whatsappStatus'] ??
+            savedPref?['whatsappStatus'] ??
+            existingLocal?['whatsappStatus'])
+        ?.toString();
+
+    final bool isWaSent = raw['whatsapp_sent'] == true ||
+        raw['whatsappSent'] == true ||
+        savedPref?['whatsappSent'] == true ||
+        existingLocal?['whatsappSent'] == true ||
+        rawWaStatus == 'sent';
+
+    String whatsappStatus = 'pending';
+    if (!enableWaNotification) {
+      whatsappStatus = 'disabled';
+    } else if (rawWaStatus != null && rawWaStatus.isNotEmpty) {
+      whatsappStatus = rawWaStatus;
+    } else if (isWaSent) {
+      whatsappStatus = 'sent';
+    }
+
+    final String? whatsappError = (raw['whatsapp_error'] ??
+            raw['whatsappError'] ??
+            savedPref?['whatsappError'] ??
+            existingLocal?['whatsappError'])
+        ?.toString();
+
+    final String? whatsappSentAt = (raw['whatsapp_sent_at'] ??
+            raw['whatsappSentAt'] ??
+            savedPref?['whatsappSentAt'] ??
+            existingLocal?['whatsappSentAt'])
+        ?.toString();
+
+    final String? whatsappMessageId = (raw['whatsapp_message_id'] ??
+            raw['whatsappMessageId'] ??
+            savedPref?['whatsappMessageId'] ??
+            existingLocal?['whatsappMessageId'])
+        ?.toString();
+
     return {
       'id': id,
       'judul': judul,
@@ -311,6 +355,16 @@ class JadwalService {
       'waPhone': waPhone,
       'reminderTriggered': reminderTriggered,
       'reminderTriggeredAt': reminderTriggeredAt,
+      'whatsapp_status': whatsappStatus,
+      'whatsappStatus': whatsappStatus,
+      'whatsapp_sent': isWaSent || whatsappStatus == 'sent',
+      'whatsappSent': isWaSent || whatsappStatus == 'sent',
+      'whatsapp_error': whatsappError,
+      'whatsappError': whatsappError,
+      'whatsapp_sent_at': whatsappSentAt,
+      'whatsappSentAt': whatsappSentAt,
+      'whatsapp_message_id': whatsappMessageId,
+      'whatsappMessageId': whatsappMessageId,
       'lokasi': lokasi,
       'location': lokasi,
       'catatan': catatan,
@@ -485,8 +539,25 @@ class JadwalService {
 
         if (response.statusCode == 200 || response.statusCode == 201) {
           final body = jsonDecode(response.body);
-          if (body['data']?['id'] != null) {
-            item['id'] = body['data']['id'];
+          if (body['data'] is Map) {
+            final serverData = Map<String, dynamic>.from(body['data']);
+            if (serverData['id'] != null) item['id'] = serverData['id'];
+            if (serverData['whatsapp_status'] != null) {
+              item['whatsapp_status'] = serverData['whatsapp_status'];
+              item['whatsappStatus'] = serverData['whatsapp_status'];
+            }
+            if (serverData['whatsapp_error'] != null) {
+              item['whatsapp_error'] = serverData['whatsapp_error'];
+              item['whatsappError'] = serverData['whatsapp_error'];
+            }
+            if (serverData['whatsapp_sent_at'] != null) {
+              item['whatsapp_sent_at'] = serverData['whatsapp_sent_at'];
+              item['whatsappSentAt'] = serverData['whatsapp_sent_at'];
+            }
+            if (serverData['whatsapp_message_id'] != null) {
+              item['whatsapp_message_id'] = serverData['whatsapp_message_id'];
+              item['whatsappMessageId'] = serverData['whatsapp_message_id'];
+            }
           }
         }
       } catch (_) {}
@@ -598,7 +669,7 @@ class JadwalService {
           'is_completed': item['isCompleted'] ?? false,
         };
 
-        await http.put(
+        final response = await http.put(
           Uri.parse('$baseUrl/api/schedules/$id'),
           headers: {
             'Accept': 'application/json',
@@ -607,6 +678,29 @@ class JadwalService {
           },
           body: jsonEncode(payload),
         ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final body = jsonDecode(response.body);
+          if (body['data'] is Map) {
+            final serverData = Map<String, dynamic>.from(body['data']);
+            if (serverData['whatsapp_status'] != null) {
+              item['whatsapp_status'] = serverData['whatsapp_status'];
+              item['whatsappStatus'] = serverData['whatsapp_status'];
+            }
+            if (serverData['whatsapp_error'] != null) {
+              item['whatsapp_error'] = serverData['whatsapp_error'];
+              item['whatsappError'] = serverData['whatsapp_error'];
+            }
+            if (serverData['whatsapp_sent_at'] != null) {
+              item['whatsapp_sent_at'] = serverData['whatsapp_sent_at'];
+              item['whatsappSentAt'] = serverData['whatsapp_sent_at'];
+            }
+            if (serverData['whatsapp_message_id'] != null) {
+              item['whatsapp_message_id'] = serverData['whatsapp_message_id'];
+              item['whatsappMessageId'] = serverData['whatsapp_message_id'];
+            }
+          }
+        }
       } catch (_) {}
     }
 

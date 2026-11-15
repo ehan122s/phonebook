@@ -46,15 +46,20 @@ class WhatsappService
                 'Authorization' => $token,
             ])->timeout(10)->asForm()->post('https://api.fonnte.com/send', $payload);
 
-            $json = $response->json();
+            $json = $response->json() ?? [];
             $status = $response->successful() && ($json['status'] ?? false) === true;
+            $msgId = is_array($json['id'] ?? null) ? ($json['id'][0] ?? null) : ($json['id'] ?? null);
+            $process = $json['process'] ?? null;
 
             if ($status) {
-                Log::info("WhatsappService: Berhasil mengirim WhatsApp ke {$cleanPhone} via Fonnte.");
+                Log::info("WhatsappService: Berhasil mengirim/menjadwalkan WhatsApp ke {$cleanPhone} via Fonnte. ID: {$msgId}, Proses: {$process}");
                 return [
                     'success' => true,
                     'gateway' => 'fonnte',
                     'message' => 'Pengingat WhatsApp berhasil dikirim ke nomor penerima',
+                    'message_id' => $msgId ? (string) $msgId : null,
+                    'process' => $process,
+                    'is_scheduled' => $process === 'scheduled' || $process === 'waiting' || str_contains(strtolower($json['detail'] ?? ''), 'scheduled'),
                     'target' => $cleanPhone,
                     'wa_url' => $directWaUrl,
                     'response' => $json,

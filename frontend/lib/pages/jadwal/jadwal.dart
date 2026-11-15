@@ -1022,6 +1022,7 @@ class _JadwalPageState extends State<JadwalPage> {
     final reminderClock =
         JadwalDateUtils.calculateReminderTimeStr(time, reminderMinutes);
     final isCompleted = item['isCompleted'] == true;
+    bool isSendingWa = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1029,225 +1030,488 @@ class _JadwalPageState extends State<JadwalPage> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (bottomSheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 32),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      builder: (bottomSheetContext) => StatefulBuilder(
+        builder: (sheetInnerContext, setModalState) {
+          final isDark = Theme.of(sheetInnerContext).brightness == Brightness.dark;
+          final waStatus = (item['whatsappStatus'] ?? item['whatsapp_status'] ?? 'pending').toString().toLowerCase();
+          final waError = (item['whatsappError'] ?? item['whatsapp_error'])?.toString();
+          final waSentAt = (item['whatsappSentAt'] ?? item['whatsapp_sent_at'])?.toString();
+          final isWaEnabled = item['enableWaNotification'] == true || item['enable_wa_notification'] == true;
+
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(22, 8, 22, 32),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? Colors.green.shade50
-                          : Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      isCompleted ? 'Selesai' : 'Aktif',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isCompleted
-                            ? Colors.green.shade700
-                            : Colors.blue.shade700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: lightGreen,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      category,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: green,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(bottomSheetContext);
-                      addSchedule(existingItem: item);
-                    },
-                    icon: const Icon(Icons.edit_outlined, size: 18, color: green),
-                    label: const Text(
-                      'Edit',
-                      style: TextStyle(
-                        color: green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 18),
-              _DetailRow(
-                icon: Icons.calendar_today_outlined,
-                text: formatDate(itemDate),
-              ),
-              _DetailRow(
-                icon: Icons.access_time,
-                text: '$time WIB',
-              ),
-              _DetailRow(
-                icon: Icons.location_on_outlined,
-                text: location,
-              ),
-              _DetailRow(
-                icon: Icons.notifications_active_outlined,
-                text:
-                    'Pengingat $reminderMinutes menit sebelum jadwal (Pukul $reminderClock WIB)',
-              ),
-              if (item['enableWaNotification'] == true || item['enable_wa_notification'] == true)
-                _DetailRow(
-                  icon: Icons.chat_outlined,
-                  text: 'WhatsApp: ${(item['waPhone'] ?? item['wa_phone'] ?? '').toString().isNotEmpty ? (item['waPhone'] ?? item['wa_phone']) : 'Nomor Profil Pengguna'}',
-                ),
-              if (description.isNotEmpty)
-                _DetailRow(
-                  icon: Icons.notes,
-                  text: description,
-                ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 44),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  WhatsappReminderService.instance.sendOrLaunchReminder(
-                    item,
-                    context: context,
-                  );
-                },
-                icon: const Icon(Icons.send_rounded, size: 18),
-                label: const Text(
-                  'Kirim Pengingat WhatsApp',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(bottomSheetContext);
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Hapus Jadwal'),
-                            content: const Text(
-                              'Apakah Anda yakin ingin menghapus jadwal ini? Pengingat terkait juga akan dibatalkan.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Batal'),
-                              ),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
-                                ),
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text(
-                                  'Hapus',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ],
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isCompleted
+                              ? (isDark ? const Color(0xFF1B3824) : Colors.green.shade50)
+                              : (isDark ? const Color(0xFF1A2A3A) : Colors.blue.shade50),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isCompleted ? 'Selesai' : 'Aktif',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isCompleted
+                                ? (isDark ? const Color(0xFF81C784) : Colors.green.shade700)
+                                : (isDark ? const Color(0xFF90CAF9) : Colors.blue.shade700),
                           ),
-                        );
-                        if (confirm == true) {
-                          await JadwalService.deleteSchedule(item['id']);
-                          await _loadData();
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Jadwal dan pengingat terkait berhasil dihapus',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF233B28) : lightGreen,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          category,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? const Color(0xFFA5D6A7) : green,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(bottomSheetContext);
+                          addSchedule(existingItem: item);
+                        },
+                        icon: const Icon(Icons.edit_outlined, size: 18, color: green),
+                        label: const Text(
+                          'Edit',
+                          style: TextStyle(
+                            color: green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _DetailRow(
+                    icon: Icons.calendar_today_outlined,
+                    text: formatDate(itemDate),
+                  ),
+                  _DetailRow(
+                    icon: Icons.access_time,
+                    text: '$time WIB',
+                  ),
+                  _DetailRow(
+                    icon: Icons.location_on_outlined,
+                    text: location,
+                  ),
+                  _DetailRow(
+                    icon: Icons.notifications_active_outlined,
+                    text:
+                        'Pengingat $reminderMinutes menit sebelum jadwal (Pukul $reminderClock WIB)',
+                  ),
+                  if (isWaEnabled)
+                    _DetailRow(
+                      icon: Icons.chat_outlined,
+                      text: 'WhatsApp: ${(item['waPhone'] ?? item['wa_phone'] ?? '').toString().isNotEmpty ? (item['waPhone'] ?? item['wa_phone']) : 'Nomor Profil Pengguna'}',
+                    ),
+                  if (description.isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.notes,
+                      text: description,
+                    ),
+                  const SizedBox(height: 14),
+                  // Indikator Status Pengiriman WhatsApp Otomatis
+                  _buildWaStatusBadge(
+                    isDark: isDark,
+                    isWaEnabled: isWaEnabled,
+                    waStatus: waStatus,
+                    waError: waError,
+                    waSentAt: waSentAt,
+                    reminderClock: reminderClock,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 44),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: isSendingWa
+                        ? null
+                        : () async {
+                            setModalState(() => isSendingWa = true);
+                            final res = await WhatsappReminderService.instance.sendOrLaunchReminder(
+                              item,
+                              context: context,
+                            );
+                            setModalState(() => isSendingWa = false);
+                            if (res['success'] == true) {
+                              item['whatsapp_status'] = 'sent';
+                              item['whatsappStatus'] = 'sent';
+                              item['whatsapp_sent'] = true;
+                              item['whatsappSent'] = true;
+                              item['whatsapp_sent_at'] = DateTime.now().toIso8601String();
+                              item['whatsappSentAt'] = DateTime.now().toIso8601String();
+                              item['whatsapp_error'] = null;
+                              item['whatsappError'] = null;
+                            } else if (res['reason'] != null) {
+                              item['whatsapp_status'] = 'failed';
+                              item['whatsappStatus'] = 'failed';
+                              item['whatsapp_error'] = res['reason'].toString();
+                              item['whatsappError'] = res['reason'].toString();
+                            }
+                            await JadwalService.saveLocalSchedules(schedules);
+                            if (mounted) setState(() {});
+                          },
+                    icon: isSendingWa
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.send_rounded, size: 18),
+                    label: Text(
+                      isSendingWa
+                          ? 'Mengirim...'
+                          : (waStatus == 'sent'
+                              ? 'Kirim Ulang Pesan WhatsApp'
+                              : (waStatus == 'failed'
+                                  ? 'Coba Kirim Ulang Sekarang'
+                                  : 'Kirim Pengingat Sekarang (Manual)')),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(bottomSheetContext);
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Hapus Jadwal'),
+                                content: const Text(
+                                  'Apakah Anda yakin ingin menghapus jadwal ini? Pengingat terkait juga akan dibatalkan.',
                                 ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Batal'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                    ),
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text(
+                                      'Hapus',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
-                          }
-                        }
-                      },
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                      label: const Text(
-                        'Hapus',
-                        style: TextStyle(color: Colors.red),
+                            if (confirm == true) {
+                              await JadwalService.deleteSchedule(item['id']);
+                              await _loadData();
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Jadwal dan pengingat terkait berhasil dihapus',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          label: const Text(
+                            'Hapus',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
                       ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(bottomSheetContext);
+                            await JadwalService.toggleComplete(item['id']);
+                            await _loadData();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    isCompleted
+                                        ? 'Jadwal ditandai belum selesai'
+                                        : 'Jadwal ditandai selesai',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: Icon(
+                            isCompleted
+                                ? Icons.undo_rounded
+                                : Icons.check_circle_outline,
+                          ),
+                          label: Text(isCompleted ? 'Belum Selesai' : 'Selesai'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: green,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildWaStatusBadge({
+    required bool isDark,
+    required bool isWaEnabled,
+    required String waStatus,
+    String? waError,
+    String? waSentAt,
+    required String reminderClock,
+  }) {
+    if (!isWaEnabled || waStatus == 'disabled') {
+      return Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF232D26) : const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? const Color(0xFF35443A) : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.notifications_off_outlined,
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Notifikasi WhatsApp Dinonaktifkan',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? Colors.grey.shade200 : Colors.grey.shade800,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(bottomSheetContext);
-                        await JadwalService.toggleComplete(item['id']);
-                        await _loadData();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                isCompleted
-                                    ? 'Jadwal ditandai belum selesai'
-                                    : 'Jadwal ditandai selesai',
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                      icon: Icon(
-                        isCompleted
-                            ? Icons.undo_rounded
-                            : Icons.check_circle_outline,
-                      ),
-                      label: Text(isCompleted ? 'Belum Selesai' : 'Selesai'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Pengingat WhatsApp otomatis dinonaktifkan untuk kegiatan ini.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (waStatus == 'sent') {
+      String sentLabel = 'Pengingat WhatsApp telah otomatis terkirim via Fonnte';
+      if (waSentAt != null && waSentAt.isNotEmpty) {
+        try {
+          final parsed = DateTime.parse(waSentAt);
+          final wib = parsed.isUtc ? parsed.add(const Duration(hours: 7)) : parsed;
+          sentLabel = 'Terkirim pada ${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')} WIB';
+        } catch (_) {}
+      }
+
+      return Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1B3824) : const Color(0xFFE8F5E9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7),
           ),
         ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.check_circle_rounded,
+              color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pengingat WhatsApp: Terkirim',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? const Color(0xFFA5D6A7) : const Color(0xFF1B5E20),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    sentLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (waStatus == 'failed') {
+      return Container(
+        margin: const EdgeInsets.only(top: 4, bottom: 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF3B1E1E) : const Color(0xFFFFEBEE),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? const Color(0xFFC62828) : const Color(0xFFEF9A9A),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              color: isDark ? const Color(0xFFEF9A9A) : const Color(0xFFC62828),
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pengingat WhatsApp: Gagal Kirim',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: isDark ? const Color(0xFFFFCDD2) : const Color(0xFFB71C1C),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    waError != null && waError.isNotEmpty
+                        ? waError
+                        : 'Pengiriman pesan ke nomor WhatsApp penerima gagal.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? const Color(0xFFEF9A9A) : const Color(0xFFC62828),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Status: Pending / Menunggu Pengiriman Otomatis
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF382F16) : const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? const Color(0xFFF57F17) : const Color(0xFFFFE082),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.schedule_rounded,
+            color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFF57F17),
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pengingat WhatsApp: Menunggu Pengiriman Otomatis',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: isDark ? const Color(0xFFFFE082) : const Color(0xFFE65100),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Sistem otomatis mengirim pengingat ke WhatsApp pada pukul $reminderClock WIB tanpa perlu menekan tombol apa pun.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFF57F17),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
