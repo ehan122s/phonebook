@@ -5,21 +5,30 @@ import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
     companion object {
         const val CHANNEL_NAME = "com.cdkv.phonebook/notifications"
+        const val STORAGE_CHANNEL_NAME = "com.cdkv.phonebook/storage"
         const val NOTIFICATION_CHANNEL_ID = "phonebook_reminder_channel_v2"
         const val NOTIFICATION_CHANNEL_NAME = "Notifikasi & Pengingat Jadwal Phonebook"
         const val PREFS_NAME = "phonebook_native_reminders"
@@ -328,5 +337,178 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // Saluran Khusus Penyimpanan & Unduhan Berkas ke Folder Download HP (Scoped Storage & MediaStore)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            STORAGE_CHANNEL_NAME
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveFileToDownloads" -> {
+                    try {
+                        val bytes = call.argument<ByteArray>("bytes")
+                        val fileName = call.argument<String>("fileName") ?: "download_${System.currentTimeMillis()}"
+                        val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
+                        val subfolder = call.argument<String>("subfolder") ?: ""
+
+                        if (bytes == null || bytes.isEmpty()) {
+                            result.error("INVALID_BYTES", "Bytes file kosong atau tidak valid", null)
+                            return@setMethodCallHandler
+                        }
+
+                        val res = saveToPublicDownloads(bytes, fileName, mimeType, subfolder)
+                        result.success(res)
+                    } catch (e: Exception) {
+                        result.error("STORAGE_ERROR", e.message ?: "Gagal menyimpan berkas ke folder Download", null)
+                    }
+                }
+
+                "openFile" -> {
+                    try {
+                        val filePath = call.argument<String>("filePath") ?: ""
+                        val mimeType = call.argument<String>("mimeType") ?: "*/*"
+                        val file = File(filePath)
+
+                        if (!file.exists()) {
+                            result.error("FILE_NOT_FOUND", "File tidak ditemukan di $filePath", null)
+                            return@setMethodCallHandler
+                        }
+
+                        val uri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            try {
+                                FileProvider.getUriForFile(
+                                    applicationContext,
+                                    "${applicationContext.packageName}.fileProvider.com.crazecoder.openfile",
+                                    file
+                                )
+                            } catch (_: Exception) {
+                                Uri.fromFile(file)
+                            }
+                        } else {
+                            Uri.fromFile(file)
+                        }
+
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, mimeType)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("OPEN_ERROR", e.message ?: "Gagal membuka berkas dengan aplikasi eksternal", null)
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    /**
+     * Menyimpan berkas biner langsung ke folder publik Download HP Android.
+     * Menggunakan MediaStore.Downloads API resmi untuk Android 10 (Q) hingga Android 15+,
+     * sehingga berkas 100% muncul di File Manager HP tanpa memicu batasan Scoped Storage.
+     */
+    private fun saveToPublicDownloads(
+        bytes: ByteArray,
+        fileName: String,
+        mimeType: String,
+        subfolder: String?
+    ): Map<String, Any?> {
+        val relFolder = if (!subfolder.isNullOrBlank()) {
+            Environment.DIRECTORY_DOWNLOADS + "/" + subfolder.trim('/')
+        } else {
+            Environment.DIRECTORY_DOWNLOADS
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relFolder)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+
+            val resolver = applicationContext.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                ?: throw IllegalStateException("Tidak dapat mendaftarkan berkas di MediaStore Downloads")
+
+            resolver.openOutputStream(uri)?.use { os ->
+                os.write(bytes)
+                os.flush()
+            } ?: throw IllegalStateException("Tidak dapat membuka output stream ke berkas tujuan")
+
+            contentValues.clear()
+            contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            resolver.update(uri, contentValues, null, null)
+
+            val fullPath = "/storage/emulated/0/$relFolder/$fileName"
+
+            try {
+                MediaScannerConnection.scanFile(
+                    applicationContext,
+                    arrayOf(fullPath),
+                    arrayOf(mimeType),
+                    null
+                )
+            } catch (_: Exception) {}
+
+            return mapOf(
+                "success" to true,
+                "filePath" to fullPath,
+                "uri" to uri.toString(),
+                "fileName" to fileName,
+                "displayPath" to "$relFolder/$fileName"
+            )
+        } else {
+            val baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val targetDir = if (!subfolder.isNullOrBlank()) {
+                File(baseDir, subfolder.trim('/'))
+            } else {
+                baseDir
+            }
+
+            if (!targetDir.exists()) {
+                targetDir.mkdirs()
+            }
+
+            var destFile = File(targetDir, fileName)
+            if (destFile.exists()) {
+                val dotIndex = fileName.lastIndexOf('.')
+                val base = if (dotIndex != -1) fileName.substring(0, dotIndex) else fileName
+                val ext = if (dotIndex != -1) fileName.substring(dotIndex) else ""
+                var counter = 1
+                while (destFile.exists()) {
+                    destFile = File(targetDir, "$base ($counter)$ext")
+                    counter++
+                }
+            }
+
+            FileOutputStream(destFile).use { fos ->
+                fos.write(bytes)
+                fos.flush()
+            }
+
+            try {
+                MediaScannerConnection.scanFile(
+                    applicationContext,
+                    arrayOf(destFile.absolutePath),
+                    arrayOf(mimeType),
+                    null
+                )
+            } catch (_: Exception) {}
+
+            val display = "Download/" + (if (!subfolder.isNullOrBlank()) "${subfolder.trim('/')}/" else "") + destFile.name
+
+            return mapOf(
+                "success" to true,
+                "filePath" to destFile.absolutePath,
+                "uri" to Uri.fromFile(destFile).toString(),
+                "fileName" to destFile.name,
+                "displayPath" to display
+            )
+        }
+    }
     }
 }

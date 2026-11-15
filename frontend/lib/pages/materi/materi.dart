@@ -1375,9 +1375,10 @@ class _MateriPageState extends State<MateriPage> {
 
       if (result.success && result.filePath != null) {
         final filePath = result.filePath!;
-        final dirName = filePath.contains('Phonebook_Materi')
-            ? 'Download/Phonebook_Materi'
-            : 'Download';
+        final dirName = result.displayPath ??
+            (filePath.contains('Phonebook_Materi')
+                ? 'Download/Phonebook_Materi'
+                : 'Download');
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

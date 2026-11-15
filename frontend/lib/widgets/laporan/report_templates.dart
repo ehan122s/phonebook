@@ -13,16 +13,16 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants/laporan_constants.dart';
+import '../../services/device_file_storage_service.dart';
 
 /// Manager untuk mengelola penyimpanan, ekstraksi file contoh, & format Template Laporan.
 class ReportTemplateManager {
@@ -720,23 +720,28 @@ class ReportDocumentExporter {
       }
     }
 
-    // 2. Penanganan Android, Windows, Linux, macOS: simpan ke folder Download
+    // 2. Penanganan Android, Windows, Linux, macOS: simpan langsung ke folder Download publik HP
     try {
-      final dir = await _getReportDownloadDirectory();
-      final targetFile = _getUniqueFile(dir, fileName);
-      await targetFile.writeAsBytes(fileBytes, flush: true);
+      final saveRes = await DeviceFileStorageService.instance.saveToDownloads(
+        bytes: fileBytes,
+        fileName: fileName,
+        mimeType: isPdf ? 'application/pdf' : 'application/msword',
+        subfolder: 'Phonebook_Laporan',
+      );
 
       return ReportExportResult(
-        success: true,
-        fileName: targetFile.uri.pathSegments.last,
-        filePath: targetFile.path,
-        message: 'Dokumen berhasil disimpan di: ${targetFile.path}',
+        success: saveRes.success,
+        fileName: saveRes.fileName,
+        filePath: saveRes.filePath,
+        message: saveRes.success
+            ? 'Laporan berhasil diunduh dan tersimpan di folder ${saveRes.displayPath}'
+            : saveRes.message,
       );
     } catch (e) {
       return ReportExportResult(
         success: false,
         fileName: fileName,
-        message: 'Gagal menyimpan file laporan: $e',
+        message: 'Gagal menyimpan file laporan ke folder Download: $e',
       );
     }
   }
@@ -754,7 +759,12 @@ class ReportDocumentExporter {
         return;
       }
       if (result.filePath != null && result.filePath!.isNotEmpty) {
-        await OpenFilex.open(result.filePath!);
+        await DeviceFileStorageService.instance.openFile(
+          result.filePath!,
+          mimeType: result.fileName.endsWith('.pdf')
+              ? 'application/pdf'
+              : 'application/msword',
+        );
       }
     } catch (_) {}
   }
@@ -1114,46 +1124,6 @@ class ReportDocumentExporter {
         .replaceAll(r'\', r'\\')
         .replaceAll('(', r'\(')
         .replaceAll(')', r'\)');
-  }
-
-  static Future<Directory> _getReportDownloadDirectory() async {
-    if (!kIsWeb && Platform.isAndroid) {
-      final publicDownload = Directory('/storage/emulated/0/Download');
-      if (publicDownload.existsSync()) {
-        final subDir = Directory('${publicDownload.path}/Phonebook_Laporan');
-        try {
-          if (!subDir.existsSync()) {
-            subDir.createSync(recursive: true);
-          }
-          return subDir;
-        } catch (_) {
-          return publicDownload;
-        }
-      }
-    }
-    try {
-      final downloadsDir = await getDownloadsDirectory();
-      if (downloadsDir != null) return downloadsDir;
-    } catch (_) {}
-    return await getApplicationDocumentsDirectory();
-  }
-
-  static File _getUniqueFile(Directory dir, String baseFileName) {
-    File candidate = File('${dir.path}/$baseFileName');
-    if (!candidate.existsSync()) return candidate;
-
-    final dotIndex = baseFileName.lastIndexOf('.');
-    final nameWithoutExt = dotIndex != -1
-        ? baseFileName.substring(0, dotIndex)
-        : baseFileName;
-    final ext = dotIndex != -1 ? baseFileName.substring(dotIndex) : '';
-
-    int counter = 1;
-    while (candidate.existsSync()) {
-      candidate = File('${dir.path}/$nameWithoutExt ($counter)$ext');
-      counter++;
-    }
-    return candidate;
   }
 }
 

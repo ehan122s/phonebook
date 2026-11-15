@@ -33,7 +33,6 @@ class _NotificationPageState extends State<NotificationPage> {
   static const Color kPrimary = Color(0xFF245C3A);
   static const Color kSecondary = Color(0xFF4F8A5B);
   static const Color kLightGreen = Color(0xFFE8F2E8);
-  static const Color kSoftGreen = Color(0xFFF2F7F0);
   static const Color kBackground = Color(0xFFF7F9F6);
   static const Color kTextPrimary = Color(0xFF24352A);
   static const Color kTextSecondary = Color(0xFF758278);
