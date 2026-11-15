@@ -2377,7 +2377,14 @@ Future<void> showReportDownloadSheet(
 }) async {
   bool isExportingPdf = false;
   bool isExportingWord = false;
+  bool isExportingPhoto = false;
   ReportExportResult? lastResult;
+
+  final bool hasPhoto = (laporan['foto'] != null &&
+          laporan['foto'].toString().trim().isNotEmpty) ||
+      (laporan['localPhotoPath'] != null &&
+          laporan['localPhotoPath'].toString().trim().isNotEmpty) ||
+      (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty);
 
   await showModalBottomSheet(
     context: context,
@@ -2422,6 +2429,29 @@ Future<void> showReportDownloadSheet(
             setSheetState(() {
               isExportingPdf = false;
               isExportingWord = false;
+              lastResult = res;
+            });
+
+            ScaffoldMessenger.of(sheetCtx).showSnackBar(
+              SnackBar(
+                content: Text(res.message),
+                backgroundColor: res.success
+                    ? const Color(0xFF245C3A)
+                    : Colors.red.shade700,
+              ),
+            );
+          }
+
+          Future<void> triggerExportPhoto() async {
+            setSheetState(() {
+              isExportingPhoto = true;
+            });
+
+            final res = await ReportDocumentExporter.exportPhotoOnly(laporan);
+
+            if (!sheetCtx.mounted) return;
+            setSheetState(() {
+              isExportingPhoto = false;
               lastResult = res;
             });
 
@@ -2534,6 +2564,38 @@ Future<void> showReportDownloadSheet(
                                     : Colors.grey.shade700,
                               ),
                             ),
+                            if (hasPhoto) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: primaryGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.photo_camera_rounded,
+                                      size: 15,
+                                      color: primaryGreen,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Foto lampiran tersedia & otomatis dilampirkan dalam dokumen',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: primaryGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -2687,6 +2749,42 @@ Future<void> showReportDownloadSheet(
                           ),
                         ),
                       ),
+                      if (hasPhoto) ...[
+                        const SizedBox(height: 10),
+                        // Tombol Alternatif: Unduh Berkas Foto Lampiran Saja (.jpg)
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                isExportingPhoto ? null : triggerExportPhoto,
+                            icon: isExportingPhoto
+                                ? SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: primaryGreen,
+                                    ),
+                                  )
+                                : const Icon(Icons.photo_library_outlined),
+                            label: const Text(
+                              'Unduh Berkas Foto Lampiran Saja (.jpg)',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: primaryGreen,
+                              side: BorderSide(color: primaryGreen),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

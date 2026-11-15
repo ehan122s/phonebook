@@ -17,10 +17,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/device_file_storage_service.dart';
 
@@ -644,7 +647,157 @@ class ReportExportResult {
   });
 }
 
+class ReportProcessedPhoto {
+  final Uint8List jpegBytes;
+  final int width;
+  final int height;
+
+  const ReportProcessedPhoto({
+    required this.jpegBytes,
+    required this.width,
+    required this.height,
+  });
+}
+
 class ReportDocumentExporter {
+  static String _formatCurrentDateTime() {
+    final now = DateTime.now();
+    final List<String> months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember'
+    ];
+    final day = now.day.toString();
+    final month = months[now.month - 1];
+    final year = now.year.toString();
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    return '$day $month $year, Pukul $hour:$minute:$second WIB';
+  }
+
+  /// Mengambil data biner foto lampiran dari file lokal, base64, atau URL server.
+  static Future<Uint8List?> resolvePhotoBytes(Map<String, dynamic> laporan) async {
+    try {
+      // 1. Cek file lokal perangkat (laporan offline atau baru dibuat)
+      final localPath = laporan['localPhotoPath']?.toString().trim();
+      if (localPath != null && localPath.isNotEmpty && !kIsWeb) {
+        final file = File(localPath);
+        if (file.existsSync()) {
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) return bytes;
+        }
+      }
+
+      // 2. Cek apakah ada base64 langsung di laporan atau photos list
+      if (laporan['photo_base64'] != null) {
+        final b64 = laporan['photo_base64'].toString().trim();
+        if (b64.isNotEmpty) {
+          final cleanB64 = b64.contains(',') ? b64.split(',').last : b64;
+          return base64Decode(cleanB64);
+        }
+      }
+
+      if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
+        for (final item in (laporan['photos'] as List)) {
+          if (item is Map && item['photo_base64'] != null) {
+            final b64 = item['photo_base64'].toString().trim();
+            if (b64.isNotEmpty) {
+              final cleanB64 = b64.contains(',') ? b64.split(',').last : b64;
+              return base64Decode(cleanB64);
+            }
+          }
+        }
+      }
+
+      // 3. Cari URL foto dari field 'foto', 'photo_url', atau list 'photos'
+      String? photoUrl;
+      if (laporan['foto'] != null && laporan['foto'].toString().trim().isNotEmpty) {
+        photoUrl = laporan['foto'].toString().trim();
+      } else if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
+        final first = (laporan['photos'] as List).first;
+        if (first is Map) {
+          photoUrl = (first['url'] ?? first['photo'] ?? first['photo_url'])?.toString().trim();
+        }
+      }
+
+      if (photoUrl == null || photoUrl.isEmpty) return null;
+
+      // Data URI base64
+      if (photoUrl.startsWith('data:image')) {
+        final comma = photoUrl.indexOf(',');
+        if (comma != -1) {
+          return base64Decode(photoUrl.substring(comma + 1));
+        }
+      }
+
+      // Cek apakah file lokal ada di disk
+      if (!kIsWeb && File(photoUrl).existsSync()) {
+        final bytes = await File(photoUrl).readAsBytes();
+        if (bytes.isNotEmpty) return bytes;
+      }
+
+      // Format URL lengkap
+      String fullUrl = photoUrl;
+      if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+        if (fullUrl.startsWith('/')) {
+          fullUrl = '${ApiConstants.baseUrl}$fullUrl';
+        } else {
+          fullUrl = '${ApiConstants.baseUrl}/storage/$fullUrl';
+        }
+      }
+
+      final response = await http
+          .get(Uri.parse(fullUrl))
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        return response.bodyBytes;
+      }
+    } catch (e) {
+      debugPrint('resolvePhotoBytes error: $e');
+    }
+    return null;
+  }
+
+  static ReportProcessedPhoto? _processImage(Uint8List rawBytes) {
+    try {
+      final decoded = img.decodeImage(rawBytes);
+      if (decoded == null) return null;
+
+      // Koreksi orientasi EXIF otomatis
+      final oriented = img.bakeOrientation(decoded);
+
+      // Batasi resolusi maksimum 1280px agar dokumen tetap ringan
+      img.Image toEncode = oriented;
+      if (oriented.width > 1280 || oriented.height > 1280) {
+        if (oriented.width >= oriented.height) {
+          toEncode = img.copyResize(oriented, width: 1280);
+        } else {
+          toEncode = img.copyResize(oriented, height: 1280);
+        }
+      }
+
+      final jpeg = Uint8List.fromList(img.encodeJpg(toEncode, quality: 85));
+      return ReportProcessedPhoto(
+        jpegBytes: jpeg,
+        width: toEncode.width,
+        height: toEncode.height,
+      );
+    } catch (e) {
+      debugPrint('Error processing image for export: $e');
+      return null;
+    }
+  }
+
   /// Mengekspor laporan menjadi file PDF (.pdf) atau Word (.doc).
   /// - Di Flutter Web (Chrome/Edge): Menggunakan `XFile.fromData(...).saveTo(...)`
   ///   yang membuat `Blob` Object URL (`blob:http://...`) dan memicu `<a download>`
@@ -668,9 +821,14 @@ class ReportDocumentExporter {
     // laporan lama belum memiliki teks panjang.
     final enrichedLaporan = await _ensureFormattedReportContent(laporan);
 
+    // Ambil dan olah foto lampiran jika tersedia
+    final rawPhotoBytes = await resolvePhotoBytes(enrichedLaporan);
+    final processedPhoto = rawPhotoBytes != null ? _processImage(rawPhotoBytes) : null;
+    final String waktuUnduh = _formatCurrentDateTime();
+
     final Uint8List fileBytes = isPdf
-        ? generatePdfBytes(enrichedLaporan)
-        : generateWordDocBytes(enrichedLaporan);
+        ? generatePdfBytes(enrichedLaporan, photo: processedPhoto, waktuUnduh: waktuUnduh)
+        : generateWordDocBytes(enrichedLaporan, photo: processedPhoto, waktuUnduh: waktuUnduh);
 
     // 1. Penanganan khusus Flutter Web (Chrome / Edge / Firefox)
     if (kIsWeb) {
@@ -746,6 +904,77 @@ class ReportDocumentExporter {
     }
   }
 
+  /// Mengunduh hanya file foto lampiran ke folder Download HP.
+  static Future<ReportExportResult> exportPhotoOnly(
+    Map<String, dynamic> laporan,
+  ) async {
+    final rawTitle = (laporan['judul'] ?? 'Foto_Laporan').toString();
+    final safeTitle = rawTitle
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_')
+        .trim();
+    final fileName = 'Foto_${safeTitle.isEmpty ? 'Laporan' : safeTitle}.jpg';
+
+    final rawPhotoBytes = await resolvePhotoBytes(laporan);
+    if (rawPhotoBytes == null || rawPhotoBytes.isEmpty) {
+      return ReportExportResult(
+        success: false,
+        fileName: fileName,
+        message: 'Laporan ini tidak memiliki berkas foto lampiran.',
+      );
+    }
+
+    final processedPhoto = _processImage(rawPhotoBytes);
+    final bytesToSave = processedPhoto?.jpegBytes ?? rawPhotoBytes;
+
+    if (kIsWeb) {
+      try {
+        final xfile = XFile.fromData(
+          bytesToSave,
+          mimeType: 'image/jpeg',
+          name: fileName,
+        );
+        await xfile.saveTo(fileName);
+        return ReportExportResult(
+          success: true,
+          fileName: fileName,
+          webBlobUrl: xfile.path,
+          message: 'Foto berhasil diunduh ke folder Downloads browser Anda.',
+        );
+      } catch (e) {
+        return ReportExportResult(
+          success: false,
+          fileName: fileName,
+          message: 'Gagal mengunduh foto di browser: $e',
+        );
+      }
+    }
+
+    try {
+      final saveRes = await DeviceFileStorageService.instance.saveToDownloads(
+        bytes: bytesToSave,
+        fileName: fileName,
+        mimeType: 'image/jpeg',
+        subfolder: 'Phonebook_Laporan',
+      );
+
+      return ReportExportResult(
+        success: saveRes.success,
+        fileName: saveRes.fileName,
+        filePath: saveRes.filePath,
+        message: saveRes.success
+            ? 'Foto lampiran berhasil diunduh ke folder ${saveRes.displayPath}'
+            : saveRes.message,
+      );
+    } catch (e) {
+      return ReportExportResult(
+        success: false,
+        fileName: fileName,
+        message: 'Gagal menyimpan foto lampiran: $e',
+      );
+    }
+  }
+
   /// Membuka file yang sudah diunduh (baik di Native maupun Blob URL di Web).
   static Future<void> openExportedFile(ReportExportResult result) async {
     try {
@@ -759,11 +988,20 @@ class ReportDocumentExporter {
         return;
       }
       if (result.filePath != null && result.filePath!.isNotEmpty) {
+        final String mime;
+        if (result.fileName.endsWith('.pdf')) {
+          mime = 'application/pdf';
+        } else if (result.fileName.endsWith('.doc')) {
+          mime = 'application/msword';
+        } else if (result.fileName.endsWith('.jpg') ||
+            result.fileName.endsWith('.jpeg')) {
+          mime = 'image/jpeg';
+        } else {
+          mime = 'application/octet-stream';
+        }
         await DeviceFileStorageService.instance.openFile(
           result.filePath!,
-          mimeType: result.fileName.endsWith('.pdf')
-              ? 'application/pdf'
-              : 'application/msword',
+          mimeType: mime,
         );
       }
     } catch (_) {}
@@ -809,7 +1047,13 @@ class ReportDocumentExporter {
   }
 
   /// Menghasilkan file PDF 1.4 standar (biner valid) siap print.
-  static Uint8List generatePdfBytes(Map<String, dynamic> laporan) {
+  /// Jika laporan memiliki foto lampiran, dokumen otomatis disusun 2 halaman
+  /// dengan Halaman 2 sebagai Lampiran Foto Dokumentasi resmi.
+  static Uint8List generatePdfBytes(
+    Map<String, dynamic> laporan, {
+    ReportProcessedPhoto? photo,
+    String? waktuUnduh,
+  }) {
     final judul = _cleanPdfText(
       (laporan['judul'] ?? 'Laporan Kegiatan Lapangan').toString(),
     );
@@ -831,6 +1075,9 @@ class ReportDocumentExporter {
         ? '$lat, $lng'
         : 'Terlampir pada sistem';
     final isiRaw = (laporan['isi'] ?? '').toString().trim();
+
+    final bool hasAttachedPhoto = photo != null;
+    final int totalPages = hasAttachedPhoto ? 2 : 1;
 
     final content = StringBuffer();
 
@@ -884,8 +1131,10 @@ class ReportDocumentExporter {
     drawText(judul, 50, 673, bold: true, fontSize: 11);
 
     // Kotak Metadata Laporan
+    final double metaBoxHeight = hasAttachedPhoto ? 104 : 92;
+    final double metaBoxY = hasAttachedPhoto ? 556 : 568;
     content.writeln('0.95 0.97 0.95 rg');
-    content.writeln('50 568 495 92 re f');
+    content.writeln('50 $metaBoxY 495 $metaBoxHeight re f');
     content.writeln('0 0 0 rg');
 
     drawText('Nama Pegawai / Penyuluh', 62, 642, bold: true, fontSize: 10);
@@ -903,16 +1152,22 @@ class ReportDocumentExporter {
     drawText('Titik Koordinat & Status', 62, 578, bold: true, fontSize: 10);
     drawText(':  $koordinat  ($status)', 205, 578, fontSize: 10);
 
+    if (hasAttachedPhoto) {
+      drawText('Foto Dokumentasi', 62, 562, bold: true, fontSize: 10);
+      drawText(':  Terlampir Resmi pada Halaman 2 Dokumen', 205, 562, fontSize: 10);
+    }
+
     // Bagian Isi Laporan
+    final double sectionTitleY = hasAttachedPhoto ? 532 : 544;
     drawText(
       'URAIAN & HASIL KEGIATAN LAPANGAN:',
       50,
-      544,
+      sectionTitleY,
       bold: true,
       fontSize: 11,
     );
     content.writeln('0.80 0.85 0.80 rg');
-    content.writeln('50 537 495 0.8 re f');
+    content.writeln('50 ${sectionTitleY - 7} 495 0.8 re f');
     content.writeln('0 0 0 rg');
 
     final bodyLines = _wrapTextLines(
@@ -922,7 +1177,7 @@ class ReportDocumentExporter {
       maxCharsPerLine: 78,
     );
 
-    double currentY = 518;
+    double currentY = sectionTitleY - 24;
     for (final line in bodyLines) {
       if (currentY < 165) break;
       final isSectionLine =
@@ -952,15 +1207,169 @@ class ReportDocumentExporter {
       fontSize: 10,
     );
     drawText(pelapor, 360, 62, bold: true, fontSize: 10);
+
+    final String page1Footer = hasAttachedPhoto
+        ? 'Aplikasi Phonebook CDK Wilayah V  •  Halaman 1 dari $totalPages'
+        : 'Dicetak otomatis melalui Aplikasi Phonebook CDK Wilayah V';
     drawText(
-      'Dicetak otomatis melalui Aplikasi Phonebook CDK Wilayah V',
+      page1Footer,
       50,
       42,
       fontSize: 8,
     );
+    if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
+      drawText(
+        'Waktu Unduh: $waktuUnduh',
+        320,
+        42,
+        fontSize: 8,
+      );
+    }
 
-    final streamContent = content.toString();
-    final streamBytes = latin1.encode(streamContent);
+    // Pembuatan Halaman 2 (Lampiran Foto) jika foto tersedia
+    final page2Content = StringBuffer();
+    if (hasAttachedPhoto) {
+      void drawPage2Text(
+        String text,
+        double x,
+        double y, {
+        bool bold = false,
+        int fontSize = 11,
+      }) {
+        final fontKey = bold ? '/F2' : '/F1';
+        final escaped = _escapePdfLiteral(_cleanPdfText(text));
+        page2Content.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
+      }
+
+      // Garis Atas Hijau Kop Surat
+      page2Content.writeln('0.14 0.36 0.23 rg');
+      page2Content.writeln('50 792 495 3 re f');
+      page2Content.writeln('0 0 0 rg');
+
+      // Header Kop Instansi Halaman 2
+      drawPage2Text(
+        'PEMERINTAH DAERAH PROVINSI JAWA BARAT',
+        155,
+        772,
+        bold: true,
+        fontSize: 12,
+      );
+      drawPage2Text('DINAS KEHUTANAN', 238, 756, bold: true, fontSize: 13);
+      drawPage2Text(
+        'CABANG DINAS KEHUTANAN WILAYAH V GARUT',
+        150,
+        740,
+        bold: true,
+        fontSize: 12,
+      );
+      drawPage2Text(
+        'LAMPIRAN DOKUMENTASI FOTO KEGIATAN LAPANGAN',
+        135,
+        724,
+        bold: true,
+        fontSize: 11,
+      );
+
+      // Garis pembatas kop
+      page2Content.writeln('0.14 0.36 0.23 rg');
+      page2Content.writeln('50 714 495 1.5 re f');
+      page2Content.writeln('0 0 0 rg');
+
+      // Kotak Metadata Halaman 2
+      page2Content.writeln('0.95 0.97 0.95 rg');
+      page2Content.writeln('50 638 495 68 re f');
+      page2Content.writeln('0 0 0 rg');
+
+      drawPage2Text('Judul Laporan', 62, 688, bold: true, fontSize: 10);
+      drawPage2Text(':  $judul', 180, 688, fontSize: 10);
+
+      drawPage2Text('Pelapor / Petugas', 62, 672, bold: true, fontSize: 10);
+      drawPage2Text(':  $pelapor   ($jenis)', 180, 672, fontSize: 10);
+
+      drawPage2Text('Waktu Pelaksanaan', 62, 656, bold: true, fontSize: 10);
+      drawPage2Text(':  $tanggal   (Status: $status)', 180, 656, fontSize: 10);
+
+      drawPage2Text('Lokasi & Koordinat', 62, 642, bold: true, fontSize: 10);
+      drawPage2Text(':  $lokasi  [$koordinat]', 180, 642, fontSize: 10);
+
+      // Hitung posisi dan ukuran gambar agar aspect ratio foto selalu presisi
+      const double maxPhotoW = 475;
+      const double maxPhotoH = 370;
+      final double aspect = photo.width / photo.height;
+      double drawW;
+      double drawH;
+      if (aspect > (maxPhotoW / maxPhotoH)) {
+        drawW = maxPhotoW;
+        drawH = maxPhotoW / aspect;
+      } else {
+        drawH = maxPhotoH;
+        drawW = maxPhotoH * aspect;
+      }
+
+      final double drawX = 50 + (495 - drawW) / 2;
+      final double drawY = 225 + (395 - drawH) / 2;
+
+      // Bingkai Latar dan Garis Tepi Foto
+      page2Content.writeln('0.92 0.94 0.92 rg');
+      page2Content.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re f');
+      page2Content.writeln('0.75 0.82 0.75 RG');
+      page2Content.writeln('1.2 w');
+      page2Content.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re S');
+      page2Content.writeln('0 0 0 rg');
+
+      // Gambar Image XObject
+      page2Content.writeln('q ${drawW.toStringAsFixed(1)} 0 0 ${drawH.toStringAsFixed(1)} ${drawX.toStringAsFixed(1)} ${drawY.toStringAsFixed(1)} cm /Im1 Do Q');
+
+      // Keterangan di bawah foto
+      final double captionY = drawY - 20;
+      drawPage2Text(
+        'Dokumentasi Resmi Kegiatan: $judul',
+        50,
+        captionY,
+        bold: true,
+        fontSize: 10,
+      );
+      drawPage2Text(
+        'Lokasi: $lokasi   |   Titik Koordinat: $koordinat',
+        50,
+        captionY - 14,
+        fontSize: 9,
+      );
+      if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
+        drawPage2Text(
+          'Waktu Diunduh & Dicetak: $waktuUnduh',
+          50,
+          captionY - 28,
+          fontSize: 9,
+        );
+      }
+
+      // Garis Pemisah Footer
+      page2Content.writeln('0.80 0.85 0.80 rg');
+      page2Content.writeln('50 135 495 0.8 re f');
+      page2Content.writeln('0 0 0 rg');
+
+      // Tanda Tangan Ringkas di Halaman 2
+      drawPage2Text('Garut, $tanggal', 360, 115, fontSize: 10);
+      drawPage2Text(
+        'Petugas Pelaksana,',
+        360,
+        101,
+        bold: true,
+        fontSize: 10,
+      );
+      drawPage2Text(pelapor, 360, 56, bold: true, fontSize: 10);
+
+      drawPage2Text(
+        'Aplikasi Phonebook CDK Wilayah V  •  Halaman 2 dari 2 (Lampiran Foto Dokumentasi)',
+        50,
+        42,
+        fontSize: 8,
+      );
+    }
+
+    final stream1Bytes = latin1.encode(content.toString());
+    final stream2Bytes = hasAttachedPhoto ? latin1.encode(page2Content.toString()) : null;
 
     final pdfBuffer = BytesBuilder();
     final offsets = <int>[0];
@@ -971,14 +1380,19 @@ class ReportDocumentExporter {
 
     writeAscii('%PDF-1.4\n');
 
+    // 1 0 obj: Catalog
     offsets.add(pdfBuffer.length);
     writeAscii('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
 
+    // 2 0 obj: Pages
     offsets.add(pdfBuffer.length);
-    writeAscii(
-      '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    );
+    if (hasAttachedPhoto) {
+      writeAscii('2 0 obj\n<< /Type /Pages /Kids [3 0 R 7 0 R] /Count 2 >>\nendobj\n');
+    } else {
+      writeAscii('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+    }
 
+    // 3 0 obj: Page 1
     offsets.add(pdfBuffer.length);
     writeAscii(
       '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
@@ -986,37 +1400,73 @@ class ReportDocumentExporter {
       '/Contents 6 0 R >>\nendobj\n',
     );
 
+    // 4 0 obj: Font F1
     offsets.add(pdfBuffer.length);
     writeAscii(
       '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
     );
 
+    // 5 0 obj: Font F2
     offsets.add(pdfBuffer.length);
     writeAscii(
       '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
     );
 
+    // 6 0 obj: Page 1 Contents Stream
     offsets.add(pdfBuffer.length);
-    writeAscii('6 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n');
-    pdfBuffer.add(streamBytes);
+    writeAscii('6 0 obj\n<< /Length ${stream1Bytes.length} >>\nstream\n');
+    pdfBuffer.add(stream1Bytes);
     writeAscii('\nendstream\nendobj\n');
 
+    if (hasAttachedPhoto && stream2Bytes != null) {
+      // 7 0 obj: Page 2
+      offsets.add(pdfBuffer.length);
+      writeAscii(
+        '7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+        '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> /XObject << /Im1 9 0 R >> >> '
+        '/Contents 8 0 R >>\nendobj\n',
+      );
+
+      // 8 0 obj: Page 2 Contents Stream
+      offsets.add(pdfBuffer.length);
+      writeAscii('8 0 obj\n<< /Length ${stream2Bytes.length} >>\nstream\n');
+      pdfBuffer.add(stream2Bytes);
+      writeAscii('\nendstream\nendobj\n');
+
+      // 9 0 obj: Image XObject
+      offsets.add(pdfBuffer.length);
+      writeAscii(
+        '9 0 obj\n<< /Type /XObject /Subtype /Image '
+        '/Width ${photo.width} /Height ${photo.height} '
+        '/ColorSpace /DeviceRGB /BitsPerComponent 8 '
+        '/Filter /DCTDecode /Length ${photo.jpegBytes.length} >>\nstream\n',
+      );
+      pdfBuffer.add(photo.jpegBytes);
+      writeAscii('\nendstream\nendobj\n');
+    }
+
+    final int objectCount = hasAttachedPhoto ? 9 : 6;
     final xrefOffset = pdfBuffer.length;
-    writeAscii('xref\n0 7\n0000000000 65535 f \n');
-    for (int idx = 1; idx <= 6; idx++) {
+    writeAscii('xref\n0 ${objectCount + 1}\n0000000000 65535 f \n');
+    for (int idx = 1; idx <= objectCount; idx++) {
       final offStr = offsets[idx].toString().padLeft(10, '0');
       writeAscii('$offStr 00000 n \n');
     }
 
     writeAscii(
-      'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n$xrefOffset\n%%EOF\n',
+      'trailer\n<< /Size ${objectCount + 1} /Root 1 0 R >>\nstartxref\n$xrefOffset\n%%EOF\n',
     );
 
     return pdfBuffer.toBytes();
   }
 
   /// Menghasilkan dokumen Word (.doc) yang dapat dibuka di Microsoft Word.
-  static Uint8List generateWordDocBytes(Map<String, dynamic> laporan) {
+  /// Foto lampiran otomatis disertakan dalam dokumen secara inline (Base64).
+  static Uint8List generateWordDocBytes(
+    Map<String, dynamic> laporan, {
+    ReportProcessedPhoto? photo,
+    String? waktuUnduh,
+  }) {
     final judul = (laporan['judul'] ?? 'Laporan Kegiatan').toString();
     final jenis = (laporan['jenis'] ?? 'Laporan Penyuluhan').toString();
     final pelapor =
@@ -1033,6 +1483,22 @@ class ReportDocumentExporter {
         .toString()
         .replaceAll('\n', '<br/>');
 
+    String photoHtmlSection = '';
+    if (photo != null) {
+      final b64 = base64Encode(photo.jpegBytes);
+      photoHtmlSection = '''
+  <div class="section-title">LAMPIRAN FOTO DOKUMENTASI KEGIATAN:</div>
+  <div class="photo-box" style="text-align: center; border: 1px solid #DCE6DC; padding: 14px; background: #FFFFFF; margin-bottom: 20px; border-radius: 6px;">
+    <img src="data:image/jpeg;base64,$b64" style="max-width: 520px; max-height: 400px; border-radius: 6px; border: 1px solid #B0C4B5;" /><br/>
+    <p style="font-size: 9.5pt; color: #4A5568; margin-top: 8px; line-height: 1.4;">
+      <b>Dokumentasi Resmi:</b> $judul<br/>
+      <b>Lokasi:</b> $lokasi &nbsp;|&nbsp; <b>Titik Koordinat:</b> ${lat.isNotEmpty ? '$lat, $lng' : '-'}<br/>
+      ${waktuUnduh != null && waktuUnduh.isNotEmpty ? '<b>Waktu Diunduh & Dicetak:</b> $waktuUnduh' : ''}
+    </p>
+  </div>
+''';
+    }
+
     final htmlDoc = '''
 <html xmlns:o="urn:schemas-microsoft-com:office:office"
       xmlns:w="urn:schemas-microsoft-com:office:word"
@@ -1047,7 +1513,7 @@ class ReportDocumentExporter {
     table.meta { width: 100%; border-collapse: collapse; margin-bottom: 18px; background: #F2F7F0; }
     table.meta td { padding: 6px 10px; border: 1px solid #DCE6DC; }
     .section-title { font-weight: bold; color: #245C3A; margin-top: 14px; margin-bottom: 6px; }
-    .content-box { border: 1px solid #DCE6DC; padding: 14px; background: #FFFFFF; }
+    .content-box { border: 1px solid #DCE6DC; padding: 14px; background: #FFFFFF; margin-bottom: 18px; }
     .sign { margin-top: 40px; text-align: right; }
   </style>
 </head>
@@ -1066,9 +1532,12 @@ class ReportDocumentExporter {
     <tr><td><b>Lokasi Kegiatan</b></td><td>$lokasi</td></tr>
     <tr><td><b>Titik Koordinat</b></td><td>${lat.isNotEmpty ? '$lat, $lng' : '-'}</td></tr>
     <tr><td><b>Status Laporan</b></td><td>$status</td></tr>
+    <tr><td><b>Lampiran Foto</b></td><td>${photo != null ? 'Tersedia (Terlampir pada bagian bawah naskah)' : 'Tidak terlampir'}</td></tr>
+    ${waktuUnduh != null && waktuUnduh.isNotEmpty ? '<tr><td><b>Waktu Cetak/Unduh</b></td><td>$waktuUnduh</td></tr>' : ''}
   </table>
   <div class="section-title">URAIAN &amp; HASIL KEGIATAN:</div>
   <div class="content-box">$isi</div>
+  $photoHtmlSection
   <div class="sign">
     <p>Garut, $tanggal<br/><b>Penyuluh / Petugas Pelaksana,</b></p>
     <br/><br/>
