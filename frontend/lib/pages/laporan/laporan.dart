@@ -1,25 +1,3 @@
-// ============================================================================
-// [HALAMAN LAPORAN (USER & ADMIN) - LAPORAN.DART]
-// Simpan file ini di: lib/pages/laporan/laporan.dart
-//
-// Fitur Utama:
-// 1. Mode Admin (Otomatis aktif saat login sebagai Admin / dibuka dari AdminPage):
-//    - Fokus utama Admin BUKAN mengisi laporan kegiatan, melainkan MENGISI &
-//      MENGATUR TEMPLATE LAPORAN berdasarkan jenis laporan (Laporan Penyuluhan,
-//      Laporan TRK, Laporan Monitoring, Laporan Kegiatan, Laporan Kejadian, dll.).
-//    - Admin juga dapat MENGUNGGAH FILE CONTOH LAPORAN (.docx, .doc, .pdf, .txt)
-//      untuk langsung diekstrak menjadi kerangka template dan bagian form yang
-//      harus diisi oleh pegawai.
-//    - Tab "Monitoring Laporan" memungkinkan Admin memantau seluruh laporan
-//      yang telah dibuat oleh para pegawai, memfilter berdasarkan jenis laporan
-//      maupun status, melakukan verifikasi, serta mengunduh laporan ke PDF/Word.
-// 2. Mode User (Pegawai):
-//    - Saat pegawai membuat laporan baru, form yang tampil sudah rapi dan
-//      mengikuti template yang telah diisi oleh Admin sesuai jenis laporan.
-//    - Setelah laporan diisi, pegawai dapat MENGUNDUH LAPORAN dalam bentuk
-//      PDF Siap Print (.pdf) atau Word (.doc) untuk dicetak atau dikirim ke atasan.
-// ============================================================================
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -42,10 +20,14 @@ import '../../widgets/laporan/report_templates.dart';
 /// Main page for managing field reports (User) and report templates + monitoring (Admin).
 class LaporanPage extends StatefulWidget {
   final bool? isAdminMode;
+  final String? initialReportId;
+  final String? initialReportTitle;
 
   const LaporanPage({
     super.key,
     this.isAdminMode,
+    this.initialReportId,
+    this.initialReportTitle,
   });
 
   @override
@@ -58,6 +40,9 @@ class _LaporanPageState extends State<LaporanPage> {
 
   int _selectedTab = 0;
   bool _isAdmin = false;
+  bool _isLoadingReports = true;
+  String? _loadErrorMessage;
+  bool _hasOpenedInitialReport = false;
 
   final List<Map<String, dynamic>> _laporanList = [];
   final List<Map<String, dynamic>> _templatesList = [];
@@ -96,8 +81,7 @@ class _LaporanPageState extends State<LaporanPage> {
     final role = (prefs.getString('role') ?? '').trim().toLowerCase();
     final email = (prefs.getString('email') ?? '').trim().toLowerCase();
 
-    final detectedAdmin =
-        widget.isAdminMode ??
+    final detectedAdmin = widget.isAdminMode ??
         (role == 'admin' ||
             email == 'admin@kehutanan.go.id' ||
             email == 'admin@phonebook.com' ||
@@ -222,28 +206,30 @@ class _LaporanPageState extends State<LaporanPage> {
   }
 
   // ---------------------------------------------------------------------------
-  // Data loading (User & Admin Monitoring)
+  // Data loading (User & Admin Monitoring - Tanpa Data Dummy)
   // ---------------------------------------------------------------------------
 
   Future<void> _loadSavedReports() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingReports = true;
+        _loadErrorMessage = null;
+      });
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
       final email = prefs.getString('email');
-      final defaultUserName =
-          prefs.getString('profil_nama') ??
+      final defaultUserName = prefs.getString('profil_nama') ??
           prefs.getString('name') ??
-          (email != null && email.isNotEmpty ? email.split('@').first : 'Pengguna');
+          (email != null && email.isNotEmpty
+              ? email.split('@').first
+              : 'Pengguna');
 
       if (token == null || token.isEmpty) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Sesi login tidak ditemukan. Silakan login kembali.',
-            ),
-          ),
-        );
+        setState(() => _isLoadingReports = false);
         return;
       }
 
@@ -261,15 +247,31 @@ class _LaporanPageState extends State<LaporanPage> {
       final isOfflineToken =
           token.startsWith('offline_') || token.startsWith('google_session_');
 
+      // Ambil cache lokal untuk mencocokkan foto/geolokasi jika server belum mengembalikannya
+      final Map<String, Map<String, dynamic>> cachedDraftMap = {};
+      final rawDrafts = prefs.getString(_storageKey);
+      if (rawDrafts != null && rawDrafts.isNotEmpty) {
+        try {
+          final List<dynamic> decoded = jsonDecode(rawDrafts);
+          for (final item in decoded) {
+            final map = Map<String, dynamic>.from(item);
+            final idKey = (map['id'] ?? '').toString();
+            final titleKey = (map['judul'] ?? '').toString().toLowerCase();
+            if (idKey.isNotEmpty) cachedDraftMap[idKey] = map;
+            if (titleKey.isNotEmpty) cachedDraftMap[titleKey] = map;
+          }
+        } catch (_) {}
+      }
+
       // 1. Load offline/local reports from local SQLite DB
       final localReports = isOfflineToken
           ? await OfflineDatabase.instance.getAllLocalReports()
           : await OfflineDatabase.instance.getPendingReports();
       for (final local in localReports) {
-        final String activityDate =
-            local['activity_date']?.toString() ?? '';
-        final String rawStatus =
-            local['status']?.toString() ?? 'draft';
+        final String activityDate = local['activity_date']?.toString() ?? '';
+        final String rawStatus = local['status']?.toString() ?? 'draft';
+        final String photoVal =
+            (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
 
         addUniqueReport({
           'id': 'local_${local['id']}',
@@ -279,12 +281,23 @@ class _LaporanPageState extends State<LaporanPage> {
           'tanggal': LaporanDateUtils.formatApiDate(activityDate),
           'tanggalApi': activityDate,
           'lokasi': local['location'] ?? 'Belum diisi',
+          'alamatGeolokasi':
+              (local['address'] ?? local['location'] ?? '').toString(),
           'isi': local['description'] ?? '',
           'latitude': local['latitude']?.toString() ?? '',
           'longitude': local['longitude']?.toString() ?? '',
-          'foto': local['photo_path'] ?? '',
-          'photos': local['photo_path'] != null && (local['photo_path'] as String).isNotEmpty
-              ? [{'local_path': local['photo_path']}]
+          'foto': photoVal,
+          'photo_base64': local['photo_base64'] ?? '',
+          'photos': photoVal.isNotEmpty
+              ? [
+                  {
+                    'local_path': local['photo_path'],
+                    'photo_base64': local['photo_base64'],
+                    'latitude': local['latitude'],
+                    'longitude': local['longitude'],
+                    'address': local['address'],
+                  },
+                ]
               : <dynamic>[],
           'localPhotoPath': local['photo_path'],
           'status': LaporanDateUtils.displayStatus(rawStatus),
@@ -301,9 +314,32 @@ class _LaporanPageState extends State<LaporanPage> {
         try {
           final serverReports = await LaporanService.fetchReports(token);
           for (final sr in serverReports) {
+            final idStr = (sr['id'] ?? '').toString();
+            final titleLower = (sr['judul'] ?? '').toString().toLowerCase();
+            final localMatch =
+                cachedDraftMap[idStr] ?? cachedDraftMap[titleLower];
+
+            String resolvedFoto = (sr['foto'] ?? '').toString();
+            if (resolvedFoto.isEmpty && localMatch != null) {
+              resolvedFoto = (localMatch['foto'] ??
+                      localMatch['photo_base64'] ??
+                      localMatch['localPhotoPath'] ??
+                      '')
+                  .toString();
+            }
+
             addUniqueReport({
               ...sr,
               'pelapor': sr['pelapor'] ?? sr['userName'] ?? defaultUserName,
+              'foto': resolvedFoto,
+              'photo_base64': (sr['photo_base64']?.toString().isNotEmpty == true)
+                  ? sr['photo_base64']
+                  : (localMatch?['photo_base64'] ?? ''),
+              'localPhotoPath': localMatch?['localPhotoPath'],
+              'alamatGeolokasi':
+                  (sr['alamatGeolokasi']?.toString().isNotEmpty == true)
+                      ? sr['alamatGeolokasi']
+                      : (localMatch?['alamatGeolokasi'] ?? sr['lokasi'] ?? ''),
             });
           }
         } on UnauthorizedException catch (e) {
@@ -324,11 +360,11 @@ class _LaporanPageState extends State<LaporanPage> {
           }
         } catch (e) {
           debugPrint('LaporanService fetch reports warning: $e');
+          _loadErrorMessage = e.toString().replaceFirst('Exception: ', '');
         }
       }
 
       // 3. Load cached drafts & user reports from SharedPreferences
-      final rawDrafts = prefs.getString(_storageKey);
       if (rawDrafts != null && rawDrafts.isNotEmpty) {
         try {
           final List<dynamic> decoded = jsonDecode(rawDrafts);
@@ -344,15 +380,18 @@ class _LaporanPageState extends State<LaporanPage> {
                 'id': map['id'] ?? 'draft_${allReports.length}',
                 'judul': map['judul'] ?? 'Laporan Kegiatan',
                 'jenis': map['jenis'] ?? 'Laporan Penyuluhan',
-                'pelapor':
-                    map['pelapor'] ?? map['userName'] ?? defaultUserName,
-                'tanggal': map['tanggal'] ?? '20 Oktober 2026',
+                'pelapor': map['pelapor'] ?? map['userName'] ?? defaultUserName,
+                'tanggal': map['tanggal'] ?? '-',
                 'tanggalApi': map['tanggalApi'] ?? '',
-                'lokasi': map['lokasi'] ?? 'Kawasan Hutan Garut',
+                'lokasi': map['lokasi'] ?? '-',
+                'alamatGeolokasi':
+                    map['alamatGeolokasi'] ?? map['lokasi'] ?? '',
                 'isi': map['isi'] ?? '',
                 'latitude': map['latitude']?.toString() ?? '',
                 'longitude': map['longitude']?.toString() ?? '',
-                'foto': map['foto'] ?? '',
+                'foto': map['foto'] ?? map['photo_base64'] ?? '',
+                'photo_base64': map['photo_base64'] ?? '',
+                'localPhotoPath': map['localPhotoPath'],
                 'photos': map['photos'] ?? <dynamic>[],
                 'status': map['status'] ?? 'Draft',
                 'isOffline': map['isOffline'] ?? false,
@@ -363,7 +402,7 @@ class _LaporanPageState extends State<LaporanPage> {
         } catch (_) {}
       }
 
-      // 4. Jika dalam mode Admin, muat juga laporan pegawai dari arsip bersama
+      // 4. Jika dalam mode Admin, muat juga laporan pegawai dari arsip bersama (tanpa koordinat hardcode)
       if (_isAdmin) {
         final rawArchives = prefs.getString(_archiveStorageKey);
         if (rawArchives != null && rawArchives.isNotEmpty) {
@@ -382,15 +421,19 @@ class _LaporanPageState extends State<LaporanPage> {
                     ),
                     'pelapor':
                         (map['userName'] ?? 'Penyuluh Kehutanan').toString(),
-                    'tanggal': (map['tanggal'] ?? '20 Oktober 2026').toString(),
+                    'tanggal': (map['tanggal'] ?? '-').toString(),
                     'tanggalApi': '',
-                    'lokasi':
-                        (map['wilayah'] ?? 'Kawasan Hutan Garut').toString(),
+                    'lokasi': (map['wilayah'] ?? '-').toString(),
+                    'alamatGeolokasi':
+                        (map['alamatGeolokasi'] ?? map['wilayah'] ?? '')
+                            .toString(),
                     'isi': (map['deskripsi'] ?? '').toString(),
-                    'latitude': '-7.227900',
-                    'longitude': '107.908700',
-                    'foto': '',
-                    'photos': <dynamic>[],
+                    'latitude': (map['latitude'] ?? '').toString(),
+                    'longitude': (map['longitude'] ?? '').toString(),
+                    'foto': (map['foto'] ?? map['photo_base64'] ?? '')
+                        .toString(),
+                    'photo_base64': (map['photo_base64'] ?? '').toString(),
+                    'photos': map['photos'] ?? <dynamic>[],
                     'status': (map['status'] ?? 'Selesai').toString(),
                     'isOffline': false,
                   });
@@ -406,22 +449,23 @@ class _LaporanPageState extends State<LaporanPage> {
         _laporanList
           ..clear()
           ..addAll(allReports);
+        _isLoadingReports = false;
       });
 
       await _updatePendingCount();
+      _checkAndOpenInitialReport();
     } catch (e) {
       if (!mounted) return;
 
       try {
-        final localReports =
-            await OfflineDatabase.instance.getAllLocalReports();
+        final localReports = await OfflineDatabase.instance.getAllLocalReports();
         final List<Map<String, dynamic>> offlineList = [];
 
         for (final local in localReports) {
-          final String activityDate =
-              local['activity_date']?.toString() ?? '';
-          final String rawStatus =
-              local['status']?.toString() ?? 'draft';
+          final String activityDate = local['activity_date']?.toString() ?? '';
+          final String rawStatus = local['status']?.toString() ?? 'draft';
+          final String photoVal =
+              (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
 
           offlineList.add({
             'id': 'local_${local['id']}',
@@ -431,10 +475,14 @@ class _LaporanPageState extends State<LaporanPage> {
             'tanggal': LaporanDateUtils.formatApiDate(activityDate),
             'tanggalApi': activityDate,
             'lokasi': local['location'] ?? 'Belum diisi',
+            'alamatGeolokasi':
+                (local['address'] ?? local['location'] ?? '').toString(),
             'isi': local['description'] ?? '',
             'latitude': local['latitude']?.toString() ?? '',
             'longitude': local['longitude']?.toString() ?? '',
-            'foto': '',
+            'foto': photoVal,
+            'photo_base64': local['photo_base64'] ?? '',
+            'localPhotoPath': local['photo_path'],
             'photos': <dynamic>[],
             'status': LaporanDateUtils.displayStatus(rawStatus),
             'statusApi': rawStatus,
@@ -449,13 +497,54 @@ class _LaporanPageState extends State<LaporanPage> {
           _laporanList
             ..clear()
             ..addAll(offlineList);
+          _isLoadingReports = false;
         });
-      } catch (_) {}
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isLoadingReports = false);
+        }
+      }
+    }
+  }
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mode offline — menampilkan data lokal.')),
-      );
+  /// Jika halaman Laporan dibuka melalui klik Notifikasi dengan ID laporan tertentu,
+  /// otomatis tampilkan detail laporan yang bersangkutan.
+  void _checkAndOpenInitialReport() {
+    if (_hasOpenedInitialReport) return;
+    final targetId = widget.initialReportId?.trim() ?? '';
+    final targetTitle = widget.initialReportTitle?.trim().toLowerCase() ?? '';
+    if (targetId.isEmpty && targetTitle.isEmpty) return;
+
+    final cleanTargetId = targetId.replaceFirst('report_', '');
+
+    Map<String, dynamic>? matched;
+    for (final item in _laporanList) {
+      final itemId = (item['id'] ?? '').toString();
+      final itemTitle = (item['judul'] ?? '').toString().toLowerCase();
+      if ((cleanTargetId.isNotEmpty &&
+              (itemId == cleanTargetId ||
+                  itemId == targetId ||
+                  itemId == 'local_$cleanTargetId')) ||
+          (targetTitle.isNotEmpty && itemTitle == targetTitle)) {
+        matched = item;
+        break;
+      }
+    }
+
+    if (matched != null) {
+      _hasOpenedInitialReport = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          showReportDetail(
+            context,
+            laporan: matched!,
+            onEdit: _openReportForm,
+            onDownload: _downloadReport,
+            isAdmin: _isAdmin,
+            onUpdateStatus: _isAdmin ? _updateMonitoredReportStatus : null,
+          );
+        }
+      });
     }
   }
 
@@ -570,9 +659,8 @@ class _LaporanPageState extends State<LaporanPage> {
 
     if (confirmed != true) return;
 
-    final updated = _templatesList
-        .where((t) => t['id'] != template['id'])
-        .toList();
+    final updated =
+        _templatesList.where((t) => t['id'] != template['id']).toList();
     await ReportTemplateManager.saveTemplates(updated);
     await _reloadTemplates();
 
@@ -624,7 +712,6 @@ class _LaporanPageState extends State<LaporanPage> {
     );
   }
 
-  /// Membuka dialog Unduh Laporan dalam bentuk PDF Siap Print (.pdf) atau Word (.doc).
   void _downloadReport(Map<String, dynamic> laporan) {
     showReportDownloadSheet(
       context,
@@ -760,9 +847,8 @@ class _LaporanPageState extends State<LaporanPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final appBarBg = isDark ? const Color(0xFF18221B) : Colors.white;
     final titleColor = isDark ? Colors.white : LaporanColors.textDark;
-    final primaryGreen = isDark
-        ? const Color(0xFF81C784)
-        : const Color(0xFF245C3A);
+    final primaryGreen =
+        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -827,6 +913,11 @@ class _LaporanPageState extends State<LaporanPage> {
                       ),
               ),
             ),
+          IconButton(
+            onPressed: _loadSavedReports,
+            tooltip: 'Segarkan Laporan',
+            icon: Icon(Icons.refresh_rounded, color: primaryGreen),
+          ),
         ],
       ),
       body: SafeArea(
@@ -850,11 +941,10 @@ class _LaporanPageState extends State<LaporanPage> {
     final horizontalPad = screenWidth >= 760 ? 28.0 : 20.0;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(horizontalPad, 16, horizontalPad, 100),
+      padding: EdgeInsets.fromLTRB(horizontalPad, 16, horizontalPad, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Header Banner Admin
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(22),
@@ -920,10 +1010,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ],
             ),
           ),
-
           const SizedBox(height: 18),
-
-          // 2. Kartu Aksi Utama Admin: Upload File Contoh Laporan / Buat Template
           InkWell(
             borderRadius: BorderRadius.circular(20),
             onTap: () => _openAdminTemplateEditor(),
@@ -981,9 +1068,8 @@ class _LaporanPageState extends State<LaporanPage> {
                           'Masukkan file contoh laporan (.docx / .pdf / .txt) untuk diekstrak menjadi template dan sesuaikan form yang harus diisi user.',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: isDark
-                                ? Colors.white70
-                                : Colors.grey.shade600,
+                            color:
+                                isDark ? Colors.white70 : Colors.grey.shade600,
                             height: 1.35,
                           ),
                         ),
@@ -1000,10 +1086,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 22),
-
-          // 3. Segmented Tab Bar Admin (Tab 0 = Template Laporan, Tab 1 = Monitoring Laporan User)
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
@@ -1011,9 +1094,8 @@ class _LaporanPageState extends State<LaporanPage> {
                   ? const Color(0xFF1E2822)
                   : LaporanColors.tabBackground,
               borderRadius: BorderRadius.circular(14),
-              border: isDark
-                  ? Border.all(color: const Color(0xFF2E3D34))
-                  : null,
+              border:
+                  isDark ? Border.all(color: const Color(0xFF2E3D34)) : null,
             ),
             child: Row(
               children: [
@@ -1036,9 +1118,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ],
             ),
           ),
-
           const SizedBox(height: 20),
-
           if (_selectedTab == 0)
             _buildAdminTemplatesSection(isDark, titleColor, primaryGreen)
           else
@@ -1096,15 +1176,12 @@ class _LaporanPageState extends State<LaporanPage> {
     Color primaryGreen,
   ) {
     final totalCount = _laporanList.length;
-    final selesaiCount = _laporanList
-        .where((r) => r['status'] == 'Selesai')
-        .length;
-    final diprosesCount = _laporanList
-        .where((r) => r['status'] == 'Diproses')
-        .length;
-    final draftCount = _laporanList
-        .where((r) => r['status'] == 'Draft')
-        .length;
+    final selesaiCount =
+        _laporanList.where((r) => r['status'] == 'Selesai').length;
+    final diprosesCount =
+        _laporanList.where((r) => r['status'] == 'Diproses').length;
+    final draftCount =
+        _laporanList.where((r) => r['status'] == 'Draft').length;
 
     final jenisFilters = <String>[
       'Semua',
@@ -1138,7 +1215,6 @@ class _LaporanPageState extends State<LaporanPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Ringkasan Statistik Monitoring
         Row(
           children: [
             Expanded(
@@ -1174,10 +1250,7 @@ class _LaporanPageState extends State<LaporanPage> {
             ),
           ],
         ),
-
         const SizedBox(height: 16),
-
-        // Pencarian Laporan Pegawai
         TextField(
           onChanged: (val) => setState(() => _adminSearchQuery = val),
           style: TextStyle(color: titleColor, fontSize: 13.5),
@@ -1219,10 +1292,7 @@ class _LaporanPageState extends State<LaporanPage> {
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // Filter Jenis Laporan
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -1235,9 +1305,8 @@ class _LaporanPageState extends State<LaporanPage> {
                   selected: selected,
                   showCheckmark: false,
                   selectedColor: const Color(0xFF245C3A),
-                  backgroundColor: isDark
-                      ? const Color(0xFF1E2822)
-                      : Colors.white,
+                  backgroundColor:
+                      isDark ? const Color(0xFF1E2822) : Colors.white,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1249,10 +1318,7 @@ class _LaporanPageState extends State<LaporanPage> {
             }).toList(),
           ),
         ),
-
         const SizedBox(height: 8),
-
-        // Filter Status Laporan
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -1265,9 +1331,8 @@ class _LaporanPageState extends State<LaporanPage> {
                   selected: selected,
                   showCheckmark: false,
                   selectedColor: const Color(0xFF4F8A5B),
-                  backgroundColor: isDark
-                      ? const Color(0xFF1E2822)
-                      : Colors.white,
+                  backgroundColor:
+                      isDark ? const Color(0xFF1E2822) : Colors.white,
                   labelStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
@@ -1279,10 +1344,15 @@ class _LaporanPageState extends State<LaporanPage> {
             }).toList(),
           ),
         ),
-
         const SizedBox(height: 16),
-
-        if (filtered.isEmpty)
+        if (_isLoadingReports)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 36),
+            child: Center(
+              child: CircularProgressIndicator(color: Color(0xFF245C3A)),
+            ),
+          )
+        else if (filtered.isEmpty)
           const LaporanEmptyState()
         else
           ...filtered.map(
@@ -1369,30 +1439,22 @@ class _LaporanPageState extends State<LaporanPage> {
 
   Widget _buildUserLaporanBody(bool isDark, Color titleColor) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_isOffline) _buildOfflineBanner(),
-
-          if (!_isOffline && _pendingSyncCount > 0)
-            _buildPendingSyncBanner(),
-
+          if (!_isOffline && _pendingSyncCount > 0) _buildPendingSyncBanner(),
           const SizedBox(height: 20),
-
           const LaporanHeader(),
-
           const SizedBox(height: 24),
-
           CreateReportCard(
             onTap: () => showReportTypeDialog(
               context,
               onSelectType: _openReportForm,
             ),
           ),
-
           const SizedBox(height: 28),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1406,7 +1468,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ),
               const SizedBox(height: 5),
               Text(
-                'Draft yang masih bisa diedit dan laporan selesai yang siap diunduh (PDF/Word) untuk dicetak atau dikirim ke atasan.',
+                'Draft yang masih bisa diedit dan laporan selesai beserta foto geolokasi yang siap diunduh (PDF/Word).',
                 style: TextStyle(
                   color: isDark ? Colors.white70 : Colors.grey,
                   fontSize: 13.5,
@@ -1414,18 +1476,14 @@ class _LaporanPageState extends State<LaporanPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           LaporanTabBar(
             selectedTab: _selectedTab,
             onTabChanged: (index) {
               setState(() => _selectedTab = index);
             },
           ),
-
           const SizedBox(height: 18),
-
           if (_selectedTab == 0)
             _buildReportHistory()
           else
@@ -1479,7 +1537,7 @@ class _LaporanPageState extends State<LaporanPage> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Tidak ada koneksi internet. Laporan akan '
+                  'Tidak ada koneksi internet. Laporan & foto geolokasi akan '
                   'disimpan di perangkat dan otomatis dikirim '
                   'saat koneksi kembali.',
                   style: TextStyle(
@@ -1563,6 +1621,63 @@ class _LaporanPageState extends State<LaporanPage> {
   // ---------------------------------------------------------------------------
 
   Widget _buildReportHistory() {
+    if (_isLoadingReports) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFF245C3A)),
+        ),
+      );
+    }
+
+    if (_laporanList.isEmpty && _loadErrorMessage != null) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E2822) : Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDark ? const Color(0xFF2E3D34) : LaporanColors.borderCard,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 46,
+              color: Colors.orange.shade700,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Gagal Memuat Laporan dari Server',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : LaporanColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _loadErrorMessage!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: isDark ? Colors.white70 : Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _loadSavedReports,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Coba Lagi'),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_laporanList.isEmpty) {
       return const LaporanEmptyState();
     }
@@ -1606,9 +1721,8 @@ class _AdminTabSwitchItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeBg = isDark ? const Color(0xFF26352B) : Colors.white;
-    final activeColor = isDark
-        ? const Color(0xFF81C784)
-        : const Color(0xFF245C3A);
+    final activeColor =
+        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
     final inactiveColor = isDark ? Colors.white60 : Colors.grey.shade600;
 
     return GestureDetector(

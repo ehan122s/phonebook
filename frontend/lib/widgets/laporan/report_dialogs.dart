@@ -1,20 +1,3 @@
-// ============================================================================
-// [DIALOG, FORMULIR & UNDUH LAPORAN - REPORT_DIALOGS.DART]
-// Simpan file ini di: lib/widgets/laporan/report_dialogs.dart
-//
-// Pembaruan Utama:
-// 1. Desain Formulir Lebih Rapi, Lega & Responsif (Tidak Menumpuk):
-//    - Menggunakan label di atas kolom input (_SpaciousLabeledField), pengelompokan
-//      kartu ber-padding lega, serta tata letak 2 kolom adaptif pada layar lebar.
-// 2. Editor Template Admin 3-Tab + Konversi Langsung File Contoh Laporan:
-//    - Admin dapat mengunggah file contoh laporan (.docx, .doc, .pdf, .txt) via
-//      FilePicker untuk langsung diekstrak menjadi kerangka template & daftar
-//      bagian form yang harus diisi pegawai.
-// 3. Unduh Laporan ke PDF Siap Print (.pdf) & Word (.doc):
-//    - Setelah mengisi laporan, pegawai maupun Admin dapat mengunduh laporan
-//      resmi ber-Kop Surat CDK Wilayah V dalam format PDF siap cetak atau Word.
-// ============================================================================
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +12,8 @@ import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/laporan_service.dart';
+import '../../services/location_service.dart';
+import '../../services/notification_service.dart';
 import 'report_templates.dart';
 
 // ---------------------------------------------------------------------------
@@ -53,6 +36,10 @@ Future<void> showReportTypeDialog(
       borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
     ),
     builder: (ctx) {
+      final isDark = Theme.of(ctx).brightness == Brightness.dark;
+      final textColor = isDark ? Colors.white : const Color(0xFF24352A);
+      final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
       return SafeArea(
         child: Center(
           heightFactor: 1.0,
@@ -67,17 +54,18 @@ Future<void> showReportTypeDialog(
                   children: [
                     const _DragHandle(),
                     const SizedBox(height: 18),
-                    const Text(
+                    Text(
                       'Pilih Jenis Laporan',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
+                        color: textColor,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Pilih template laporan yang telah disiapkan sesuai kegiatan Anda.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13.5),
+                      style: TextStyle(color: subColor, fontSize: 13.5),
                     ),
                     const SizedBox(height: 18),
                     ...templates.map((tpl) {
@@ -109,7 +97,7 @@ Future<void> showReportTypeDialog(
 }
 
 // ---------------------------------------------------------------------------
-// 2. Formulir Pengisian Laporan (Rapi, Lega, Berbasis Kartu Seksi & Responsif)
+// 2. Formulir Pengisian Laporan (Integrasi Kamera, GPS, Reverse Geocoding & Foto Lokasi)
 // ---------------------------------------------------------------------------
 
 Future<void> showReportForm(
@@ -125,10 +113,9 @@ Future<void> showReportForm(
   final List<String> templateFields =
       (template['fields'] as List?)?.map((e) => e.toString()).toList() ?? [];
   final String defaultTitle = (template['defaultTitle'] ?? '').toString();
-  final String templateDescription =
-      (template['description'] ??
-              'Lengkapi bagian-bagian laporan sesuai kegiatan di lapangan.')
-          .toString();
+  final String templateDescription = (template['description'] ??
+          'Lengkapi bagian-bagian laporan sesuai kegiatan di lapangan.')
+      .toString();
   final bool requirePhoto = template['requirePhoto'] != false;
 
   final now = DateTime.now();
@@ -152,6 +139,8 @@ Future<void> showReportForm(
   final lngCtrl = TextEditingController(
     text: existing?['longitude']?.toString() ?? '',
   );
+  String reverseGeocodedAddress =
+      (existing?['alamatGeolokasi'] ?? '').toString();
 
   final Map<String, TextEditingController> fieldControllers = {
     for (final field in templateFields) field: TextEditingController(),
@@ -182,23 +171,44 @@ Future<void> showReportForm(
   Uint8List? pickedPhotoBytes;
   String? existingPhotoUrl;
   if (existing != null) {
-    if (existing['foto'] != null && existing['foto'].toString().trim().isNotEmpty) {
-      existingPhotoUrl = existing['foto'].toString().trim();
-    } else if (existing['photos'] is List && (existing['photos'] as List).isNotEmpty) {
+    final rawFoto = (existing['foto'] ?? existing['photo_base64'] ?? '')
+        .toString()
+        .trim();
+    if (rawFoto.isNotEmpty) {
+      existingPhotoUrl = rawFoto.startsWith('http') ||
+              rawFoto.startsWith('data:') ||
+              rawFoto.startsWith('/')
+          ? rawFoto
+          : '${ApiConstants.baseUrl}/storage/$rawFoto';
+    } else if (existing['photos'] is List &&
+        (existing['photos'] as List).isNotEmpty) {
       final first = (existing['photos'] as List).first;
       if (first is Map) {
-        final raw = (first['url'] ?? first['photo'] ?? first['local_path'] ?? '').toString().trim();
-        if (raw.isNotEmpty) {
-          existingPhotoUrl = raw.startsWith('http')
+        final b64 = (first['photo_base64'] ?? '').toString().trim();
+        final raw =
+            (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
+                .toString()
+                .trim();
+        if (b64.isNotEmpty) {
+          existingPhotoUrl =
+              b64.startsWith('data:') ? b64 : 'data:image/jpeg;base64,$b64';
+        } else if (first['id'] != null) {
+          existingPhotoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
+        } else if (raw.isNotEmpty) {
+          existingPhotoUrl = raw.startsWith('http') || raw.startsWith('/')
               ? raw
-              : (raw.startsWith('/') ? raw : '${ApiConstants.baseUrl}/storage/$raw');
+              : '${ApiConstants.baseUrl}/storage/$raw';
         }
       }
-    } else if (existing['localPhotoPath'] != null && existing['localPhotoPath'].toString().trim().isNotEmpty) {
+    } else if (existing['localPhotoPath'] != null &&
+        existing['localPhotoPath'].toString().trim().isNotEmpty) {
       existingPhotoUrl = existing['localPhotoPath'].toString().trim();
     }
   }
+
   bool isGettingLocation = false;
+  bool isProcessingPhoto = false;
+  String? locationWarningMessage;
   bool showCoordinateInputs =
       latCtrl.text.isNotEmpty || lngCtrl.text.isNotEmpty;
 
@@ -237,171 +247,86 @@ Future<void> showReportForm(
             }
           }
 
-          Future<void> getCurrentLocation() async {
+          /// Mengambil titik koordinat GPS perangkat secara nyata + reverse geocoding alamat
+          /// tanpa menggunakan koordinat dummy atau statis.
+          Future<UserLocationData?> fetchRealGpsLocation({
+            bool showSnackBar = true,
+          }) async {
             setModalState(() {
               isGettingLocation = true;
+              locationWarningMessage = null;
               showCoordinateInputs = true;
             });
 
-            Future<void> handleFallbackLocation() async {
-              try {
-                final res = await http
-                    .get(Uri.parse('http://ip-api.com/json'))
-                    .timeout(const Duration(seconds: 4));
-                if (res.statusCode == 200) {
-                  final data = jsonDecode(res.body);
-                  if (data['status'] == 'success') {
-                    final lat = (data['lat'] as num).toDouble();
-                    final lon = (data['lon'] as num).toDouble();
-                    final city =
-                        '${data['city'] ?? ''}, ${data['regionName'] ?? ''}'
-                            .trim();
-                    latCtrl.text = lat.toStringAsFixed(6);
-                    lngCtrl.text = lon.toStringAsFixed(6);
-                    if (lokasiCtrl.text.trim().isEmpty && city.isNotEmpty) {
-                      lokasiCtrl.text = city;
-                    }
-                    if (sheetContext.mounted) {
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        SnackBar(
-                          content: Text('Lokasi berhasil didapatkan ($city)'),
-                        ),
-                      );
-                    }
-                    return;
-                  }
-                }
-              } catch (_) {}
+            final loc = await LocationService.instance.refreshLocation();
+            if (!sheetContext.mounted) return null;
 
-              latCtrl.text = '-7.227900';
-              lngCtrl.text = '107.908700';
-              if (lokasiCtrl.text.trim().isEmpty) {
-                lokasiCtrl.text = 'Kawasan Hutan Garut';
-              }
-              if (sheetContext.mounted) {
+            if (loc != null) {
+              setModalState(() {
+                isGettingLocation = false;
+                latCtrl.text = loc.latitude.toStringAsFixed(6);
+                lngCtrl.text = loc.longitude.toStringAsFixed(6);
+                reverseGeocodedAddress = loc.fullAddress;
+                if (lokasiCtrl.text.trim().isEmpty) {
+                  lokasiCtrl.text = loc.shortLocationName;
+                }
+              });
+
+              if (showSnackBar) {
                 ScaffoldMessenger.of(sheetContext).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text(
-                      'Koordinat default wilayah Garut berhasil disetel.',
+                      'Titik GPS berhasil diperoleh: ${loc.shortLocationName} (${loc.coordinatesText})',
                     ),
+                    backgroundColor: const Color(0xFF245C3A),
                   ),
                 );
               }
-            }
+              return loc;
+            } else {
+              final err = LocationService.instance.errorMessage ??
+                  'Layanan lokasi GPS atau izin lokasi belum tersedia di perangkat Anda.';
+              setModalState(() {
+                isGettingLocation = false;
+                locationWarningMessage = err;
+              });
 
-            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-              await handleFallbackLocation();
-              if (sheetContext.mounted) {
-                setModalState(() => isGettingLocation = false);
-              }
-              return;
-            }
-
-            try {
-              bool serviceEnabled =
-                  await Geolocator.isLocationServiceEnabled();
-              if (!serviceEnabled) {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
-                      ),
-                    ),
-                  );
-                }
-                return;
-              }
-
-              LocationPermission permission =
-                  await Geolocator.checkPermission();
-              if (permission == LocationPermission.denied) {
-                permission = await Geolocator.requestPermission();
-                if (permission == LocationPermission.denied) {
-                  if (sheetContext.mounted) {
-                    ScaffoldMessenger.of(sheetContext).showSnackBar(
-                      const SnackBar(
-                        content: Text('Izin akses lokasi GPS ditolak.'),
-                      ),
-                    );
-                  }
-                  return;
-                }
-              }
-
-              if (permission == LocationPermission.deniedForever) {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
-                      ),
-                    ),
-                  );
-                }
-                return;
-              }
-
-              final position = await Geolocator.getCurrentPosition(
-                locationSettings: const LocationSettings(
-                  accuracy: LocationAccuracy.high,
-                  timeLimit: Duration(seconds: 12),
-                ),
-              );
-
-              latCtrl.text = position.latitude.toStringAsFixed(6);
-              lngCtrl.text = position.longitude.toStringAsFixed(6);
-
-              if (lokasiCtrl.text.trim().isEmpty) {
-                lokasiCtrl.text =
-                    'Titik Koordinat (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
-              }
-
-              if (sheetContext.mounted) {
+              if (showSnackBar) {
                 ScaffoldMessenger.of(sheetContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Koordinat GPS berhasil diperoleh!'),
+                  SnackBar(
+                    content: Text(err),
+                    backgroundColor: Colors.orange.shade800,
+                    action: (LocationService.instance.status ==
+                                LocationStatus.permissionDeniedForever ||
+                            LocationService.instance.status ==
+                                LocationStatus.serviceDisabled)
+                        ? SnackBarAction(
+                            label: 'Pengaturan',
+                            textColor: Colors.white,
+                            onPressed: () {
+                              if (LocationService.instance.status ==
+                                  LocationStatus.serviceDisabled) {
+                                LocationService.instance.openLocationSettings();
+                              } else {
+                                LocationService.instance.openAppSettings();
+                              }
+                            },
+                          )
+                        : null,
                   ),
                 );
               }
-            } on MissingPluginException {
-              await handleFallbackLocation();
-            } on PlatformException catch (pe) {
-              if (pe.code == 'MissingPluginException' ||
-                  pe.message?.contains('No implementation') == true) {
-                await handleFallbackLocation();
-              } else {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
-                      ),
-                    ),
-                  );
-                }
-              }
-            } catch (e) {
-              final msg = e.toString();
-              if (msg.contains('MissingPluginException') ||
-                  msg.contains('No implementation')) {
-                await handleFallbackLocation();
-              } else {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text('Gagal mendapatkan lokasi GPS: $e')),
-                  );
-                }
-              }
-            } finally {
-              if (sheetContext.mounted) {
-                setModalState(() => isGettingLocation = false);
-              }
+              return null;
             }
           }
 
-          Future<void> pickPhoto() async {
-            final source = await showModalBottomSheet<ImageSource>(
+          /// Mengambil foto langsung dari Kamera atau Galeri, otomatis mengambil koordinat
+          /// GPS perangkat ketika foto diambil, serta membubuhkan informasi lokasi pada foto.
+          Future<void> captureOrPickPhotoWithGeolocation({
+            ImageSource? explicitSource,
+          }) async {
+            ImageSource? source = explicitSource;
+            source ??= await showModalBottomSheet<ImageSource>(
               context: sheetContext,
               backgroundColor: cardBg,
               shape: const RoundedRectangleBorder(
@@ -418,18 +343,19 @@ Future<void> showReportForm(
                     children: [
                       const _DragHandle(),
                       const SizedBox(height: 18),
-                      const Text(
-                        'Pilih Sumber Foto',
+                      Text(
+                        'Ambil Foto Lokasi (Geolocator)',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: textPrimary,
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Ambil foto dokumentasi dari kamera atau pilih dari galeri',
+                      Text(
+                        'Foto akan otomatis dilengkapi koordinat GPS (Latitude & Longitude) serta alamat lokasi saat diambil.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        style: TextStyle(color: textSecondary, fontSize: 13),
                       ),
                       const SizedBox(height: 18),
                       ListTile(
@@ -439,22 +365,24 @@ Future<void> showReportForm(
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: LaporanColors.primary.withValues(
-                              alpha: 0.12,
-                            ),
+                            color: LaporanColors.primary.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.camera_alt_rounded,
-                            color: LaporanColors.primary,
+                            color: primaryGreen,
                           ),
                         ),
-                        title: const Text(
-                          'Ambil dari Kamera',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        title: Text(
+                          'Ambil Foto Kamera + GPS Lokasi',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
                         ),
-                        subtitle: const Text(
-                          'Buka kamera untuk mengambil foto secara langsung',
+                        subtitle: Text(
+                          'Ambil foto langsung di lapangan & rekam titik GPS otomatis',
+                          style: TextStyle(color: textSecondary, fontSize: 12),
                         ),
                         onTap: () =>
                             Navigator.pop(pickerCtx, ImageSource.camera),
@@ -467,7 +395,7 @@ Future<void> showReportForm(
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.12),
+                            color: Colors.blue.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
@@ -475,12 +403,16 @@ Future<void> showReportForm(
                             color: Colors.blue,
                           ),
                         ),
-                        title: const Text(
-                          'Pilih dari Galeri',
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        title: Text(
+                          'Pilih Foto dari Galeri Perangkat',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
                         ),
-                        subtitle: const Text(
-                          'Pilih gambar yang tersimpan di perangkat',
+                        subtitle: Text(
+                          'Pilih foto dokumentasi dari galeri & sertakan titik lokasi saat ini',
+                          style: TextStyle(color: textSecondary, fontSize: 12),
                         ),
                         onTap: () =>
                             Navigator.pop(pickerCtx, ImageSource.gallery),
@@ -491,50 +423,99 @@ Future<void> showReportForm(
               ),
             );
 
-            if (source != null) {
-              try {
-                final picker = ImagePicker();
-                XFile? picked;
+            if (source == null) return;
 
-                if (!kIsWeb &&
-                    defaultTargetPlatform == TargetPlatform.linux &&
-                    source == ImageSource.camera) {
+            try {
+              final picker = ImagePicker();
+              XFile? picked;
+
+              if (!kIsWeb &&
+                  defaultTargetPlatform == TargetPlatform.linux &&
+                  source == ImageSource.camera) {
+                picked = await picker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 85,
+                );
+              } else {
+                try {
                   picked = await picker.pickImage(
-                    source: ImageSource.gallery,
-                    imageQuality: 80,
+                    source: source,
+                    imageQuality: 85,
+                    maxWidth: 1600,
                   );
-                } else {
-                  try {
+                } on PlatformException {
+                  if (source == ImageSource.camera) {
                     picked = await picker.pickImage(
-                      source: source,
-                      imageQuality: 80,
-                      maxWidth: 1600,
+                      source: ImageSource.gallery,
+                      imageQuality: 85,
                     );
-                  } on PlatformException {
-                    if (source == ImageSource.camera) {
-                      picked = await picker.pickImage(
-                        source: ImageSource.gallery,
-                        imageQuality: 80,
-                      );
-                    } else {
-                      rethrow;
-                    }
+                  } else {
+                    rethrow;
                   }
                 }
+              }
 
-                if (picked != null) {
-                  final bytes = await picked.readAsBytes();
-                  setModalState(() {
-                    pickedPhotoFile = picked;
-                    pickedPhotoBytes = bytes;
-                  });
+              if (picked == null) return;
+
+              setModalState(() => isProcessingPhoto = true);
+
+              final rawBytes = await picked.readAsBytes();
+
+              // Ambil koordinat GPS nyata saat foto diambil
+              UserLocationData? gpsData =
+                  await fetchRealGpsLocation(showSnackBar: false);
+              gpsData ??= LocationService.instance.currentLocation;
+
+              final double? lat =
+                  gpsData?.latitude ?? double.tryParse(latCtrl.text.trim());
+              final double? lng =
+                  gpsData?.longitude ?? double.tryParse(lngCtrl.text.trim());
+
+              if (lat != null && lng != null && gpsData == null) {
+                final rev =
+                    await LocationService.instance.reverseGeocode(lat, lng);
+                reverseGeocodedAddress = rev.fullAddress;
+                if (lokasiCtrl.text.trim().isEmpty) {
+                  lokasiCtrl.text = rev.shortName;
                 }
-              } catch (e) {
-                if (sheetContext.mounted) {
-                  ScaffoldMessenger.of(sheetContext).showSnackBar(
-                    SnackBar(content: Text('Gagal mengambil foto: $e')),
-                  );
-                }
+              }
+
+              // Bubuhkan stamp geolokasi (koordinat, lokasi, alamat, waktu WIB) pada foto
+              final stampedBytes = LocationService.stampPhotoWithGeolocation(
+                rawBytes,
+                latitude: lat,
+                longitude: lng,
+                locationName: lokasiCtrl.text.trim().isNotEmpty
+                    ? lokasiCtrl.text.trim()
+                    : gpsData?.shortLocationName,
+                address: reverseGeocodedAddress.isNotEmpty
+                    ? reverseGeocodedAddress
+                    : gpsData?.fullAddress,
+              );
+
+              if (!sheetContext.mounted) return;
+              setModalState(() {
+                pickedPhotoFile = picked;
+                pickedPhotoBytes = stampedBytes;
+                isProcessingPhoto = false;
+              });
+
+              ScaffoldMessenger.of(sheetContext).showSnackBar(
+                SnackBar(
+                  backgroundColor: const Color(0xFF245C3A),
+                  content: Text(
+                    lat != null && lng != null
+                        ? 'Foto dokumentasi beserta titik geolokasi (${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}) berhasil dilampirkan!'
+                        : 'Foto berhasil dilampirkan. Aktifkan GPS bila ingin menyertakan koordinat otomatis.',
+                  ),
+                ),
+              );
+            } catch (e) {
+              if (sheetContext.mounted) {
+                setModalState(() => isProcessingPhoto = false);
+                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                  SnackBar(content: Text('Gagal mengambil foto: $e')),
+                );
               }
             }
           }
@@ -561,7 +542,7 @@ Future<void> showReportForm(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ── HEADER MODAL TETAP (RAPI & TIDAK IKUT TERGULUNG) ──
+                    // ── HEADER MODAL TETAP ──
                     Container(
                       padding: const EdgeInsets.fromLTRB(22, 14, 16, 16),
                       decoration: BoxDecoration(
@@ -646,12 +627,12 @@ Future<void> showReportForm(
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // KARTU SEKSI 1: INFORMASI UTAMA & LOKASI
+                                // KARTU SEKSI 1: INFORMASI UTAMA & GEOLOKASI GPS
                                 _SectionContainerCard(
                                   stepNumber: '1',
-                                  title: 'Informasi Utama & Lokasi',
+                                  title: 'Informasi Utama & Geolokasi',
                                   subtitle:
-                                      'Isi judul, tanggal pelaksanaan, dan titik lokasi kegiatan.',
+                                      'Isi judul, tanggal pelaksanaan, dan titik lokasi GPS kegiatan.',
                                   cardBg: cardBg,
                                   borderCol: borderCol,
                                   primaryGreen: primaryGreen,
@@ -707,22 +688,25 @@ Future<void> showReportForm(
                                       const SizedBox(height: 14),
                                       _SpaciousLabeledField(
                                         controller: lokasiCtrl,
-                                        label: 'Lokasi Kegiatan',
-                                        hint: 'Contoh: Kawasan Hutan Garut',
+                                        label: 'Nama Lokasi / Wilayah Kegiatan',
+                                        hint:
+                                            'Ketuk "Ambil GPS" atau ketik nama lokasi...',
                                         icon: Icons.location_on_outlined,
                                         suffixWidget: TextButton.icon(
                                           onPressed: isGettingLocation
                                               ? null
-                                              : getCurrentLocation,
+                                              : () => fetchRealGpsLocation(
+                                                    showSnackBar: true,
+                                                  ),
                                           icon: isGettingLocation
                                               ? SizedBox(
                                                   width: 14,
                                                   height: 14,
                                                   child:
                                                       CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: primaryGreen,
-                                                      ),
+                                                    strokeWidth: 2,
+                                                    color: primaryGreen,
+                                                  ),
                                                 )
                                               : const Icon(
                                                   Icons.my_location_rounded,
@@ -730,7 +714,7 @@ Future<void> showReportForm(
                                                 ),
                                           label: Text(
                                             isGettingLocation
-                                                ? 'Mencari...'
+                                                ? 'Mencari GPS...'
                                                 : 'Ambil GPS',
                                             style: const TextStyle(
                                               fontSize: 12,
@@ -742,6 +726,87 @@ Future<void> showReportForm(
                                           ),
                                         ),
                                       ),
+                                      if (locationWarningMessage != null) ...[
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? const Color(0xFF332005)
+                                                : Colors.orange.shade50,
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: isDark
+                                                  ? const Color(0xFF66440A)
+                                                  : Colors.orange.shade200,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.location_disabled_rounded,
+                                                size: 18,
+                                                color: Colors.orange.shade700,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  locationWarningMessage!,
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    color: isDark
+                                                        ? const Color(
+                                                            0xFFFFCC80,
+                                                          )
+                                                        : Colors
+                                                            .orange.shade900,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      if (reverseGeocodedAddress.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? const Color(0xFF18221B)
+                                                : const Color(0xFFF2F7F0),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border:
+                                                Border.all(color: borderCol),
+                                          ),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Icon(
+                                                Icons.place_rounded,
+                                                size: 16,
+                                                color: primaryGreen,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  'Alamat GPS: $reverseGeocodedAddress',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    color: textPrimary,
+                                                    height: 1.35,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 8),
                                       Row(
                                         mainAxisAlignment:
@@ -751,19 +816,19 @@ Future<void> showReportForm(
                                               lngCtrl.text.isNotEmpty)
                                             Flexible(
                                               child: Text(
-                                                'Koordinat: ${latCtrl.text}, ${lngCtrl.text}',
+                                                'Koordinat GPS: ${latCtrl.text}, ${lngCtrl.text}',
                                                 style: TextStyle(
                                                   fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
+                                                  fontWeight: FontWeight.w700,
                                                   color: primaryGreen,
                                                 ),
                                               ),
                                             )
                                           else
                                             Text(
-                                              'Koordinat GPS (opsional)',
+                                              'Koordinat GPS otomatis terisi saat Ambil GPS / Ambil Foto',
                                               style: TextStyle(
-                                                fontSize: 12,
+                                                fontSize: 11.5,
                                                 color: textSecondary,
                                               ),
                                             ),
@@ -777,9 +842,9 @@ Future<void> showReportForm(
                                             style: TextButton.styleFrom(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
                                               minimumSize: Size.zero,
                                               tapTargetSize:
                                                   MaterialTapTargetSize
@@ -788,7 +853,7 @@ Future<void> showReportForm(
                                             child: Text(
                                               showCoordinateInputs
                                                   ? 'Sembunyikan Koordinat'
-                                                  : 'Input Koordinat Manual',
+                                                  : 'Detail Koordinat',
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,
@@ -806,7 +871,7 @@ Future<void> showReportForm(
                                               child: _SpaciousLabeledField(
                                                 controller: latCtrl,
                                                 label: 'Latitude',
-                                                hint: '-7.2279',
+                                                hint: 'Otomatis dari GPS',
                                                 icon:
                                                     Icons.my_location_outlined,
                                               ),
@@ -816,7 +881,7 @@ Future<void> showReportForm(
                                               child: _SpaciousLabeledField(
                                                 controller: lngCtrl,
                                                 label: 'Longitude',
-                                                hint: '107.9087',
+                                                hint: 'Otomatis dari GPS',
                                                 icon: Icons.explore_outlined,
                                               ),
                                             ),
@@ -853,8 +918,7 @@ Future<void> showReportForm(
                                                 templateFields[index];
                                             final ctrl =
                                                 fieldControllers[fieldLabel]!;
-                                            final isLongField =
-                                                fieldLabel
+                                            final isLongField = fieldLabel
                                                     .toLowerCase()
                                                     .contains('hasil') ||
                                                 fieldLabel
@@ -875,8 +939,7 @@ Future<void> showReportForm(
 
                                             return Padding(
                                               padding: EdgeInsets.only(
-                                                bottom:
-                                                    index ==
+                                                bottom: index ==
                                                         templateFields.length -
                                                             1
                                                     ? 8
@@ -942,31 +1005,67 @@ Future<void> showReportForm(
 
                                 const SizedBox(height: 16),
 
-                                // KARTU SEKSI 3: LAMPIRAN FOTO DOKUMENTASI
+                                // KARTU SEKSI 3: LAMPIRAN FOTO LOKASI & GEOTAGGING
                                 _SectionContainerCard(
                                   stepNumber: '3',
-                                  title: 'Lampiran Foto Dokumentasi',
+                                  title:
+                                      'Foto Dokumentasi & Geolokasi (Geolocator)',
                                   subtitle: requirePhoto
-                                      ? 'Sertakan foto bukti kegiatan di lapangan.'
-                                      : 'Opsional — tambahkan foto dokumentasi jika tersedia.',
+                                      ? 'Ambil foto langsung dari kamera atau pilih dari galeri. Koordinat GPS & alamat otomatis direkam pada foto.'
+                                      : 'Opsional — tambahkan foto lokasi dokumentasi kegiatan.',
                                   cardBg: cardBg,
                                   borderCol: borderCol,
                                   primaryGreen: primaryGreen,
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary,
-                                  child: pickedPhotoBytes != null
-                                      ? Container(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (isProcessingPhoto)
+                                        Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 28,
+                                            horizontal: 16,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? const Color(0xFF18221B)
+                                                : LaporanColors.fieldFill,
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                            border:
+                                                Border.all(color: borderCol),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              CircularProgressIndicator(
+                                                color: primaryGreen,
+                                              ),
+                                              const SizedBox(height: 12),
+                                              Text(
+                                                'Mengambil titik koordinat GPS & menyematkan informasi lokasi pada foto...',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  color: textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else if (pickedPhotoBytes != null)
+                                        Container(
                                           width: double.infinity,
                                           decoration: BoxDecoration(
                                             color: isDark
                                                 ? const Color(0xFF18221B)
                                                 : LaporanColors.fieldFill,
-                                            borderRadius: BorderRadius.circular(
-                                              14,
-                                            ),
-                                            border: Border.all(
-                                              color: borderCol,
-                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                            border:
+                                                Border.all(color: borderCol),
                                           ),
                                           child: Column(
                                             crossAxisAlignment:
@@ -975,51 +1074,124 @@ Future<void> showReportForm(
                                               ClipRRect(
                                                 borderRadius:
                                                     const BorderRadius.vertical(
-                                                      top: Radius.circular(14),
-                                                    ),
+                                                  top: Radius.circular(14),
+                                                ),
                                                 child: Image.memory(
                                                   pickedPhotoBytes!,
-                                                  height: 180,
+                                                  height: 220,
                                                   width: double.infinity,
                                                   fit: BoxFit.cover,
+                                                ),
+                                              ),
+                                              // Informasi Geolokasi yang terhubung dengan foto
+                                              Container(
+                                                width: double.infinity,
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                  14,
+                                                  10,
+                                                  14,
+                                                  6,
+                                                ),
+                                                color: isDark
+                                                    ? const Color(0xFF1E2D23)
+                                                    : const Color(0xFFE8F5E9),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons
+                                                              .gps_fixed_rounded,
+                                                          size: 15,
+                                                          color: primaryGreen,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 6,
+                                                        ),
+                                                        Expanded(
+                                                          child: Text(
+                                                            (latCtrl.text
+                                                                        .isNotEmpty &&
+                                                                    lngCtrl.text
+                                                                        .isNotEmpty)
+                                                                ? 'Koordinat Foto: ${latCtrl.text}, ${lngCtrl.text}'
+                                                                : 'Koordinat GPS belum tersedia pada foto ini',
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color:
+                                                                  primaryGreen,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    if (reverseGeocodedAddress
+                                                            .isNotEmpty ||
+                                                        lokasiCtrl.text
+                                                            .trim()
+                                                            .isNotEmpty) ...[
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        reverseGeocodedAddress
+                                                                .isNotEmpty
+                                                            ? reverseGeocodedAddress
+                                                            : lokasiCtrl.text
+                                                                .trim(),
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 11.5,
+                                                          color: textPrimary,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
                                                 ),
                                               ),
                                               Padding(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                      horizontal: 14,
-                                                      vertical: 10,
-                                                    ),
+                                                  horizontal: 14,
+                                                  vertical: 8,
+                                                ),
                                                 child: Row(
                                                   children: [
                                                     Expanded(
                                                       child: Text(
                                                         pickedPhotoFile?.name ??
-                                                            'Foto Bukti Baru',
+                                                            'Foto_Lokasi_Kegiatan.jpg',
                                                         maxLines: 1,
                                                         overflow: TextOverflow
                                                             .ellipsis,
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontWeight:
                                                               FontWeight.w600,
-                                                          fontSize: 13,
+                                                          fontSize: 12.5,
+                                                          color: textPrimary,
                                                         ),
                                                       ),
                                                     ),
                                                     TextButton.icon(
-                                                      onPressed: pickPhoto,
+                                                      onPressed: () =>
+                                                          captureOrPickPhotoWithGeolocation(),
                                                       icon: const Icon(
                                                         Icons.refresh_rounded,
                                                         size: 16,
                                                       ),
-                                                      label: const Text(
-                                                        'Ganti',
-                                                      ),
+                                                      label:
+                                                          const Text('Ganti'),
                                                       style:
                                                           TextButton.styleFrom(
-                                                            foregroundColor:
-                                                                primaryGreen,
-                                                          ),
+                                                        foregroundColor:
+                                                            primaryGreen,
+                                                      ),
                                                     ),
                                                     TextButton.icon(
                                                       onPressed: () {
@@ -1049,93 +1221,193 @@ Future<void> showReportForm(
                                             ],
                                           ),
                                         )
-                                      : (existingPhotoUrl != null && existingPhotoUrl!.isNotEmpty)
-                                          ? Container(
-                                              width: double.infinity,
-                                              decoration: BoxDecoration(
-                                                color: isDark
-                                                    ? const Color(0xFF18221B)
-                                                    : LaporanColors.fieldFill,
-                                                borderRadius: BorderRadius.circular(14),
-                                                border: Border.all(color: borderCol),
+                                      else if (existingPhotoUrl != null &&
+                                          existingPhotoUrl!.isNotEmpty)
+                                        Container(
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? const Color(0xFF18221B)
+                                                : LaporanColors.fieldFill,
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                            border:
+                                                Border.all(color: borderCol),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              ClipRRect(
+                                                borderRadius:
+                                                    const BorderRadius.vertical(
+                                                  top: Radius.circular(14),
+                                                ),
+                                                child: _buildPhotoImageWidget(
+                                                  existingPhotoUrl!,
+                                                  height: 200,
+                                                  isDark: isDark,
+                                                ),
                                               ),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  ClipRRect(
-                                                    borderRadius: const BorderRadius.vertical(
-                                                      top: Radius.circular(14),
+                                              Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 10,
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        'Foto Lampiran Tersimpan',
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          fontSize: 13,
+                                                          color: textPrimary,
+                                                        ),
+                                                      ),
                                                     ),
-                                                    child: existingPhotoUrl!.startsWith('http')
-                                                        ? Image.network(
-                                                            existingPhotoUrl!,
-                                                            height: 180,
-                                                            width: double.infinity,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (_, __, ___) => Container(
-                                                              height: 120,
-                                                              color: Colors.grey.shade200,
-                                                              alignment: Alignment.center,
-                                                              child: const Icon(Icons.broken_image_outlined, color: Colors.grey, size: 38),
-                                                            ),
-                                                          )
-                                                        : (!kIsWeb && File(existingPhotoUrl!).existsSync())
-                                                            ? Image.file(
-                                                                File(existingPhotoUrl!),
-                                                                height: 180,
-                                                                width: double.infinity,
-                                                                fit: BoxFit.cover,
-                                                              )
-                                                            : Image.network(
-                                                                '${ApiConstants.baseUrl}/storage/${existingPhotoUrl!}',
-                                                                height: 180,
-                                                                width: double.infinity,
-                                                                fit: BoxFit.cover,
-                                                                errorBuilder: (_, __, ___) => Container(
-                                                                  height: 120,
-                                                                  color: Colors.grey.shade200,
-                                                                  alignment: Alignment.center,
-                                                                  child: const Icon(Icons.broken_image_outlined, color: Colors.grey, size: 38),
-                                                                ),
-                                                              ),
-                                                  ),
-                                                  Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                                    child: Row(
-                                                      children: [
-                                                        const Expanded(
-                                                          child: Text(
-                                                            'Foto Lampiran Tersimpan',
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              fontWeight: FontWeight.w600,
-                                                              fontSize: 13,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        TextButton.icon(
-                                                          onPressed: pickPhoto,
-                                                          icon: const Icon(Icons.refresh_rounded, size: 16),
-                                                          label: const Text('Ganti'),
-                                                          style: TextButton.styleFrom(foregroundColor: primaryGreen),
-                                                        ),
-                                                        TextButton.icon(
-                                                          onPressed: () {
-                                                            setModalState(() {
-                                                              existingPhotoUrl = null;
-                                                            });
-                                                          },
-                                                          icon: const Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
-                                                          label: const Text('Hapus', style: TextStyle(color: Colors.red)),
-                                                        ),
-                                                      ],
+                                                    TextButton.icon(
+                                                      onPressed: () =>
+                                                          captureOrPickPhotoWithGeolocation(),
+                                                      icon: const Icon(
+                                                        Icons.refresh_rounded,
+                                                        size: 16,
+                                                      ),
+                                                      label:
+                                                          const Text('Ganti'),
+                                                      style:
+                                                          TextButton.styleFrom(
+                                                        foregroundColor:
+                                                            primaryGreen,
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
+                                                    TextButton.icon(
+                                                      onPressed: () {
+                                                        setModalState(() {
+                                                          existingPhotoUrl =
+                                                              null;
+                                                        });
+                                                      },
+                                                      icon: const Icon(
+                                                        Icons
+                                                            .delete_outline_rounded,
+                                                        size: 16,
+                                                        color: Colors.red,
+                                                      ),
+                                                      label: const Text(
+                                                        'Hapus',
+                                                        style: TextStyle(
+                                                          color: Colors.red,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            )
-                                          : _PhotoButton(onTap: pickPhoto),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        Column(
+                                          children: [
+                                            _PhotoButton(
+                                              onTap: () =>
+                                                  captureOrPickPhotoWithGeolocation(),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        captureOrPickPhotoWithGeolocation(
+                                                      explicitSource:
+                                                          ImageSource.camera,
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.camera_alt_rounded,
+                                                      size: 17,
+                                                    ),
+                                                    label: const Text(
+                                                      'Kamera + GPS',
+                                                      style: TextStyle(
+                                                        fontSize: 12.5,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    style: OutlinedButton
+                                                        .styleFrom(
+                                                      foregroundColor:
+                                                          primaryGreen,
+                                                      side: BorderSide(
+                                                        color: primaryGreen,
+                                                      ),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        vertical: 11,
+                                                      ),
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        captureOrPickPhotoWithGeolocation(
+                                                      explicitSource:
+                                                          ImageSource.gallery,
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons
+                                                          .photo_library_outlined,
+                                                      size: 17,
+                                                    ),
+                                                    label: const Text(
+                                                      'Pilih Galeri',
+                                                      style: TextStyle(
+                                                        fontSize: 12.5,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                    style: OutlinedButton
+                                                        .styleFrom(
+                                                      foregroundColor:
+                                                          primaryGreen,
+                                                      side: BorderSide(
+                                                        color: borderCol,
+                                                      ),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                        vertical: 11,
+                                                      ),
+                                                      shape:
+                                                          RoundedRectangleBorder(
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(12),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             );
@@ -1194,11 +1466,14 @@ Future<void> showReportForm(
                                         lokasiCtrl: lokasiCtrl,
                                         latCtrl: latCtrl,
                                         lngCtrl: lngCtrl,
+                                        addressGeolokasi:
+                                            reverseGeocodedAddress,
                                         customActivityDate: formattedDateApi,
                                         status: 'Draft',
                                         onReportSaved: onReportSaved,
                                         photoBytes: pickedPhotoBytes,
                                         photoFilename: pickedPhotoFile?.name,
+                                        existingPhotoUrl: existingPhotoUrl,
                                       );
                                     },
                                     icon: const Icon(
@@ -1251,12 +1526,15 @@ Future<void> showReportForm(
                                         lokasiCtrl: lokasiCtrl,
                                         latCtrl: latCtrl,
                                         lngCtrl: lngCtrl,
+                                        addressGeolokasi:
+                                            reverseGeocodedAddress,
                                         customActivityDate: formattedDateApi,
                                         status: 'Selesai',
                                         onReportSaved: onReportSaved,
                                         closeOnSuccess: true,
                                         photoBytes: pickedPhotoBytes,
                                         photoFilename: pickedPhotoFile?.name,
+                                        existingPhotoUrl: existingPhotoUrl,
                                       );
                                     },
                                     icon: const Icon(
@@ -1332,11 +1610,9 @@ Future<void> showAdminTemplateEditor(
   bool requireLocation = existingTemplate?['requireLocation'] != false;
   bool isExtractingFile = false;
 
-  /// 0 = Upload Contoh & Info, 1 = Form Isian User, 2 = Kerangka Naskah
   int activeStepTab = 0;
 
-  final List<String> fields =
-      (existingTemplate?['fields'] as List?)
+  final List<String> fields = (existingTemplate?['fields'] as List?)
           ?.map((e) => e.toString())
           .toList() ??
       <String>[
@@ -1389,7 +1665,6 @@ Future<void> showAdminTemplateEditor(
               ? Colors.white70
               : const Color(0xFF6E7A72);
 
-          // Fungsi Pilih & Ekstrak File Contoh Laporan (.docx, .doc, .pdf, .txt)
           Future<void> pickAndExtractSampleFile() async {
             setModalState(() => isExtractingFile = true);
             try {
@@ -1414,25 +1689,24 @@ Future<void> showAdminTemplateEditor(
 
                 final extracted =
                     ReportTemplateManager.extractTemplateFromSampleFile(
-                      fileName: picked.name,
-                      bytes: fileBytes,
-                    );
+                  fileName: picked.name,
+                  bytes: fileBytes,
+                );
 
                 setModalState(() {
                   sampleFileName = picked.name;
                   if (titleCtrl.text.trim().isEmpty || !isEditing) {
                     titleCtrl.text = (extracted['title'] ?? '').toString();
                   }
-                  categoryCtrl.text = (extracted['category'] ?? 'Penyuluhan')
-                      .toString();
-                  selectedIconKey = (extracted['iconKey'] ?? 'groups')
-                      .toString();
+                  categoryCtrl.text =
+                      (extracted['category'] ?? 'Penyuluhan').toString();
+                  selectedIconKey =
+                      (extracted['iconKey'] ?? 'groups').toString();
                   defaultTitleCtrl.text =
                       (extracted['defaultTitle'] ?? '').toString();
                   descCtrl.text = (extracted['description'] ?? '').toString();
 
-                  final extFields =
-                      (extracted['fields'] as List?)
+                  final extFields = (extracted['fields'] as List?)
                           ?.map((e) => e.toString())
                           .toList() ??
                       [];
@@ -1494,7 +1768,6 @@ Future<void> showAdminTemplateEditor(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // ── HEADER MODAL & STEPPER TAB BAR ──
                     Container(
                       padding: const EdgeInsets.fromLTRB(22, 14, 16, 14),
                       decoration: BoxDecoration(
@@ -1561,7 +1834,6 @@ Future<void> showAdminTemplateEditor(
                             ],
                           ),
                           const SizedBox(height: 14),
-                          // 3-Tab Stepper agar form tidak pernah menumpuk
                           Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
@@ -1604,8 +1876,6 @@ Future<void> showAdminTemplateEditor(
                         ],
                       ),
                     ),
-
-                    // ── ISI TAB (LEGA, RAPI & FOKUS PER TAHAP) ──
                     Flexible(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
@@ -1617,7 +1887,6 @@ Future<void> showAdminTemplateEditor(
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // KARTU UPLOAD FILE CONTOH LAPORAN (KONVERSI LANGSUNG)
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.all(18),
@@ -1625,9 +1894,8 @@ Future<void> showAdminTemplateEditor(
                                       color: cardBg,
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(
-                                        color: primaryGreen.withValues(
-                                          alpha: 0.4,
-                                        ),
+                                        color:
+                                            primaryGreen.withValues(alpha: 0.4),
                                         width: 1.3,
                                       ),
                                     ),
@@ -1695,9 +1963,8 @@ Future<void> showAdminTemplateEditor(
                                               color: softBg,
                                               borderRadius:
                                                   BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: borderCol,
-                                              ),
+                                              border:
+                                                  Border.all(color: borderCol),
                                             ),
                                             child: Row(
                                               children: [
@@ -1722,9 +1989,8 @@ Future<void> showAdminTemplateEditor(
                                                 TextButton(
                                                   onPressed: () =>
                                                       setModalState(
-                                                        () =>
-                                                            activeStepTab = 1,
-                                                      ),
+                                                    () => activeStepTab = 1,
+                                                  ),
                                                   child: const Text(
                                                     'Lihat Hasil Form →',
                                                     style: TextStyle(
@@ -1749,9 +2015,9 @@ Future<void> showAdminTemplateEditor(
                                                     height: 16,
                                                     child:
                                                         CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                          color: primaryGreen,
-                                                        ),
+                                                      strokeWidth: 2,
+                                                      color: primaryGreen,
+                                                    ),
                                                   )
                                                 : const Icon(
                                                     Icons.upload_file_rounded,
@@ -1772,8 +2038,8 @@ Future<void> showAdminTemplateEditor(
                                               ),
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                    vertical: 13,
-                                                  ),
+                                                vertical: 13,
+                                              ),
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(13),
@@ -1784,10 +2050,7 @@ Future<void> showAdminTemplateEditor(
                                       ],
                                     ),
                                   ),
-
                                   const SizedBox(height: 16),
-
-                                  // KARTU IDENTITAS JENIS LAPORAN
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.all(18),
@@ -1918,7 +2181,6 @@ Future<void> showAdminTemplateEditor(
                             }
 
                             if (activeStepTab == 1) {
-                              // TAB 2: SESUAIKAN BAGIAN FORM YANG DIISI USER
                               return Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(18),
@@ -1967,9 +2229,9 @@ Future<void> showAdminTemplateEditor(
                                               fillColor: softBg,
                                               contentPadding:
                                                   const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                    vertical: 12,
-                                                  ),
+                                                horizontal: 14,
+                                                vertical: 12,
+                                              ),
                                               border: OutlineInputBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
@@ -1990,8 +2252,8 @@ Future<void> showAdminTemplateEditor(
                                         const SizedBox(width: 10),
                                         ElevatedButton.icon(
                                           onPressed: () {
-                                            final val = newFieldCtrl.text
-                                                .trim();
+                                            final val =
+                                                newFieldCtrl.text.trim();
                                             if (val.isEmpty) return;
                                             setModalState(() {
                                               if (!fields.contains(val)) {
@@ -2035,9 +2297,8 @@ Future<void> showAdminTemplateEditor(
                                         ),
                                         decoration: BoxDecoration(
                                           color: softBg,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
                                           border: Border.all(color: borderCol),
                                         ),
                                         child: Row(
@@ -2121,7 +2382,6 @@ Future<void> showAdminTemplateEditor(
                               );
                             }
 
-                            // TAB 3: KERANGKA NASKAH TEMPLATE LAPORAN
                             return Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(18),
@@ -2218,8 +2478,6 @@ Future<void> showAdminTemplateEditor(
                         ),
                       ),
                     ),
-
-                    // ── FOOTER TOMBOL SIMPAN TEMPLATE ──
                     Container(
                       padding: EdgeInsets.fromLTRB(
                         20,
@@ -2310,28 +2568,24 @@ Future<void> showAdminTemplateEditor(
 
                                 final saved =
                                     ReportTemplateManager.normalizeTemplate({
-                                      'id':
-                                          existingTemplate?['id'] ??
-                                          'tpl_${DateTime.now().millisecondsSinceEpoch}',
-                                      'title': titleCtrl.text.trim(),
-                                      'category':
-                                          categoryCtrl.text.trim().isEmpty
-                                          ? 'Penyuluhan'
-                                          : categoryCtrl.text.trim(),
-                                      'iconKey': selectedIconKey,
-                                      'description':
-                                          descCtrl.text.trim().isEmpty
-                                          ? 'Template laporan kegiatan ${titleCtrl.text.trim()}.'
-                                          : descCtrl.text.trim(),
-                                      'defaultTitle': defaultTitleCtrl.text
-                                          .trim(),
-                                      'requirePhoto': requirePhoto,
-                                      'requireLocation': requireLocation,
-                                      'sampleFileName': sampleFileName,
-                                      'fields': fields,
-                                      'templateBody': bodyCtrl.text.trim(),
-                                      'updatedBy': 'Administrator',
-                                    });
+                                  'id': existingTemplate?['id'] ??
+                                      'tpl_${DateTime.now().millisecondsSinceEpoch}',
+                                  'title': titleCtrl.text.trim(),
+                                  'category': categoryCtrl.text.trim().isEmpty
+                                      ? 'Penyuluhan'
+                                      : categoryCtrl.text.trim(),
+                                  'iconKey': selectedIconKey,
+                                  'description': descCtrl.text.trim().isEmpty
+                                      ? 'Template laporan kegiatan ${titleCtrl.text.trim()}.'
+                                      : descCtrl.text.trim(),
+                                  'defaultTitle': defaultTitleCtrl.text.trim(),
+                                  'requirePhoto': requirePhoto,
+                                  'requireLocation': requireLocation,
+                                  'sampleFileName': sampleFileName,
+                                  'fields': fields,
+                                  'templateBody': bodyCtrl.text.trim(),
+                                  'updatedBy': 'Administrator',
+                                });
 
                                 Navigator.pop(sheetCtx);
                                 await onSaved(saved);
@@ -2382,6 +2636,8 @@ Future<void> showReportDownloadSheet(
 
   final bool hasPhoto = (laporan['foto'] != null &&
           laporan['foto'].toString().trim().isNotEmpty) ||
+      (laporan['photo_base64'] != null &&
+          laporan['photo_base64'].toString().trim().isNotEmpty) ||
       (laporan['localPhotoPath'] != null &&
           laporan['localPhotoPath'].toString().trim().isNotEmpty) ||
       (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty);
@@ -2406,6 +2662,7 @@ Future<void> showReportDownloadSheet(
           final borderCol = isDark
               ? const Color(0xFF2E3D34)
               : const Color(0xFFE0E8E0);
+          final textColor = isDark ? Colors.white : const Color(0xFF24352A);
 
           Future<void> triggerExport(
             String format, {
@@ -2500,11 +2757,12 @@ Future<void> showReportDownloadSheet(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Unduh & Cetak Laporan Resmi',
                                   style: TextStyle(
                                     fontSize: 19,
                                     fontWeight: FontWeight.w800,
+                                    color: textColor,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -2523,8 +2781,6 @@ Future<void> showReportDownloadSheet(
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      // Ringkasan Pratinjau Dokumen
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
@@ -2549,9 +2805,10 @@ Future<void> showReportDownloadSheet(
                             Text(
                               (laporan['judul'] ?? 'Laporan Kegiatan')
                                   .toString(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
+                                color: textColor,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -2584,12 +2841,14 @@ Future<void> showReportDownloadSheet(
                                       color: primaryGreen,
                                     ),
                                     const SizedBox(width: 6),
-                                    Text(
-                                      'Foto lampiran tersedia & otomatis dilampirkan dalam dokumen',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: primaryGreen,
+                                    Flexible(
+                                      child: Text(
+                                        'Foto geolokasi tersedia & otomatis dilampirkan dalam dokumen',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: primaryGreen,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -2599,7 +2858,6 @@ Future<void> showReportDownloadSheet(
                           ],
                         ),
                       ),
-
                       if (lastResult != null && lastResult!.success) ...[
                         const SizedBox(height: 12),
                         Container(
@@ -2609,9 +2867,8 @@ Future<void> showReportDownloadSheet(
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF245C3A,
-                            ).withValues(alpha: 0.12),
+                            color: const Color(0xFF245C3A)
+                                .withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(
@@ -2625,9 +2882,10 @@ Future<void> showReportDownloadSheet(
                               Expanded(
                                 child: Text(
                                   'Tersimpan: ${lastResult!.fileName}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w700,
+                                    color: textColor,
                                   ),
                                 ),
                               ),
@@ -2649,10 +2907,7 @@ Future<void> showReportDownloadSheet(
                           ),
                         ),
                       ],
-
                       const SizedBox(height: 18),
-
-                      // Tombol Utama: Unduh PDF Siap Print
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -2687,8 +2942,6 @@ Future<void> showReportDownloadSheet(
                         ),
                       ),
                       const SizedBox(height: 10),
-
-                      // Tombol Buka & Print Langsung di Tab Baru (Blob PDF Viewer)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -2714,8 +2967,6 @@ Future<void> showReportDownloadSheet(
                         ),
                       ),
                       const SizedBox(height: 10),
-
-                      // Tombol Alternatif: Unduh Dokumen Word (.doc)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -2751,7 +3002,6 @@ Future<void> showReportDownloadSheet(
                       ),
                       if (hasPhoto) ...[
                         const SizedBox(height: 10),
-                        // Tombol Alternatif: Unduh Berkas Foto Lampiran Saja (.jpg)
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
@@ -2798,7 +3048,7 @@ Future<void> showReportDownloadSheet(
 }
 
 // ---------------------------------------------------------------------------
-// 5. Bottom Sheet Detail Laporan (Mendukung User & Verifikasi Monitoring Admin)
+// 5. Bottom Sheet Detail Laporan (Menampilkan Foto + Koordinat + Alamat Lokasi)
 // ---------------------------------------------------------------------------
 
 void showReportDetail(
@@ -2820,10 +3070,15 @@ void showReportDetail(
     ),
     builder: (ctx) {
       final isDark = Theme.of(ctx).brightness == Brightness.dark;
+      final textColor = isDark ? Colors.white : const Color(0xFF24352A);
+      final primaryGreen =
+          isDark ? const Color(0xFF81C784) : LaporanColors.primary;
       final pelapor =
           (laporan['pelapor'] ?? laporan['userName'] ?? 'Penyuluh Kehutanan')
               .toString();
       final currentStatus = (laporan['status'] ?? 'Draft').toString();
+      final alamatGeolokasi =
+          (laporan['alamatGeolokasi'] ?? '').toString().trim();
 
       return Center(
         heightFactor: 1.0,
@@ -2838,25 +3093,23 @@ void showReportDetail(
                 children: [
                   const _DragHandle(),
                   const SizedBox(height: 20),
-
                   Text(
                     (laporan['judul'] ?? '-').toString(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
-                    style: const TextStyle(
-                      color: LaporanColors.primary,
+                    style: TextStyle(
+                      color: primaryGreen,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-
                   const SizedBox(height: 18),
-
                   if (isAdmin ||
                       laporan['pelapor'] != null ||
                       laporan['userName'] != null)
@@ -2875,18 +3128,26 @@ void showReportDetail(
                     title: 'Lokasi',
                     value: (laporan['lokasi'] ?? '-').toString(),
                   ),
+                  if (alamatGeolokasi.isNotEmpty &&
+                      alamatGeolokasi !=
+                          (laporan['lokasi'] ?? '').toString().trim())
+                    _DetailRow(
+                      icon: Icons.map_outlined,
+                      title: 'Alamat',
+                      value: alamatGeolokasi,
+                    ),
                   _DetailRow(
                     icon: Icons.info_outline,
                     title: 'Status',
                     value: currentStatus,
                   ),
-
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Isi Laporan (Berdasarkan Template)',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -2908,12 +3169,10 @@ void showReportDetail(
                       (laporan['isi']?.toString().isNotEmpty ?? false)
                           ? laporan['isi'].toString()
                           : 'Isi laporan belum dilengkapi.',
-                      style: const TextStyle(height: 1.5),
+                      style: TextStyle(height: 1.5, color: textColor),
                     ),
                   ),
-
                   const SizedBox(height: 14),
-
                   _DetailRow(
                     icon: Icons.my_location_outlined,
                     title: 'Latitude',
@@ -2926,24 +3185,21 @@ void showReportDetail(
                     title: 'Longitude',
                     value:
                         (laporan['longitude']?.toString().isNotEmpty ?? false)
-                        ? laporan['longitude'].toString()
-                        : 'Belum tersedia',
+                            ? laporan['longitude'].toString()
+                            : 'Belum tersedia',
                   ),
-
-                  // ── LAMPIRAN FOTO DOKUMENTASI KEGIATAN ──
                   const SizedBox(height: 16),
-                  const Text(
-                    'Lampiran Foto Dokumentasi',
+                  Text(
+                    'Lampiran Foto & Geolokasi Dokumentasi',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 8),
                   _buildReportPhotoSection(ctx, laporan, isDark),
-
                   const SizedBox(height: 20),
-
                   if (isAdmin && onUpdateStatus != null) ...[
                     const Text(
                       'Tindakan Monitoring Admin:',
@@ -3013,7 +3269,6 @@ void showReportDetail(
                     ),
                     const SizedBox(height: 10),
                   ],
-
                   if (!isAdmin && currentStatus == 'Draft') ...[
                     SizedBox(
                       width: double.infinity,
@@ -3037,7 +3292,6 @@ void showReportDetail(
                     ),
                     const SizedBox(height: 10),
                   ],
-
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -3071,8 +3325,86 @@ void showReportDetail(
 }
 
 // ---------------------------------------------------------------------------
-// Komponen Penampil Foto Dokumentasi Laporan (Detail View & Fullscreen Zoom)
+// Komponen Penampil Foto Dokumentasi Laporan (Mendukung Base64, File Lokal, & Server URL)
 // ---------------------------------------------------------------------------
+
+Widget _buildPhotoImageWidget(
+  String sourceUrl, {
+  double height = 220,
+  required bool isDark,
+}) {
+  if (sourceUrl.startsWith('data:image')) {
+    try {
+      final cleanB64 =
+          sourceUrl.contains(',') ? sourceUrl.split(',').last : sourceUrl;
+      final bytes = base64Decode(cleanB64);
+      return Image.memory(
+        bytes,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+      );
+    } catch (_) {}
+  }
+
+  if (!kIsWeb && !sourceUrl.startsWith('http')) {
+    try {
+      final f = File(sourceUrl);
+      if (f.existsSync()) {
+        return Image.file(
+          f,
+          height: height,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        );
+      }
+    } catch (_) {}
+  }
+
+  final fullUrl = sourceUrl.startsWith('http')
+      ? sourceUrl
+      : (sourceUrl.startsWith('/')
+          ? '${ApiConstants.baseUrl}$sourceUrl'
+          : '${ApiConstants.baseUrl}/storage/$sourceUrl');
+
+  return Image.network(
+    fullUrl,
+    height: height,
+    width: double.infinity,
+    fit: BoxFit.cover,
+    loadingBuilder: (ctx, child, progress) {
+      if (progress == null) return child;
+      return Container(
+        height: height,
+        color: isDark ? const Color(0xFF1B261F) : Colors.grey.shade100,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(strokeWidth: 2.2),
+      );
+    },
+    errorBuilder: (ctx, err, stack) {
+      return Container(
+        height: 140,
+        color: isDark ? const Color(0xFF2E1A1A) : Colors.red.shade50,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.broken_image_rounded,
+              color: Colors.red.shade300,
+              size: 36,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Foto lampiran tidak dapat dimuat dari server',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
 
 Widget _buildReportPhotoSection(
   BuildContext context,
@@ -3080,11 +3412,16 @@ Widget _buildReportPhotoSection(
   bool isDark,
 ) {
   String? photoUrl;
+
+  final rawB64 = (laporan['photo_base64'] ?? '').toString().trim();
   final rawFoto = (laporan['foto'] ?? '').toString().trim();
-  if (rawFoto.isNotEmpty) {
-    photoUrl = rawFoto.startsWith('http')
-        ? rawFoto
-        : (rawFoto.startsWith('/') ? rawFoto : '${ApiConstants.baseUrl}/storage/$rawFoto');
+  if (rawFoto.startsWith('data:image')) {
+    photoUrl = rawFoto;
+  } else if (rawB64.isNotEmpty) {
+    photoUrl =
+        rawB64.startsWith('data:image') ? rawB64 : 'data:image/jpeg;base64,$rawB64';
+  } else if (rawFoto.isNotEmpty) {
+    photoUrl = rawFoto;
   }
 
   if ((photoUrl == null || photoUrl.isEmpty) &&
@@ -3092,14 +3429,17 @@ Widget _buildReportPhotoSection(
       (laporan['photos'] as List).isNotEmpty) {
     final first = (laporan['photos'] as List).first;
     if (first is Map) {
-      final raw =
-          (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
-              .toString()
-              .trim();
-      if (raw.isNotEmpty) {
-        photoUrl = raw.startsWith('http')
-            ? raw
-            : (raw.startsWith('/') ? raw : '${ApiConstants.baseUrl}/storage/$raw');
+      final pB64 = (first['photo_base64'] ?? '').toString().trim();
+      final raw = (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
+          .toString()
+          .trim();
+      if (pB64.isNotEmpty) {
+        photoUrl =
+            pB64.startsWith('data:image') ? pB64 : 'data:image/jpeg;base64,$pB64';
+      } else if (first['id'] != null) {
+        photoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
+      } else if (raw.isNotEmpty) {
+        photoUrl = raw;
       }
     }
   }
@@ -3137,141 +3477,151 @@ Widget _buildReportPhotoSection(
   }
 
   final String activePhotoUrl = photoUrl;
+  final String lat = (laporan['latitude'] ?? '').toString().trim();
+  final String lng = (laporan['longitude'] ?? '').toString().trim();
+  final String loc = (laporan['alamatGeolokasi'] ?? laporan['lokasi'] ?? '')
+      .toString()
+      .trim();
 
-  Widget buildImageWidget() {
-    if (activePhotoUrl.startsWith('http')) {
-      return Image.network(
-        activePhotoUrl,
-        height: 220,
-        width: double.infinity,
-        fit: BoxFit.cover,
-        loadingBuilder: (ctx, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            height: 220,
-            color: isDark ? const Color(0xFF1B261F) : Colors.grey.shade100,
-            alignment: Alignment.center,
-            child: const CircularProgressIndicator(strokeWidth: 2.2),
-          );
-        },
-        errorBuilder: (ctx, err, stack) {
-          return Container(
-            height: 140,
-            color: isDark ? const Color(0xFF2E1A1A) : Colors.red.shade50,
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.broken_image_rounded,
-                  color: Colors.red.shade300,
-                  size: 36,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Foto lampiran tidak dapat dimuat dari server',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              ],
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      InkWell(
+        onTap: () {
+          showDialog(
+            context: context,
+            builder: (_) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(12),
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  InteractiveViewer(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildPhotoImageWidget(
+                        activePhotoUrl,
+                        height: 360,
+                        isDark: isDark,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
             ),
           );
         },
-      );
-    } else if (!kIsWeb && File(activePhotoUrl).existsSync()) {
-      return Image.file(
-        File(activePhotoUrl),
-        height: 220,
-        width: double.infinity,
-        fit: BoxFit.cover,
-      );
-    } else {
-      return Image.network(
-        '${ApiConstants.baseUrl}/storage/$activePhotoUrl',
-        height: 220,
-        width: double.infinity,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          height: 140,
-          color: isDark ? const Color(0xFF2E1A1A) : Colors.red.shade50,
-          alignment: Alignment.center,
-          child: const Text(
-            'Berkas fisik foto tidak ditemukan',
-            style: TextStyle(color: Colors.grey, fontSize: 12),
-          ),
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: _buildPhotoImageWidget(
+                activePhotoUrl,
+                height: 230,
+                isDark: isDark,
+              ),
+            ),
+            Positioned(
+              bottom: 10,
+              right: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'Ketuk untuk perbesar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
-      );
-    }
-  }
-
-  return InkWell(
-    onTap: () {
-      showDialog(
-        context: context,
-        builder: (_) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(12),
-          child: Stack(
-            alignment: Alignment.topRight,
+      ),
+      if (lat.isNotEmpty || lng.isNotEmpty || loc.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF18221B) : const Color(0xFFF2F7F0),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color:
+                  isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InteractiveViewer(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: buildImageWidget(),
-                ),
+              Row(
+                children: [
+                  Icon(
+                    Icons.gps_fixed_rounded,
+                    size: 15,
+                    color: isDark
+                        ? const Color(0xFF81C784)
+                        : const Color(0xFF245C3A),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      (lat.isNotEmpty && lng.isNotEmpty)
+                          ? 'Koordinat Foto: $lat, $lng'
+                          : 'Lokasi Foto: $loc',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? const Color(0xFF81C784)
+                            : const Color(0xFF245C3A),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-    borderRadius: BorderRadius.circular(14),
-    child: Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: buildImageWidget(),
-        ),
-        Positioned(
-          bottom: 10,
-          right: 10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
-                SizedBox(width: 4),
+              if (loc.isNotEmpty) ...[
+                const SizedBox(height: 3),
                 Text(
-                  'Ketuk untuk perbesar',
+                  loc,
                   style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
+                    color: isDark ? Colors.white70 : const Color(0xFF37473B),
                   ),
                 ),
               ],
-            ),
+            ],
           ),
         ),
       ],
-    ),
+    ],
   );
 }
 
 // ---------------------------------------------------------------------------
-// Submit handler (shared between draft & final submit)
+// Submit handler (Menyimpan Laporan + Foto + Koordinat Geolokasi + Notifikasi)
 // ---------------------------------------------------------------------------
 
 Future<void> _handleSubmit({
@@ -3284,12 +3634,14 @@ Future<void> _handleSubmit({
   required TextEditingController lokasiCtrl,
   required TextEditingController latCtrl,
   required TextEditingController lngCtrl,
+  String? addressGeolokasi,
   String? customActivityDate,
   required String status,
   required Future<void> Function() onReportSaved,
   bool closeOnSuccess = false,
   Uint8List? photoBytes,
   String? photoFilename,
+  String? existingPhotoUrl,
 }) async {
   final prefs = await SharedPreferences.getInstance();
   final token = prefs.getString('token');
@@ -3317,26 +3669,32 @@ Future<void> _handleSubmit({
 
   final now = DateTime.now();
   final existingDate = existing?['tanggalApi']?.toString();
-  final activityDate = (customActivityDate != null &&
-          customActivityDate.isNotEmpty)
-      ? customActivityDate
-      : ((existingDate != null && existingDate.isNotEmpty)
-            ? existingDate
-            : '${now.year}-${now.month.toString().padLeft(2, '0')}'
+  final activityDate =
+      (customActivityDate != null && customActivityDate.isNotEmpty)
+          ? customActivityDate
+          : ((existingDate != null && existingDate.isNotEmpty)
+              ? existingDate
+              : '${now.year}-${now.month.toString().padLeft(2, '0')}'
                   '-${now.day.toString().padLeft(2, '0')}');
 
   final apiStatus = status == 'Draft' ? 'draft' : 'terkirim';
-  final currentUserName =
-      prefs.getString('profil_nama') ??
+  final currentUserName = prefs.getString('profil_nama') ??
       prefs.getString('name') ??
       (prefs.getString('email')?.isNotEmpty == true
           ? prefs.getString('email')!.split('@').first
           : 'Pengguna');
 
+  final String? photoDataUri = (photoBytes != null && photoBytes.isNotEmpty)
+      ? 'data:image/jpeg;base64,${base64Encode(photoBytes)}'
+      : existingPhotoUrl;
+
   final payload = <String, dynamic>{
     'title': title,
     'activity_date': activityDate,
     'location': location,
+    'address': (addressGeolokasi != null && addressGeolokasi.trim().isNotEmpty)
+        ? addressGeolokasi.trim()
+        : location,
     'description': isiCtrl.text.trim(),
     'latitude': latCtrl.text.trim().isEmpty
         ? null
@@ -3345,11 +3703,14 @@ Future<void> _handleSubmit({
         ? null
         : double.tryParse(lngCtrl.text.trim()),
     'status': apiStatus,
+    if (photoBytes != null && photoBytes.isNotEmpty)
+      'photo_base64': base64Encode(photoBytes),
   };
 
   Future<void> syncToLocalMonitoringStorage(
     String recordId, {
-    String? localPhotoPath,
+    String? savedPhotoUrl,
+    List<dynamic>? serverPhotos,
   }) async {
     try {
       const draftKey = 'phonebook_laporan_drafts_v1';
@@ -3359,6 +3720,10 @@ Future<void> _handleSubmit({
         final decoded = jsonDecode(rawDrafts) as List<dynamic>;
         drafts = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
       }
+
+      final effectivePhoto =
+          savedPhotoUrl ?? photoDataUri ?? existing?['foto'] ?? '';
+
       final record = <String, dynamic>{
         'id': recordId,
         'judul': title,
@@ -3368,14 +3733,31 @@ Future<void> _handleSubmit({
         'tanggal': LaporanDateUtils.formatApiDate(activityDate),
         'tanggalApi': activityDate,
         'lokasi': location,
+        'alamatGeolokasi':
+            (addressGeolokasi != null && addressGeolokasi.trim().isNotEmpty)
+                ? addressGeolokasi.trim()
+                : location,
         'isi': isiCtrl.text.trim(),
         'latitude': latCtrl.text.trim(),
         'longitude': lngCtrl.text.trim(),
         'status': status,
-        'localPhotoPath': localPhotoPath ?? existing?['localPhotoPath'],
-        'foto': localPhotoPath ?? existing?['foto'] ?? '',
-        'photos': existing?['photos'] ?? <dynamic>[],
+        'localPhotoPath': photoDataUri ?? existing?['localPhotoPath'],
+        'foto': effectivePhoto,
+        'photo_base64': photoDataUri ?? existing?['photo_base64'] ?? '',
+        'photos': serverPhotos ??
+            (effectivePhoto.toString().isNotEmpty
+                ? [
+                    {
+                      'url': effectivePhoto,
+                      'photo_base64': photoDataUri,
+                      'latitude': latCtrl.text.trim(),
+                      'longitude': lngCtrl.text.trim(),
+                      'address': addressGeolokasi ?? location,
+                    },
+                  ]
+                : (existing?['photos'] ?? <dynamic>[])),
       };
+
       final existingIdx = drafts.indexWhere(
         (d) => d['id'].toString() == recordId || d['judul'] == title,
       );
@@ -3389,8 +3771,10 @@ Future<void> _handleSubmit({
   }
 
   final online = await ConnectivityService.instance.isOnline();
+  final isOfflineToken =
+      token.startsWith('offline_') || token.startsWith('google_session_');
 
-  if (!online) {
+  if (!online || isOfflineToken) {
     try {
       final insertedId = await LaporanService.saveOffline(
         payload: payload,
@@ -3398,17 +3782,30 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
-      await syncToLocalMonitoringStorage('local_$insertedId');
+      final recordId = 'local_$insertedId';
+      await syncToLocalMonitoringStorage(
+        recordId,
+        savedPhotoUrl: photoDataUri,
+      );
+
+      await NotificationService.instance.addReportCreatedNotification(
+        title: title,
+        jenisLaporan: jenisLaporan,
+        location: location,
+        status: status,
+        reportId: recordId,
+      );
 
       await onReportSaved();
 
       if (!parentContext.mounted) return;
       ScaffoldMessenger.of(parentContext).showSnackBar(
         SnackBar(
+          backgroundColor: const Color(0xFF245C3A),
           content: Text(
             photoBytes != null
-                ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan saat online.'
-                : 'Laporan disimpan secara offline. Akan otomatis dikirim saat ada koneksi.',
+                ? 'Laporan dan foto geolokasi berhasil disimpan di perangkat.'
+                : 'Laporan berhasil disimpan di perangkat.',
           ),
         ),
       );
@@ -3419,7 +3816,7 @@ Future<void> _handleSubmit({
     } catch (e) {
       if (!parentContext.mounted) return;
       ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(content: Text('Gagal menyimpan offline: $e')),
+        SnackBar(content: Text('Gagal menyimpan laporan: $e')),
       );
     }
     return;
@@ -3440,63 +3837,79 @@ Future<void> _handleSubmit({
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       final body = jsonDecode(response.body);
-      final reportId = body['data']?['id'] != null
-          ? int.tryParse(body['data']['id'].toString())
+      final reportData = body['data'] as Map<String, dynamic>?;
+      final reportId = reportData?['id'] != null
+          ? int.tryParse(reportData!['id'].toString())
           : existingId;
 
-      bool photoUploaded = false;
-      String? photoError;
+      List<dynamic> serverPhotos = (reportData?['photos'] is List)
+          ? (reportData!['photos'] as List<dynamic>)
+          : <dynamic>[];
 
-      if (reportId != null && photoBytes != null) {
+      bool photoUploaded = serverPhotos.isNotEmpty;
+
+      // Jika foto belum masuk melalui JSON payload (misal server versi lama), kirim juga via Multipart
+      if (reportId != null && photoBytes != null && !photoUploaded) {
         try {
           final photoRes = await LaporanService.uploadReportPhoto(
             token: token,
             reportId: reportId,
             photoBytes: photoBytes,
-            filename:
-                photoFilename ??
+            filename: photoFilename ??
                 'bukti_laporan_${DateTime.now().millisecondsSinceEpoch}.jpg',
             latitude: double.tryParse(latCtrl.text.trim()),
             longitude: double.tryParse(lngCtrl.text.trim()),
+            address: addressGeolokasi ?? location,
           );
           if (photoRes.statusCode == 200 || photoRes.statusCode == 201) {
             photoUploaded = true;
-          } else {
-            photoError = 'HTTP ${photoRes.statusCode}';
+            try {
+              final pBody = jsonDecode(photoRes.body);
+              if (pBody['data'] != null) {
+                serverPhotos = [pBody['data']];
+              }
+            } catch (_) {}
           }
-        } catch (pe) {
-          photoError = pe.toString();
-        }
+        } catch (_) {}
       }
 
+      final finalRecordId =
+          (reportId ?? DateTime.now().millisecondsSinceEpoch).toString();
+
       await syncToLocalMonitoringStorage(
-        (reportId ?? DateTime.now().millisecondsSinceEpoch).toString(),
+        finalRecordId,
+        savedPhotoUrl: photoDataUri,
+        serverPhotos: serverPhotos.isNotEmpty ? serverPhotos : null,
       );
+
+      await NotificationService.instance.addReportCreatedNotification(
+        title: title,
+        jenisLaporan: jenisLaporan,
+        location: location,
+        status: status,
+        reportId: finalRecordId,
+      );
+
       await onReportSaved();
 
       if (!parentContext.mounted) return;
 
       final String notifyMsg;
       if (apiStatus == 'draft') {
-        if (photoBytes != null && photoUploaded) {
-          notifyMsg = 'Draft laporan dan foto berhasil disimpan ke database.';
-        } else if (photoError != null) {
-          notifyMsg = 'Draft disimpan, namun upload foto gagal ($photoError).';
-        } else {
-          notifyMsg = 'Draft berhasil disimpan ke database.';
-        }
+        notifyMsg = photoBytes != null
+            ? 'Draft laporan beserta foto geolokasi berhasil disimpan.'
+            : 'Draft berhasil disimpan ke database.';
       } else {
-        if (photoBytes != null && photoUploaded) {
-          notifyMsg = 'Laporan dan foto bukti kegiatan berhasil dikirim.';
-        } else if (photoError != null) {
-          notifyMsg = 'Laporan terkirim, namun upload foto gagal ($photoError).';
-        } else {
-          notifyMsg = 'Laporan berhasil dikirim ke database.';
-        }
+        notifyMsg = photoBytes != null
+            ? 'Laporan dan foto bukti geolokasi berhasil dikirim.'
+            : 'Laporan berhasil dikirim ke database.';
       }
 
       ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(content: Text(notifyMsg)),
+        SnackBar(
+          backgroundColor: const Color(0xFF245C3A),
+          content: Text(notifyMsg),
+        ),
       );
 
       if (closeOnSuccess && context.mounted) {
@@ -3509,16 +3922,28 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
-      await syncToLocalMonitoringStorage('local_$insertedId');
+      final recordId = 'local_$insertedId';
+      await syncToLocalMonitoringStorage(
+        recordId,
+        savedPhotoUrl: photoDataUri,
+      );
+      await NotificationService.instance.addReportCreatedNotification(
+        title: title,
+        jenisLaporan: jenisLaporan,
+        location: location,
+        status: status,
+        reportId: recordId,
+      );
       await onReportSaved();
 
       if (!parentContext.mounted) return;
       ScaffoldMessenger.of(parentContext).showSnackBar(
         SnackBar(
+          backgroundColor: const Color(0xFF245C3A),
           content: Text(
             status == 'Draft'
-                ? 'Draft laporan disimpan lokal di perangkat.'
-                : 'Laporan disimpan lokal di perangkat dan siap diunduh.',
+                ? 'Draft laporan & foto disimpan lokal di perangkat.'
+                : 'Laporan & foto disimpan lokal di perangkat dan siap diunduh.',
           ),
         ),
       );
@@ -3534,13 +3959,25 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
-      await syncToLocalMonitoringStorage('local_$insertedId');
+      final recordId = 'local_$insertedId';
+      await syncToLocalMonitoringStorage(
+        recordId,
+        savedPhotoUrl: photoDataUri,
+      );
+      await NotificationService.instance.addReportCreatedNotification(
+        title: title,
+        jenisLaporan: jenisLaporan,
+        location: location,
+        status: status,
+        reportId: recordId,
+      );
       await onReportSaved();
       if (parentContext.mounted) {
         ScaffoldMessenger.of(parentContext).showSnackBar(
           const SnackBar(
+            backgroundColor: Color(0xFF245C3A),
             content: Text(
-              'Koneksi bermasalah. Laporan dan foto disimpan di perangkat.',
+              'Koneksi bermasalah. Laporan dan foto geolokasi disimpan aman di perangkat.',
             ),
           ),
         );
@@ -3668,7 +4105,6 @@ class _SectionContainerCard extends StatelessWidget {
   }
 }
 
-/// Input field dengan label di atas kotak input sehingga tidak bertumpuk.
 class _SpaciousLabeledField extends StatelessWidget {
   const _SpaciousLabeledField({
     required this.controller,
@@ -3692,15 +4128,12 @@ class _SpaciousLabeledField extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol = isDark
-        ? const Color(0xFF2E3D34)
-        : const Color(0xFFDCE6DC);
-    final iconCol = isDark
-        ? const Color(0xFF81C784)
-        : LaporanColors.textFieldIcon;
-    final primaryColor = isDark
-        ? const Color(0xFF81C784)
-        : const Color(0xFF245C3A);
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
+    final iconCol =
+        isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon;
+    final primaryColor =
+        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
     final labelColor = isDark ? Colors.white : const Color(0xFF24352A);
 
     return Column(
@@ -3737,9 +4170,8 @@ class _SpaciousLabeledField extends StatelessWidget {
               fontSize: 13,
               color: isDark ? Colors.white38 : Colors.grey.shade500,
             ),
-            prefixIcon: maxLines == 1
-                ? Icon(icon, color: iconCol, size: 20)
-                : null,
+            prefixIcon:
+                maxLines == 1 ? Icon(icon, color: iconCol, size: 20) : null,
             filled: true,
             fillColor: fill,
             contentPadding: const EdgeInsets.symmetric(
@@ -3783,12 +4215,10 @@ class _DateSelectorField extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol = isDark
-        ? const Color(0xFF2E3D34)
-        : const Color(0xFFDCE6DC);
-    final iconCol = isDark
-        ? const Color(0xFF81C784)
-        : LaporanColors.textFieldIcon;
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
+    final iconCol =
+        isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon;
     final labelColor = isDark ? Colors.white : const Color(0xFF24352A);
 
     return Column(
@@ -3910,15 +4340,12 @@ class _TypeOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg = isDark
-        ? const Color(0xFF26352B)
-        : LaporanColors.templateBackground;
-    final cardBorder = isDark
-        ? const Color(0xFF2E3D34)
-        : LaporanColors.borderDetail;
-    final primaryColor = isDark
-        ? const Color(0xFF81C784)
-        : LaporanColors.primary;
+    final cardBg =
+        isDark ? const Color(0xFF26352B) : LaporanColors.templateBackground;
+    final cardBorder =
+        isDark ? const Color(0xFF2E3D34) : LaporanColors.borderDetail;
+    final primaryColor =
+        isDark ? const Color(0xFF81C784) : LaporanColors.primary;
     final titleColor = isDark ? Colors.white : Colors.black87;
     final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
 
@@ -3993,12 +4420,10 @@ class _PhotoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol = isDark
-        ? const Color(0xFF2E3D34)
-        : const Color(0xFFDCE6DC);
-    final primaryColor = isDark
-        ? const Color(0xFF81C784)
-        : LaporanColors.primary;
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
+    final primaryColor =
+        isDark ? const Color(0xFF81C784) : LaporanColors.primary;
 
     return InkWell(
       onTap: onTap,
@@ -4017,7 +4442,7 @@ class _PhotoButton extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              Icons.camera_alt_outlined,
+              Icons.add_a_photo_rounded,
               color: primaryColor,
               size: 25,
             ),
@@ -4027,7 +4452,7 @@ class _PhotoButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Lampirkan Foto Dokumentasi',
+                    'Ambil Foto Lokasi (Kamera + Geolocator)',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: isDark ? Colors.white : Colors.black87,
@@ -4035,7 +4460,7 @@ class _PhotoButton extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Ambil foto langsung atau pilih dari galeri perangkat',
+                    'Rekam foto kegiatan beserta koordinat GPS & alamat otomatis',
                     style: TextStyle(
                       color: isDark ? Colors.white60 : Colors.grey,
                       fontSize: 12,

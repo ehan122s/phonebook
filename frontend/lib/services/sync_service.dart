@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'offline_database.dart';
 import 'laporan_service.dart';
 
@@ -27,11 +29,7 @@ class SyncService {
 
   /// Attempts to upload every pending / previously-failed report to
   /// the server using [LaporanService.submitReport].
-  ///
-  /// Each report is processed independently so that a single failure
-  /// does not prevent the remaining reports from being synced.
   static Future<SyncResult> syncAll(String token) async {
-    // Mode offline / mock token tidak bisa disinkronkan ke server online
     if (token.isEmpty ||
         token.startsWith('offline_') ||
         token.startsWith('google_session_')) {
@@ -47,15 +45,44 @@ class SyncService {
 
       for (final report in pending) {
         try {
+          final String? rawPhotoB64 = report['photo_base64'] as String?;
+          final String? localPhotoPath = report['photo_path'] as String?;
+          Uint8List? photoBytes;
+          String filename = 'offline_photo.jpg';
+
+          if (!kIsWeb &&
+              localPhotoPath != null &&
+              localPhotoPath.isNotEmpty &&
+              !localPhotoPath.startsWith('data:image')) {
+            final photoFile = File(localPhotoPath);
+            if (photoFile.existsSync()) {
+              photoBytes = await photoFile.readAsBytes();
+              filename = photoFile.uri.pathSegments.last;
+            }
+          }
+
+          if (photoBytes == null &&
+              rawPhotoB64 != null &&
+              rawPhotoB64.isNotEmpty) {
+            try {
+              final clean = rawPhotoB64.contains(',')
+                  ? rawPhotoB64.split(',').last
+                  : rawPhotoB64;
+              photoBytes = base64Decode(clean);
+            } catch (_) {}
+          }
+
           final payload = <String, dynamic>{
             'title': report['title'],
             'activity_date': report['activity_date'],
             'location': report['location'],
+            'address': report['address'] ?? report['location'],
             'description': report['description'],
             'latitude': report['latitude'],
             'longitude': report['longitude'],
             'category_id': report['category_id'],
             'status': report['status'] ?? 'draft',
+            if (photoBytes != null) 'photo_base64': base64Encode(photoBytes),
           };
 
           final response = await LaporanService.submitReport(
@@ -65,35 +92,33 @@ class SyncService {
 
           if (response.statusCode == 200 || response.statusCode == 201) {
             int? serverId;
+            List<dynamic> serverPhotos = const [];
             try {
               final body = jsonDecode(response.body);
               serverId = body['data']?['id'] as int?;
+              if (body['data']?['photos'] is List) {
+                serverPhotos = body['data']['photos'] as List<dynamic>;
+              }
             } catch (_) {}
 
-            // Unggah lampiran foto lokal jika ada
-            final localPhotoPath = report['photo_path'] as String?;
             if (serverId != null &&
-                localPhotoPath != null &&
-                localPhotoPath.isNotEmpty) {
-              final photoFile = File(localPhotoPath);
-              if (photoFile.existsSync()) {
-                try {
-                  final bytes = await photoFile.readAsBytes();
-                  final filename = photoFile.uri.pathSegments.last;
-                  await LaporanService.uploadReportPhoto(
-                    token: token,
-                    reportId: serverId,
-                    photoBytes: bytes,
-                    filename: filename,
-                    latitude: report['latitude'] != null
-                        ? double.tryParse(report['latitude'].toString())
-                        : null,
-                    longitude: report['longitude'] != null
-                        ? double.tryParse(report['longitude'].toString())
-                        : null,
-                  );
-                } catch (_) {}
-              }
+                photoBytes != null &&
+                serverPhotos.isEmpty) {
+              try {
+                await LaporanService.uploadReportPhoto(
+                  token: token,
+                  reportId: serverId,
+                  photoBytes: photoBytes,
+                  filename: filename,
+                  latitude: report['latitude'] != null
+                      ? double.tryParse(report['latitude'].toString())
+                      : null,
+                  longitude: report['longitude'] != null
+                      ? double.tryParse(report['longitude'].toString())
+                      : null,
+                  address: (report['address'] ?? report['location'])?.toString(),
+                );
+              } catch (_) {}
             }
 
             await db.updateSyncStatus(

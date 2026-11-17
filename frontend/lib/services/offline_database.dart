@@ -25,7 +25,8 @@ class OfflineDatabase {
   }
 
   Future<Database> _initDatabase() async {
-    if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+    if (!kIsWeb &&
+        (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
@@ -35,13 +36,25 @@ class OfflineDatabase {
 
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           try {
             await db.execute(
               'ALTER TABLE offline_reports ADD COLUMN photo_path TEXT',
+            );
+          } catch (_) {}
+        }
+        if (oldVersion < 3) {
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN photo_base64 TEXT',
+            );
+          } catch (_) {}
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN address TEXT',
             );
           } catch (_) {}
         }
@@ -56,6 +69,7 @@ class OfflineDatabase {
         title TEXT NOT NULL,
         activity_date TEXT NOT NULL,
         location TEXT NOT NULL,
+        address TEXT,
         description TEXT,
         latitude REAL,
         longitude REAL,
@@ -65,6 +79,7 @@ class OfflineDatabase {
         sync_status TEXT DEFAULT 'pending',
         server_id INTEGER,
         photo_path TEXT,
+        photo_base64 TEXT,
         created_at TEXT,
         updated_at TEXT
       )
@@ -81,6 +96,7 @@ class OfflineDatabase {
       'title': data['title'],
       'activity_date': data['activity_date'],
       'location': data['location'],
+      'address': data['address'],
       'description': data['description'],
       'latitude': data['latitude'],
       'longitude': data['longitude'],
@@ -90,6 +106,7 @@ class OfflineDatabase {
       'sync_status': data['sync_status'] ?? 'pending',
       'server_id': data['server_id'],
       'photo_path': data['photo_path'],
+      'photo_base64': data['photo_base64'],
       'created_at': data['created_at'] ?? now,
       'updated_at': now,
     };
