@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,14 +21,13 @@ class UnauthorizedException implements Exception {
   String toString() => message;
 }
 
-/// Service class that handles all report-related API calls.
+/// Service class that handles all report-related API calls & offline persistence.
 class LaporanService {
   /// Fetches all reports from the API and returns them as a
-  /// list of mapped report data.
+  /// list of mapped report data including attached photos and coordinates.
   static Future<List<Map<String, dynamic>>> fetchReports(
     String token,
   ) async {
-    // Mode offline / mock token tidak perlu menghubungi server
     if (token.isEmpty ||
         token.startsWith('offline_') ||
         token.startsWith('google_session_')) {
@@ -69,42 +68,60 @@ class LaporanService {
     final List<dynamic> data = body['data'] ?? [];
 
     return data.map<Map<String, dynamic>>((report) {
-      final String activityDate =
-          report['activity_date']?.toString() ?? '';
-      final String rawStatus =
-          report['status']?.toString() ?? 'draft';
+      final String activityDate = report['activity_date']?.toString() ?? '';
+      final String rawStatus = report['status']?.toString() ?? 'draft';
 
-      final List<dynamic> rawPhotos = (report['photos'] is List)
-          ? report['photos']
-          : [];
+      final List<dynamic> rawPhotos =
+          (report['photos'] is List) ? report['photos'] : [];
       String photoUrl = '';
+      String photoBase64 = '';
+      String photoAddress = '';
+      String photoLat = '';
+      String photoLng = '';
+
       if (rawPhotos.isNotEmpty) {
         final first = rawPhotos.first;
         if (first is Map) {
+          final photoId = first['id'];
           final rawUrl = (first['url'] ?? first['photo'] ?? '').toString();
-          if (rawUrl.isNotEmpty) {
-            photoUrl = rawUrl.startsWith('http')
+          photoBase64 = (first['photo_base64'] ?? '').toString();
+          photoAddress = (first['address'] ?? '').toString();
+          photoLat = (first['latitude'] ?? '').toString();
+          photoLng = (first['longitude'] ?? '').toString();
+
+          if (photoBase64.isNotEmpty) {
+            photoUrl = photoBase64.startsWith('data:image')
+                ? photoBase64
+                : 'data:image/jpeg;base64,$photoBase64';
+          } else if (photoId != null) {
+            photoUrl = ApiConstants.reportPhotoFileUrl(photoId);
+          } else if (rawUrl.isNotEmpty) {
+            photoUrl = rawUrl.startsWith('http') || rawUrl.startsWith('data:')
                 ? rawUrl
                 : '$baseUrl/storage/$rawUrl';
           }
         }
       }
 
+      final reportLat = report['latitude']?.toString() ?? '';
+      final reportLng = report['longitude']?.toString() ?? '';
+
       return {
         'id': report['id'],
         'judul': report['title'] ?? 'Laporan tanpa judul',
-        'jenis':
-            report['category']?['name'] ?? 'Laporan Kegiatan',
-        'tanggal':
-            LaporanDateUtils.formatApiDate(activityDate),
+        'jenis': report['category']?['name'] ?? 'Laporan Kegiatan',
+        'pelapor': report['user']?['name'],
+        'tanggal': LaporanDateUtils.formatApiDate(activityDate),
         'tanggalApi': activityDate,
         'lokasi': report['location'] ?? 'Belum diisi',
+        'alamatGeolokasi': photoAddress.isNotEmpty
+            ? photoAddress
+            : (report['location']?.toString() ?? ''),
         'isi': report['description'] ?? '',
-        'latitude':
-            report['latitude']?.toString() ?? '',
-        'longitude':
-            report['longitude']?.toString() ?? '',
+        'latitude': reportLat.isNotEmpty ? reportLat : photoLat,
+        'longitude': reportLng.isNotEmpty ? reportLng : photoLng,
         'foto': photoUrl,
+        'photo_base64': photoBase64,
         'photos': rawPhotos,
         'status': LaporanDateUtils.displayStatus(rawStatus),
         'statusApi': rawStatus,
@@ -147,7 +164,7 @@ class LaporanService {
     return response;
   }
 
-  /// Uploads a photo attachment for a given [reportId].
+  /// Uploads a photo attachment for a given [reportId] along with GPS coordinates & address.
   static Future<http.Response> uploadReportPhoto({
     required String token,
     required int reportId,
@@ -155,6 +172,7 @@ class LaporanService {
     required String filename,
     double? latitude,
     double? longitude,
+    String? address,
   }) async {
     final uri = Uri.parse('$baseUrl/api/reports/$reportId/photos');
     final request = http.MultipartRequest('POST', uri);
@@ -183,11 +201,16 @@ class LaporanService {
       ),
     );
 
+    request.fields['photo_base64'] = base64Encode(photoBytes);
+
     if (latitude != null) {
       request.fields['latitude'] = latitude.toString();
     }
     if (longitude != null) {
       request.fields['longitude'] = longitude.toString();
+    }
+    if (address != null && address.trim().isNotEmpty) {
+      request.fields['address'] = address.trim();
     }
 
     final streamedResponse = await request.send();
@@ -222,10 +245,7 @@ class LaporanService {
     }
   }
 
-  /// Saves a report locally for offline use.
-  ///
-  /// The report is stored in the local SQLite database and will be
-  /// synchronised with the server once connectivity is restored.
+  /// Saves a report locally for offline use (supporting both Android file system and Web/Base64).
   static Future<int> saveOffline({
     required Map<String, dynamic> payload,
     required String jenisLaporan,
@@ -233,26 +253,33 @@ class LaporanService {
     String? photoFilename,
   }) async {
     String? localPhotoPath;
+    String? photoBase64;
+
     if (photoBytes != null && photoBytes.isNotEmpty) {
-      try {
-        final appDir = await getApplicationDocumentsDirectory();
-        final photoDir = Directory('${appDir.path}/offline_report_photos');
-        if (!photoDir.existsSync()) {
-          photoDir.createSync(recursive: true);
-        }
-        final safeName = photoFilename != null && photoFilename.isNotEmpty
-            ? photoFilename.replaceAll(RegExp(r'[^\w\.-]'), '_')
-            : 'offline_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final file = File('${photoDir.path}/$safeName');
-        await file.writeAsBytes(photoBytes, flush: true);
-        localPhotoPath = file.path;
-      } catch (_) {}
+      photoBase64 = 'data:image/jpeg;base64,${base64Encode(photoBytes)}';
+
+      if (!kIsWeb) {
+        try {
+          final appDir = await getApplicationDocumentsDirectory();
+          final photoDir = Directory('${appDir.path}/offline_report_photos');
+          if (!photoDir.existsSync()) {
+            photoDir.createSync(recursive: true);
+          }
+          final safeName = photoFilename != null && photoFilename.isNotEmpty
+              ? photoFilename.replaceAll(RegExp(r'[^\w\.-]'), '_')
+              : 'offline_photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final file = File('${photoDir.path}/$safeName');
+          await file.writeAsBytes(photoBytes, flush: true);
+          localPhotoPath = file.path;
+        } catch (_) {}
+      }
     }
 
     final data = <String, dynamic>{
       'title': payload['title'],
       'activity_date': payload['activity_date'],
       'location': payload['location'],
+      'address': payload['address'] ?? payload['location'],
       'description': payload['description'],
       'latitude': payload['latitude'],
       'longitude': payload['longitude'],
@@ -260,9 +287,14 @@ class LaporanService {
       'status': payload['status'] ?? 'draft',
       'jenis_laporan': jenisLaporan,
       'sync_status': 'pending',
-      'photo_path': localPhotoPath,
+      'photo_path': localPhotoPath ?? photoBase64,
+      'photo_base64': photoBase64,
     };
 
-    return OfflineDatabase.instance.insertReport(data);
+    try {
+      return await OfflineDatabase.instance.insertReport(data);
+    } catch (_) {
+      return DateTime.now().millisecondsSinceEpoch;
+    }
   }
 }

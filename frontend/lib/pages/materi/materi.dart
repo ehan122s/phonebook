@@ -11,9 +11,17 @@ import 'package:open_filex/open_filex.dart';
 
 import '../../constants/api_constants.dart';
 import '../../services/material_download_service.dart';
+import '../../services/notification_service.dart';
 
 class MateriPage extends StatefulWidget {
-  const MateriPage({super.key});
+  final String? initialMaterialId;
+  final String? initialMaterialTitle;
+
+  const MateriPage({
+    super.key,
+    this.initialMaterialId,
+    this.initialMaterialTitle,
+  });
 
   @override
   State<MateriPage> createState() => _MateriPageState();
@@ -21,10 +29,19 @@ class MateriPage extends StatefulWidget {
 
 class _MateriPageState extends State<MateriPage> {
   static const String _storageKey = 'phonebook_shared_materials_v2';
+  static const Set<String> _legacyDummyMaterialIds = {
+    'MAT-001',
+    'MAT-002',
+    'MAT-003',
+    'MAT-004',
+    'MAT-005',
+  };
 
   List<Map<String, dynamic>> _materials = [];
   final Set<String> _downloadingIds = {};
   bool _isLoading = true;
+  String? _errorMessage;
+  bool _didOpenInitialMaterial = false;
   String _searchQuery = '';
   String _selectedCategory = 'Semua';
 
@@ -40,6 +57,14 @@ class _MateriPageState extends State<MateriPage> {
     'Rehabilitasi Hutan',
     'Kelembagaan KTH',
   ];
+
+  static bool _isDummyMaterial(Map<String, dynamic> item) {
+    final id = (item['id'] ?? '').toString().trim().toUpperCase();
+    final uploader =
+        (item['uploader_name'] ?? '').toString().trim().toLowerCase();
+    return _legacyDummyMaterialIds.contains(id) ||
+        uploader == 'andi wijaya, s.hut.';
+  }
 
   @override
   void initState() {
@@ -61,37 +86,82 @@ class _MateriPageState extends State<MateriPage> {
         _currentUserName = name;
         _currentUserRole = role;
         _currentUserEmail = email;
+        _isLoading = true;
+        _errorMessage = null;
       });
     }
 
-    // 1. Muat dari Local Storage (SharedPreferences)
+    // 1. Muat dari Local Storage (SharedPreferences) & bersihkan sisa data dummy lama
     final rawStored = prefs.getString(_storageKey);
     List<Map<String, dynamic>> loadedList = [];
 
     if (rawStored != null && rawStored.isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(rawStored);
-        loadedList = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        loadedList = decoded
+            .map((e) => Map<String, dynamic>.from(e))
+            .where((m) => !_isDummyMaterial(m))
+            .toList();
+        await prefs.setString(_storageKey, jsonEncode(loadedList));
       } catch (e) {
         debugPrint('Error decoding cached materials: $e');
       }
     }
 
-    // Jika belum ada data lokal, inisialisasi dengan materi edukasi default
-    if (loadedList.isEmpty) {
-      loadedList = _buildDefaultMaterials();
-      await prefs.setString(_storageKey, jsonEncode(loadedList));
-    }
-
     if (mounted) {
       setState(() {
         _materials = loadedList;
-        _isLoading = false;
       });
     }
 
     // 2. Fetch live data dari server backend
-    _fetchLiveMaterialsFromServer(prefs);
+    await _fetchLiveMaterialsFromServer(prefs);
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+      _checkAndOpenInitialMaterial();
+    }
+  }
+
+  void _checkAndOpenInitialMaterial() {
+    if (_didOpenInitialMaterial) return;
+    final targetId = widget.initialMaterialId?.trim();
+    final targetTitle = widget.initialMaterialTitle?.trim().toLowerCase();
+    if ((targetId == null || targetId.isEmpty) &&
+        (targetTitle == null || targetTitle.isEmpty)) {
+      return;
+    }
+
+    Map<String, dynamic>? matched;
+    if (targetId != null && targetId.isNotEmpty) {
+      for (final m in _materials) {
+        if ((m['id'] ?? '').toString().trim() == targetId) {
+          matched = m;
+          break;
+        }
+      }
+    }
+    if (matched == null && targetTitle != null && targetTitle.isNotEmpty) {
+      for (final m in _materials) {
+        final t = (m['title'] ?? '').toString().trim().toLowerCase();
+        if (t == targetTitle || t.contains(targetTitle)) {
+          matched = m;
+          break;
+        }
+      }
+    }
+
+    if (matched != null) {
+      _didOpenInitialMaterial = true;
+      final itemToOpen = matched;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showMaterialDetail(itemToOpen);
+        }
+      });
+    }
   }
 
   Future<void> _fetchLiveMaterialsFromServer(SharedPreferences prefs) async {
@@ -110,56 +180,59 @@ class _MateriPageState extends State<MateriPage> {
 
           final List<Map<String, dynamic>> merged = [];
           for (final item in serverList) {
-            final userObj = item['user'] as Map<String, dynamic>?;
-            final uploaderName = (item['uploader_name'] ??
-                    item['uploader'] ??
+            final mapItem = Map<String, dynamic>.from(item);
+            if (_isDummyMaterial(mapItem)) continue;
+
+            final userObj = mapItem['user'] as Map<String, dynamic>?;
+            final uploaderName = (mapItem['uploader_name'] ??
+                    mapItem['uploader'] ??
                     userObj?['name'] ??
-                    'Administrator Kehutanan')
+                    'Penyuluh Kehutanan')
                 .toString();
 
-            final uploaderRole = (item['uploader_role'] ??
+            final uploaderRole = (mapItem['uploader_role'] ??
                     userObj?['role'] ??
                     'user')
                 .toString();
 
-            final rawFilePath = (item['file_path'] ?? '').toString();
-            final rawDriveUrl = (item['drive_url'] ?? '').toString();
+            final rawFilePath = (mapItem['file_path'] ?? '').toString();
+            final rawDriveUrl = (mapItem['drive_url'] ?? '').toString();
 
-            // Pertahankan file_data_uri lokal jika judul/id sama
             final existingLocal =
                 _materials.cast<Map<String, dynamic>?>().firstWhere(
                       (m) =>
                           m != null &&
-                          (m['id']?.toString() == item['id']?.toString() ||
+                          (m['id']?.toString() == mapItem['id']?.toString() ||
                               m['title']?.toString().toLowerCase() ==
-                                  (item['title'] ?? '')
+                                  (mapItem['title'] ?? '')
                                       .toString()
                                       .toLowerCase()),
                       orElse: () => null,
                     );
 
             merged.add({
-              'id': item['id']?.toString() ??
+              'id': mapItem['id']?.toString() ??
                   'MAT-${DateTime.now().millisecondsSinceEpoch}',
-              'title': item['title'] ?? 'Materi Kehutanan',
-              'type': (item['file_type'] ?? 'PDF').toString().toUpperCase(),
-              'category': item['category_name'] ??
-                  item['category']?['name'] ??
+              'title': mapItem['title'] ?? 'Materi Kehutanan',
+              'type': (mapItem['file_type'] ?? 'PDF').toString().toUpperCase(),
+              'category': mapItem['category_name'] ??
+                  mapItem['category']?['name'] ??
                   'Penyuluhan',
-              'description': item['description'] ?? '',
+              'description': mapItem['description'] ?? '',
               'uploader_name': uploaderName,
               'uploader_role': uploaderRole,
-              'file_name': item['file_name'] ?? 'Dokumen_Materi.pdf',
+              'file_name': mapItem['file_name'] ?? 'Dokumen_Materi.pdf',
               'file_size': existingLocal?['file_size'] ?? '',
               'file_path': rawFilePath,
               'drive_url': rawDriveUrl.isNotEmpty ? rawDriveUrl : rawFilePath,
               'file_data_uri': existingLocal?['file_data_uri'] ?? '',
-              'uploaded_at': _formatServerDate(item['created_at']),
+              'uploaded_at': _formatServerDate(mapItem['created_at']),
             });
           }
 
-          // Gabungkan dengan materi lokal yang belum ada di server
+          // Gabungkan dengan materi lokal asli (bukan dummy) yang belum ada di server
           for (final local in _materials) {
+            if (_isDummyMaterial(local)) continue;
             final exists = merged.any((m) =>
                 m['title'].toString().toLowerCase() ==
                 local['title'].toString().toLowerCase());
@@ -171,13 +244,25 @@ class _MateriPageState extends State<MateriPage> {
           if (mounted) {
             setState(() {
               _materials = merged;
+              _errorMessage = null;
             });
           }
           await prefs.setString(_storageKey, jsonEncode(merged));
         }
+      } else if (_materials.isEmpty && mounted) {
+        setState(() {
+          _errorMessage =
+              'Gagal memuat materi dari server (Status ${response.statusCode}).';
+        });
       }
     } catch (e) {
       debugPrint('Background fetch materials error: $e');
+      if (_materials.isEmpty && mounted) {
+        setState(() {
+          _errorMessage =
+              'Tidak dapat terhubung ke server untuk memuat materi. Periksa koneksi internet Anda.';
+        });
+      }
     }
   }
 
@@ -208,71 +293,6 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
-  List<Map<String, dynamic>> _buildDefaultMaterials() {
-    return [
-      {
-        'id': 'MAT-001',
-        'title': 'Pedoman Penyuluhan Kehutanan & Pembinaan KTH',
-        'type': 'PDF',
-        'category': 'Penyuluhan',
-        'description':
-            'Panduan teknis kegiatan penyuluhan kehutanan lapangan, pembentukan kelompok tani hutan, peningkatan kelas kelembagaan dari Pemula ke Madya, serta pengembangan agroforestri produktif.',
-        'uploader_name': 'CDK Wilayah V Garut',
-        'uploader_role': 'Cabang Dinas Kehutanan',
-        'file_name': 'Buku_Pedoman_Penyuluhan_Kehutanan_2026.pdf',
-        'uploaded_at': '3 Nov 2026, 09:15',
-      },
-      {
-        'id': 'MAT-002',
-        'title': 'Manual Konservasi Ekosistem & Patroli Kawasan Hutan',
-        'type': 'PDF',
-        'category': 'Konservasi & Ekosistem',
-        'description':
-            'Metodologi pemetaan koridor satwa, identifikasi flora langka dilindungi, pencegahan perambahan kawasan konservasi, serta inventarisasi keanekaragaman hayati.',
-        'uploader_name': 'CDK Wilayah V Garut',
-        'uploader_role': 'Cabang Dinas Kehutanan',
-        'file_name': 'Manual_Konservasi_Hutan_Lindung.pdf',
-        'uploaded_at': '2 Nov 2026, 14:20',
-      },
-      {
-        'id': 'MAT-003',
-        'title': 'SOP Mitigasi & Pengendalian Kebakaran Hutan (Karhutla)',
-        'type': 'DOC',
-        'category': 'Kebakaran Hutan',
-        'description':
-            'Prosedur operasional standar deteksi dini hotspot berbasis satelit, mobilisasi regu Masyarakat Peduli Api (MPA), dan teknik sekat bakar pencegah kebakaran meluas.',
-        'uploader_name': 'Administrator Kehutanan',
-        'uploader_role': 'Admin Dinas Kehutanan',
-        'file_name': 'SOP_Pengendalian_Karhutla_v2.docx',
-        'uploaded_at': '1 Nov 2026, 08:30',
-      },
-      {
-        'id': 'MAT-004',
-        'title': 'Modul Teknis Rehabilitasi Hutan & Lahan (RHL)',
-        'type': 'PPT',
-        'category': 'Rehabilitasi Hutan',
-        'description':
-            'Teknik pembibitan bibit tanaman hutan unggul MPTS (Multi-Purpose Tree Species), teknik penanaman kontur lereng curam, dan pemeliharaan tegakan.',
-        'uploader_name': 'CDK Wilayah V Garut',
-        'uploader_role': 'Cabang Dinas Kehutanan',
-        'file_name': 'Presentasi_Teknik_RHL_2026.pptx',
-        'uploaded_at': '28 Okt 2026, 11:45',
-      },
-      {
-        'id': 'MAT-005',
-        'title': 'Sertifikasi & Standar Legalitas Kayu Rakyat (SVLK)',
-        'type': 'PDF',
-        'category': 'Kelembagaan KTH',
-        'description':
-            'Tata kelola pengurusan dokumen legalitas hasil hutan rakyat (DKR) untuk memperluas akses pasar dan meningkatkan harga jual komoditas petani binaan.',
-        'uploader_name': 'Andi Wijaya, S.Hut.',
-        'uploader_role': 'Penyuluh Kehutanan (Gunung Guntur)',
-        'file_name': 'Panduan_SVLK_Kayu_Rakyat.pdf',
-        'uploaded_at': '25 Okt 2026, 16:10',
-      },
-    ];
-  }
-
   List<Map<String, dynamic>> get _filteredMaterials {
     return _materials.where((material) {
       final title = (material['title'] ?? '').toString().toLowerCase();
@@ -293,7 +313,6 @@ class _MateriPageState extends State<MateriPage> {
     }).toList();
   }
 
-  /// Helper aman untuk mengambil path lokal tanpa memicu error di Flutter Web
   String _safeFilePath(PlatformFile? file) {
     if (file == null || kIsWeb) return '';
     try {
@@ -303,7 +322,6 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
-  /// Format ukuran file agar mudah dibaca (KB / MB)
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     final kb = bytes / 1024;
@@ -312,7 +330,6 @@ class _MateriPageState extends State<MateriPage> {
     return '${mb.toStringAsFixed(2)} MB';
   }
 
-  /// Menentukan MIME type dari ekstensi file untuk Data URI
   String _mimeFromExtension(String ext) {
     switch (ext.toLowerCase()) {
       case 'pdf':
@@ -343,10 +360,7 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
-  /// Membuka pemilih file lokal dengan fallback otomatis ke ImagePicker
-  /// sehingga tidak pernah gagal akibat LateInitializationError (_instance) di Flutter Web.
   Future<PlatformFile?> _pickLocalFileSafe() async {
-    // 1. Coba gunakan FilePicker standar terlebih dahulu
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -376,7 +390,6 @@ class _MateriPageState extends State<MateriPage> {
       );
     }
 
-    // 2. Fallback otomatis menggunakan ImagePicker (selalu terdaftar di Web, Android, iOS, & Desktop)
     try {
       final picker = ImagePicker();
       XFile? xfile;
@@ -405,7 +418,7 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
-  /// Membuka form modal upload materi baru dengan File Picker & Google Drive
+  /// Membuka form modal upload materi baru dengan File Picker & Google Drive (Mendukung Dark & Light Mode)
   void _showUploadMaterialModal() {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -427,6 +440,12 @@ class _MateriPageState extends State<MateriPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final labelColor =
+                isDark ? Colors.white : const Color(0xFF1E2923);
+            final subLabelColor =
+                isDark ? Colors.white70 : Colors.grey.shade600;
+
             Future<void> pickFileFromDevice() async {
               try {
                 final file = await _pickLocalFileSafe();
@@ -435,7 +454,6 @@ class _MateriPageState extends State<MateriPage> {
                   selectedFile = file;
                   fileNameCtrl.text = file.name;
 
-                  // Auto deteksi Format File berdasarkan ekstensi nama file
                   final ext = file.name.contains('.')
                       ? file.name.split('.').last.toLowerCase()
                       : (file.extension ?? '').toLowerCase();
@@ -451,7 +469,6 @@ class _MateriPageState extends State<MateriPage> {
                     selectedType = 'VIDEO';
                   }
 
-                  // Auto isi judul jika masih kosong
                   if (titleCtrl.text.trim().isEmpty) {
                     final nameNoExt = file.name.contains('.')
                         ? file.name.substring(0, file.name.lastIndexOf('.'))
@@ -497,8 +514,12 @@ class _MateriPageState extends State<MateriPage> {
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: isGoogleDriveSource
-                                  ? const Color(0xFFE8F0FE)
-                                  : const Color(0xFFFFF3E0),
+                                  ? (isDark
+                                      ? const Color(0xFF152C44)
+                                      : const Color(0xFFE8F0FE))
+                                  : (isDark
+                                      ? const Color(0xFF3A2714)
+                                      : const Color(0xFFFFF3E0)),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
@@ -506,13 +527,13 @@ class _MateriPageState extends State<MateriPage> {
                                   ? Icons.add_to_drive_rounded
                                   : Icons.cloud_upload_outlined,
                               color: isGoogleDriveSource
-                                  ? const Color(0xFF1A73E8)
+                                  ? const Color(0xFF4285F4)
                                   : const Color(0xFFF57C00),
                               size: 26,
                             ),
                           ),
                           const SizedBox(width: 14),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -521,22 +542,22 @@ class _MateriPageState extends State<MateriPage> {
                                   style: TextStyle(
                                     fontSize: 17.5,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E2923),
+                                    color: labelColor,
                                   ),
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 2),
                                 Text(
                                   'Materi akan terlihat oleh seluruh user & penyuluh.',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.grey,
+                                    color: subLabelColor,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded),
+                            icon: Icon(Icons.close_rounded, color: labelColor),
                             onPressed: () => Navigator.pop(ctx),
                           ),
                         ],
@@ -552,23 +573,33 @@ class _MateriPageState extends State<MateriPage> {
                           vertical: 9,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F5E9),
+                          color: isDark
+                              ? const Color(0xFF1B3224)
+                              : const Color(0xFFE8F5E9),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFC8E6C9)),
+                          border: Border.all(
+                            color: isDark
+                                ? const Color(0xFF2E5239)
+                                : const Color(0xFFC8E6C9),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.account_circle_outlined,
-                              color: Color(0xFF2E7D32),
+                              color: isDark
+                                  ? const Color(0xFF81C784)
+                                  : const Color(0xFF2E7D32),
                               size: 20,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: RichText(
                                 text: TextSpan(
-                                  style: const TextStyle(
-                                    color: Color(0xFF1E3F24),
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white
+                                        : const Color(0xFF1E3F24),
                                     fontSize: 12.5,
                                   ),
                                   children: [
@@ -584,7 +615,7 @@ class _MateriPageState extends State<MateriPage> {
                                           ? ' (Admin)'
                                           : ' (Akun Anda)',
                                       style: TextStyle(
-                                        color: Colors.grey.shade700,
+                                        color: subLabelColor,
                                         fontSize: 11.5,
                                       ),
                                     ),
@@ -598,21 +629,22 @@ class _MateriPageState extends State<MateriPage> {
                       const SizedBox(height: 14),
 
                       // Judul Materi
-                      const Text(
+                      Text(
                         'Judul Materi Edukasi *',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
+                          color: labelColor,
                         ),
                       ),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: titleCtrl,
+                        style: TextStyle(color: labelColor),
                         decoration: _inputDecoration(
-                          hint:
-                              'Contoh: Panduan Teknis Budidaya Madu Hutan',
+                          hint: 'Contoh: Panduan Teknis Budidaya Madu Hutan',
                           icon: Icons.title_rounded,
+                          isDark: isDark,
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
@@ -623,27 +655,34 @@ class _MateriPageState extends State<MateriPage> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Kategori & Format File Baris (Bebas Overflow)
+                      // Kategori & Format File Baris
                       Row(
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Kategori *',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
+                                    color: labelColor,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
                                   value: selectedCat,
                                   isExpanded: true,
+                                  dropdownColor: Theme.of(context).cardColor,
+                                  style: TextStyle(
+                                    color: labelColor,
+                                    fontSize: 12.5,
+                                  ),
                                   decoration: _inputDecoration(
                                     hint: 'Kategori',
                                     icon: Icons.category_outlined,
+                                    isDark: isDark,
                                   ),
                                   items: _categories
                                       .where((c) => c != 'Semua')
@@ -652,8 +691,10 @@ class _MateriPageState extends State<MateriPage> {
                                           value: cat,
                                           child: Text(
                                             cat,
-                                            style:
-                                                const TextStyle(fontSize: 12.5),
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              color: labelColor,
+                                            ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
@@ -673,26 +714,34 @@ class _MateriPageState extends State<MateriPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Format File *',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
+                                    color: labelColor,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
                                   value: selectedType,
                                   isExpanded: true,
+                                  dropdownColor: Theme.of(context).cardColor,
+                                  style: TextStyle(
+                                    color: labelColor,
+                                    fontSize: 12.5,
+                                  ),
                                   decoration: _inputDecoration(
                                     hint: 'Format',
                                     icon: Icons.insert_drive_file_outlined,
+                                    isDark: isDark,
                                   ),
-                                  items: const [
+                                  items: [
                                     DropdownMenuItem(
                                       value: 'PDF',
                                       child: Text(
                                         'PDF',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -700,6 +749,7 @@ class _MateriPageState extends State<MateriPage> {
                                       value: 'PPT',
                                       child: Text(
                                         'PPT Slides',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -707,6 +757,7 @@ class _MateriPageState extends State<MateriPage> {
                                       value: 'DOC',
                                       child: Text(
                                         'Word (DOC)',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -714,6 +765,7 @@ class _MateriPageState extends State<MateriPage> {
                                       value: 'XLS',
                                       child: Text(
                                         'Excel (XLS)',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -721,6 +773,7 @@ class _MateriPageState extends State<MateriPage> {
                                       value: 'VIDEO',
                                       child: Text(
                                         'Video',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -728,6 +781,7 @@ class _MateriPageState extends State<MateriPage> {
                                       value: 'PANDUAN',
                                       child: Text(
                                         'Panduan Link',
+                                        style: TextStyle(color: labelColor),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -745,27 +799,30 @@ class _MateriPageState extends State<MateriPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // ========================================================
                       // BAGIAN PILIH FILE MATERI (FILE PICKER LOKAL / GOOGLE DRIVE)
-                      // ========================================================
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
+                          Text(
                             'File / Dokumen Materi *',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E2923),
+                              color: labelColor,
                             ),
                           ),
-                          // Toggle Sumber File: Folder Lokal vs Google Drive
                           Container(
                             padding: const EdgeInsets.all(2),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: isDark
+                                  ? const Color(0xFF243329)
+                                  : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey.shade300),
+                              border: Border.all(
+                                color: isDark
+                                    ? const Color(0xFF2E3D34)
+                                    : Colors.grey.shade300,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -793,7 +850,7 @@ class _MateriPageState extends State<MateriPage> {
                                           size: 14,
                                           color: !isGoogleDriveSource
                                               ? Colors.white
-                                              : Colors.grey.shade700,
+                                              : subLabelColor,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
@@ -803,7 +860,7 @@ class _MateriPageState extends State<MateriPage> {
                                             fontWeight: FontWeight.bold,
                                             color: !isGoogleDriveSource
                                                 ? Colors.white
-                                                : Colors.grey.shade700,
+                                                : subLabelColor,
                                           ),
                                         ),
                                       ],
@@ -833,7 +890,7 @@ class _MateriPageState extends State<MateriPage> {
                                           size: 14,
                                           color: isGoogleDriveSource
                                               ? Colors.white
-                                              : Colors.blue.shade700,
+                                              : Colors.blue.shade400,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
@@ -843,7 +900,7 @@ class _MateriPageState extends State<MateriPage> {
                                             fontWeight: FontWeight.bold,
                                             color: isGoogleDriveSource
                                                 ? Colors.white
-                                                : Colors.grey.shade700,
+                                                : subLabelColor,
                                           ),
                                         ),
                                       ],
@@ -858,7 +915,6 @@ class _MateriPageState extends State<MateriPage> {
                       const SizedBox(height: 8),
 
                       if (!isGoogleDriveSource) ...[
-                        // KOTAK FILE PICKER INTERAKTIF (KLIK UNTUK PILIH FILE DARI KOMPUTER / HP)
                         InkWell(
                           onTap: pickFileFromDevice,
                           borderRadius: BorderRadius.circular(14),
@@ -870,13 +926,19 @@ class _MateriPageState extends State<MateriPage> {
                             ),
                             decoration: BoxDecoration(
                               color: selectedFile != null
-                                  ? const Color(0xFFE8F5E9)
-                                  : const Color(0xFFF9FBF9),
+                                  ? (isDark
+                                      ? const Color(0xFF1B3224)
+                                      : const Color(0xFFE8F5E9))
+                                  : (isDark
+                                      ? const Color(0xFF243329)
+                                      : const Color(0xFFF9FBF9)),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
                                 color: selectedFile != null
                                     ? const Color(0xFF2E7D32)
-                                    : Colors.grey.shade300,
+                                    : (isDark
+                                        ? const Color(0xFF2E3D34)
+                                        : Colors.grey.shade300),
                                 width: selectedFile != null ? 1.5 : 1.0,
                               ),
                             ),
@@ -887,7 +949,9 @@ class _MateriPageState extends State<MateriPage> {
                                   decoration: BoxDecoration(
                                     color: selectedFile != null
                                         ? const Color(0xFF2E7D32)
-                                        : const Color(0xFFE8F5E9),
+                                        : (isDark
+                                            ? const Color(0xFF1B3224)
+                                            : const Color(0xFFE8F5E9)),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
@@ -896,7 +960,9 @@ class _MateriPageState extends State<MateriPage> {
                                         : Icons.attach_file_rounded,
                                     color: selectedFile != null
                                         ? Colors.white
-                                        : const Color(0xFF2E7D32),
+                                        : (isDark
+                                            ? const Color(0xFF81C784)
+                                            : const Color(0xFF2E7D32)),
                                     size: 22,
                                   ),
                                 ),
@@ -914,8 +980,10 @@ class _MateriPageState extends State<MateriPage> {
                                           fontWeight: FontWeight.bold,
                                           fontSize: 13,
                                           color: selectedFile != null
-                                              ? const Color(0xFF1B5E20)
-                                              : Colors.grey.shade700,
+                                              ? (isDark
+                                                  ? const Color(0xFF81C784)
+                                                  : const Color(0xFF1B5E20))
+                                              : labelColor,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
@@ -924,10 +992,10 @@ class _MateriPageState extends State<MateriPage> {
                                       Text(
                                         selectedFile != null
                                             ? '${_formatFileSize(selectedFile!.size)} • Siap diupload ($selectedType)'
-                                            : 'Pilih PDF, Word, PPT, Excel, Video, atau Gambar (pilih "All Files" di Explorer bila perlu)',
+                                            : 'Pilih PDF, Word, PPT, Excel, Video, atau Gambar',
                                         style: TextStyle(
                                           fontSize: 11,
-                                          color: Colors.grey.shade600,
+                                          color: subLabelColor,
                                         ),
                                       ),
                                     ],
@@ -938,10 +1006,14 @@ class _MateriPageState extends State<MateriPage> {
                                   onPressed: pickFileFromDevice,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: selectedFile != null
-                                        ? Colors.white
+                                        ? (isDark
+                                            ? const Color(0xFF1E2822)
+                                            : Colors.white)
                                         : const Color(0xFF2E7D32),
                                     foregroundColor: selectedFile != null
-                                        ? const Color(0xFF2E7D32)
+                                        ? (isDark
+                                            ? const Color(0xFF81C784)
+                                            : const Color(0xFF2E7D32))
                                         : Colors.white,
                                     elevation: 0,
                                     padding: const EdgeInsets.symmetric(
@@ -978,9 +1050,9 @@ class _MateriPageState extends State<MateriPage> {
                           ),
                         ),
                       ] else ...[
-                        // INPUT TAUTAN GOOGLE DRIVE
                         TextFormField(
                           controller: driveUrlCtrl,
+                          style: TextStyle(color: labelColor),
                           onChanged: (val) {
                             final lower = val.toLowerCase();
                             if (lower.contains('.pdf')) {
@@ -1004,15 +1076,18 @@ class _MateriPageState extends State<MateriPage> {
                             hint:
                                 'https://drive.google.com/file/d/.../view?usp=sharing',
                             icon: Icons.link_rounded,
+                            isDark: isDark,
                           ).copyWith(
                             suffixIcon: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   tooltip: 'Tempel Link dari Clipboard',
-                                  icon: const Icon(
+                                  icon: Icon(
                                     Icons.content_paste_rounded,
-                                    color: Color(0xFF2E7D32),
+                                    color: isDark
+                                        ? const Color(0xFF81C784)
+                                        : const Color(0xFF2E7D32),
                                     size: 20,
                                   ),
                                   onPressed: () async {
@@ -1064,29 +1139,33 @@ class _MateriPageState extends State<MateriPage> {
                           'Pastikan akses file Google Drive disetel ke "Siapa saja yang memiliki link" agar dapat dibuka semua user.',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.blue.shade800,
+                            color: isDark
+                                ? const Color(0xFF90CAF9)
+                                : Colors.blue.shade800,
                           ),
                         ),
                       ],
                       const SizedBox(height: 14),
 
                       // Deskripsi Materi
-                      const Text(
+                      Text(
                         'Deskripsi & Rangkuman Materi *',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E2923),
+                          color: labelColor,
                         ),
                       ),
                       const SizedBox(height: 6),
                       TextFormField(
                         controller: descCtrl,
                         maxLines: 3,
+                        style: TextStyle(color: labelColor),
                         decoration: _inputDecoration(
                           hint:
                               'Jelaskan tujuan edukasi, sasaran penyuluhan, dan isi materi...',
                           icon: Icons.description_outlined,
+                          isDark: isDark,
                         ),
                         validator: (val) {
                           if (val == null || val.trim().isEmpty) {
@@ -1161,7 +1240,6 @@ class _MateriPageState extends State<MateriPage> {
 
                             final safeLocalPath = _safeFilePath(selectedFile);
 
-                            // Buat Data URI jika file memiliki bytes (agar bisa dibuka langsung di browser/aplikasi)
                             String fileDataUri = '';
                             if (selectedFile?.bytes != null &&
                                 selectedFile!.bytes!.isNotEmpty &&
@@ -1234,16 +1312,25 @@ class _MateriPageState extends State<MateriPage> {
   }) async {
     setState(() {
       _materials.insert(0, newMaterial);
+      _errorMessage = null;
     });
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_storageKey, jsonEncode(_materials));
 
+    // Catat notifikasi materi baru agar dapat dinavigasi dari halaman Notifikasi
+    await NotificationService.instance.addMaterialCreatedNotification(
+      title: (newMaterial['title'] ?? 'Materi Edukasi').toString(),
+      category: (newMaterial['category'] ?? 'Penyuluhan').toString(),
+      fileType: (newMaterial['type'] ?? 'PDF').toString(),
+      materialId: newMaterial['id'],
+    );
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Materi "${newMaterial['title']}" (${newMaterial['file_name']}) berhasil diupload dan terlihat oleh semua user.',
+          'Materi "${newMaterial['title']}" (${newMaterial['file_name']}) berhasil diupload.',
         ),
         backgroundColor: const Color(0xFF2E7D32),
       ),
@@ -1327,16 +1414,19 @@ class _MateriPageState extends State<MateriPage> {
 
   /// Mengunduh materi dan menyimpannya ke penyimpanan HP user
   Future<void> _handleDownloadMaterial(Map<String, dynamic> material) async {
-    final id =
-        (material['id'] ?? material['title'] ?? 'MAT-${DateTime.now().millisecondsSinceEpoch}')
-            .toString();
+    final id = (material['id'] ??
+            material['title'] ??
+            'MAT-${DateTime.now().millisecondsSinceEpoch}')
+        .toString();
     if (_downloadingIds.contains(id)) return;
 
     setState(() {
       _downloadingIds.add(id);
     });
 
-    final fileName = (material['file_name'] ?? material['title'] ?? 'Materi Kehutanan').toString();
+    final fileName =
+        (material['file_name'] ?? material['title'] ?? 'Materi Kehutanan')
+            .toString();
 
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1385,14 +1475,19 @@ class _MateriPageState extends State<MateriPage> {
             backgroundColor: const Color(0xFF1E3F24),
             duration: const Duration(seconds: 8),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.check_circle_rounded, color: Color(0xFF81C784), size: 20),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: Color(0xFF81C784),
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'Berhasil Diunduh!',
@@ -1503,127 +1598,27 @@ class _MateriPageState extends State<MateriPage> {
       builder: (ctx) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(24, 4, 24, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Materi
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: _getTypeColor(type).withValues(alpha: isDark ? 0.22 : 0.12),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      _getTypeIcon(type),
-                      color: _getTypeColor(type),
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF1E2923),
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF1B3B22)
-                                    : const Color(0xFF2E7D32).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                category,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? const Color(0xFF81C784)
-                                      : const Color(0xFF2E7D32),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF2D3530)
-                                    : Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                type,
-                                style: TextStyle(
-                                  color: isDark
-                                      ? Colors.white70
-                                      : Colors.grey.shade800,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 18),
-              const Divider(),
-              const SizedBox(height: 12),
-
-              // KARTU INFORMASI PENGUNGGAH (UPLOADED BY)
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E2822) : const Color(0xFFF9FBF9),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
-                  ),
-                ),
-                child: Row(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Materi
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 22,
-                      backgroundColor:
-                          const Color(0xFF2E7D32).withValues(alpha: isDark ? 0.25 : 0.12),
-                      child: Text(
-                        uploaderName.isNotEmpty
-                            ? uploaderName[0].toUpperCase()
-                            : 'U',
-                        style: TextStyle(
-                          color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: _getTypeColor(type)
+                            .withValues(alpha: isDark ? 0.22 : 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        _getTypeIcon(type),
+                        color: _getTypeColor(type),
+                        size: 28,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -1631,349 +1626,495 @@ class _MateriPageState extends State<MateriPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF1E2923),
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              Text(
-                                'Diupload oleh',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: isDark ? Colors.white60 : Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 1.5,
+                                  horizontal: 8,
+                                  vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: uploaderRole
-                                          .toLowerCase()
-                                          .contains('admin')
-                                      ? (isDark ? const Color(0xFF351D4A) : Colors.deepPurple.shade50)
-                                      : (isDark ? const Color(0xFF1B3B22) : Colors.green.shade50),
-                                  borderRadius: BorderRadius.circular(4),
+                                  color: isDark
+                                      ? const Color(0xFF1B3B22)
+                                      : const Color(0xFF2E7D32)
+                                          .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  uploaderRole.toLowerCase().contains('admin')
-                                      ? 'Admin'
-                                      : 'Penyuluh',
+                                  category,
                                   style: TextStyle(
-                                    fontSize: 9.5,
+                                    color: isDark
+                                        ? const Color(0xFF81C784)
+                                        : const Color(0xFF2E7D32),
+                                    fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: uploaderRole
-                                            .toLowerCase()
-                                            .contains('admin')
-                                        ? (isDark ? const Color(0xFFCE93D8) : Colors.deepPurple.shade800)
-                                        : (isDark ? const Color(0xFF81C784) : Colors.green.shade800),
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? const Color(0xFF2D3530)
+                                      : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  type,
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.grey.shade800,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            uploaderName,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : const Color(0xFF1E2923),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            uploadedAt,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isDark ? Colors.white60 : Colors.grey.shade600,
-                            ),
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-              ),
 
-              const SizedBox(height: 16),
+                const SizedBox(height: 18),
+                const Divider(),
+                const SizedBox(height: 12),
 
-              // Deskripsi
-              Text(
-                'Deskripsi Materi:',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF1E2923),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                desc,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.5,
-                  color: isDark ? Colors.white70 : const Color(0xFF374151),
-                ),
-              ),
-
-              const SizedBox(height: 14),
-
-              // File attachment / Google Drive row
-              if (isGoogleDrive) ...[
+                // KARTU INFORMASI PENGUNGGAH (UPLOADED BY)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF0F2537) : const Color(0xFFE8F0FE),
-                    borderRadius: BorderRadius.circular(12),
+                    color: isDark
+                        ? const Color(0xFF1E2822)
+                        : const Color(0xFFF9FBF9),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isDark ? const Color(0xFF1E496D) : const Color(0xFFBDD7FB),
+                      color: isDark
+                          ? const Color(0xFF2E3D34)
+                          : Colors.grey.shade200,
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.add_to_drive_rounded,
-                        color: Color(0xFF1A73E8),
-                        size: 22,
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: const Color(0xFF2E7D32)
+                            .withValues(alpha: isDark ? 0.25 : 0.12),
+                        child: Text(
+                          uploaderName.isNotEmpty
+                              ? uploaderName[0].toUpperCase()
+                              : 'U',
+                          style: TextStyle(
+                            color: isDark
+                                ? const Color(0xFF81C784)
+                                : const Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Diupload oleh',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark
+                                        ? Colors.white60
+                                        : Colors.grey.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: uploaderRole
+                                            .toLowerCase()
+                                            .contains('admin')
+                                        ? (isDark
+                                            ? const Color(0xFF351D4A)
+                                            : Colors.deepPurple.shade50)
+                                        : (isDark
+                                            ? const Color(0xFF1B3B22)
+                                            : Colors.green.shade50),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    uploaderRole.toLowerCase().contains('admin')
+                                        ? 'Admin'
+                                        : 'Penyuluh',
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: uploaderRole
+                                              .toLowerCase()
+                                              .contains('admin')
+                                          ? (isDark
+                                              ? const Color(0xFFCE93D8)
+                                              : Colors.deepPurple.shade800)
+                                          : (isDark
+                                              ? const Color(0xFF81C784)
+                                              : Colors.green.shade800),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
                             Text(
-                              'Dokumen Tersedia di Google Drive',
+                              uploaderName,
                               style: TextStyle(
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: isDark ? const Color(0xFF90CAF9) : const Color(0xFF174EA6),
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF1E2923),
                               ),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              rawUrl,
+                              uploadedAt,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: isDark ? Colors.white70 : Colors.blue.shade900,
+                                color: isDark
+                                    ? Colors.white60
+                                    : Colors.grey.shade600,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.copy_rounded,
-                          size: 18,
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Deskripsi
+                Text(
+                  'Deskripsi Materi:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF1E2923),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  desc,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: isDark ? Colors.white70 : const Color(0xFF374151),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // File attachment / Google Drive row
+                if (isGoogleDrive) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF0F2537)
+                          : const Color(0xFFE8F0FE),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDark
+                            ? const Color(0xFF1E496D)
+                            : const Color(0xFFBDD7FB),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.add_to_drive_rounded,
                           color: Color(0xFF1A73E8),
+                          size: 22,
                         ),
-                        tooltip: 'Salin Tautan Drive',
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: rawUrl));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Tautan Google Drive berhasil disalin ke clipboard.',
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Dokumen Tersedia di Google Drive',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: isDark
+                                      ? const Color(0xFF90CAF9)
+                                      : const Color(0xFF174EA6),
+                                ),
                               ),
-                              backgroundColor: Color(0xFF1A73E8),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E2822) : Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.attach_file,
-                        size: 18,
-                        color: isDark ? Colors.white60 : Colors.grey.shade600,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          fileSize.isNotEmpty
-                              ? '$fileName ($fileSize)'
-                              : fileName,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: isDark ? Colors.white70 : Colors.grey.shade800,
-                            fontWeight: FontWeight.w500,
+                              const SizedBox(height: 2),
+                              Text(
+                                rawUrl,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.blue.shade900,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 22),
-
-              // ACTION BUTTONS: UNDUH KE HP & BUKA MATERI
-              Column(
-                children: [
-                  // Tombol UTAMA: Unduh Materi ke Penyimpanan HP
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
-                        foregroundColor: Colors.white,
-                        elevation: 1,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: isDownloading
-                          ? null
-                          : () {
-                              Navigator.pop(ctx);
-                              _handleDownloadMaterial(material);
-                            },
-                      icon: isDownloading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                        IconButton(
+                          icon: const Icon(
+                            Icons.copy_rounded,
+                            size: 18,
+                            color: Color(0xFF1A73E8),
+                          ),
+                          tooltip: 'Salin Tautan Drive',
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: rawUrl));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Tautan Google Drive berhasil disalin ke clipboard.',
+                                ),
+                                backgroundColor: Color(0xFF1A73E8),
                               ),
-                            )
-                          : const Icon(Icons.download_rounded, size: 22),
-                      label: Text(
-                        isDownloading
-                            ? 'Sedang Mengunduh...'
-                            : (fileSize.isNotEmpty
-                                ? 'Unduh ke Penyimpanan HP ($fileSize)'
-                                : 'Unduh ke Penyimpanan HP'),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.2,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF1E2822)
+                          : Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isDark
+                            ? const Color(0xFF2E3D34)
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.attach_file,
+                          size: 18,
+                          color:
+                              isDark ? Colors.white60 : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            fileSize.isNotEmpty
+                                ? '$fileName ($fileSize)'
+                                : fileName,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: isDark
+                                  ? Colors.white70
+                                  : Colors.grey.shade800,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 22),
+
+                // ACTION BUTTONS: UNDUH KE HP & BUKA MATERI
+                Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: isDownloading
+                            ? null
+                            : () {
+                                Navigator.pop(ctx);
+                                _handleDownloadMaterial(material);
+                              },
+                        icon: isDownloading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.download_rounded, size: 22),
+                        label: Text(
+                          isDownloading
+                              ? 'Sedang Mengunduh...'
+                              : (fileSize.isNotEmpty
+                                  ? 'Unduh ke Penyimpanan HP ($fileSize)'
+                                  : 'Unduh ke Penyimpanan HP'),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.2,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 46,
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: isDark
-                                  ? const Color(0xFF81C784)
-                                  : const Color(0xFF2E7D32),
-                              side: BorderSide(
-                                color: isDark
-                                    ? const Color(0xFF2E3D34)
-                                    : const Color(0xFFC8E6C9),
-                                width: 1.2,
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 46,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: isDark
+                                    ? const Color(0xFF81C784)
+                                    : const Color(0xFF2E7D32),
+                                side: BorderSide(
+                                  color: isDark
+                                      ? const Color(0xFF2E3D34)
+                                      : const Color(0xFFC8E6C9),
+                                  width: 1.2,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
+                              onPressed: () async {
+                                Navigator.pop(ctx);
+                                if (isGoogleDrive || rawUrl.startsWith('http')) {
+                                  try {
+                                    final clean = rawUrl.trim();
+                                    final uri = Uri.parse(
+                                      clean.startsWith('http')
+                                          ? clean
+                                          : 'https://$clean',
+                                    );
+                                    final launched = await launchUrl(
+                                      uri,
+                                      mode: LaunchMode.externalApplication,
+                                    );
+                                    if (!launched) {
+                                      await launchUrl(uri);
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Gagal membuka tautan: $e'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                } else if (dataUri.isNotEmpty) {
+                                  try {
+                                    final uri = Uri.parse(dataUri);
+                                    final launched = await launchUrl(uri);
+                                    if (!launched) {
+                                      _showDocumentReaderDialog(material);
+                                    }
+                                  } catch (_) {
+                                    _showDocumentReaderDialog(material);
+                                  }
+                                } else {
+                                  _showDocumentReaderDialog(material);
+                                }
+                              },
+                              icon: Icon(
+                                isGoogleDrive
+                                    ? Icons.open_in_browser_rounded
+                                    : Icons.visibility_outlined,
+                                size: 19,
+                              ),
+                              label: Text(
+                                isGoogleDrive
+                                    ? 'Buka di Google Drive'
+                                    : 'Baca / Pratinjau',
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (isUploader) ...[
+                          const SizedBox(width: 10),
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark
+                                  ? Colors.red.withValues(alpha: 0.15)
+                                  : Colors.red.shade50,
+                              foregroundColor: isDark
+                                  ? Colors.red.shade300
+                                  : Colors.red.shade700,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed: () async {
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            tooltip: 'Hapus Materi Ini',
+                            onPressed: () {
                               Navigator.pop(ctx);
-                              if (isGoogleDrive || rawUrl.startsWith('http')) {
-                                try {
-                                  final clean = rawUrl.trim();
-                                  final uri = Uri.parse(
-                                    clean.startsWith('http')
-                                        ? clean
-                                        : 'https://$clean',
-                                  );
-                                  final launched = await launchUrl(
-                                    uri,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                  if (!launched) {
-                                    await launchUrl(uri);
-                                  }
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Gagal membuka tautan: $e'),
-                                      ),
-                                    );
-                                  }
-                                }
-                              } else if (dataUri.isNotEmpty) {
-                                try {
-                                  final uri = Uri.parse(dataUri);
-                                  final launched = await launchUrl(uri);
-                                  if (!launched) {
-                                    _showDocumentReaderDialog(material);
-                                  }
-                                } catch (_) {
-                                  _showDocumentReaderDialog(material);
-                                }
-                              } else {
-                                _showDocumentReaderDialog(material);
-                              }
+                              _confirmDeleteMaterial(material);
                             },
-                            icon: Icon(
-                              isGoogleDrive
-                                  ? Icons.open_in_browser_rounded
-                                  : Icons.visibility_outlined,
-                              size: 19,
-                            ),
-                            label: Text(
-                              isGoogleDrive
-                                  ? 'Buka di Google Drive'
-                                  : 'Baca / Pratinjau',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
                           ),
-                        ),
-                      ),
-                      if (isUploader) ...[
-                        const SizedBox(width: 10),
-                        IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.red.shade50,
-                            foregroundColor: Colors.red.shade700,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.delete_outline_rounded),
-                          tooltip: 'Hapus Materi Ini',
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _confirmDeleteMaterial(material);
-                          },
-                        ),
+                        ],
                       ],
-                    ],
-                  ),
-                ],
-              ),
-            ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1998,9 +2139,13 @@ class _MateriPageState extends State<MateriPage> {
       } catch (_) {}
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : const Color(0xFF1E2923);
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -2009,9 +2154,10 @@ class _MateriPageState extends State<MateriPage> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
+                  color: textColor,
                 ),
               ),
             ),
@@ -2025,15 +2171,19 @@ class _MateriPageState extends State<MateriPage> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: isDark
+                      ? const Color(0xFF1B3224)
+                      : const Color(0xFFE8F5E9),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.insert_drive_file_outlined,
                       size: 18,
-                      color: Color(0xFF2E7D32),
+                      color: isDark
+                          ? const Color(0xFF81C784)
+                          : const Color(0xFF2E7D32),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -2041,10 +2191,12 @@ class _MateriPageState extends State<MateriPage> {
                         fileSize.isNotEmpty
                             ? '$fileName ($fileSize • $category • Oleh $uploader)'
                             : '$fileName ($category • Oleh $uploader)',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF1B5E20),
+                          color: isDark
+                              ? const Color(0xFF81C784)
+                              : const Color(0xFF1B5E20),
                         ),
                       ),
                     ),
@@ -2062,14 +2214,22 @@ class _MateriPageState extends State<MateriPage> {
                 ),
               ],
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Isi / Ringkasan Materi:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: textColor,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
                 desc,
-                style: const TextStyle(fontSize: 13.5, height: 1.5),
+                style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.5,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
               ),
             ],
           ),
@@ -2089,7 +2249,12 @@ class _MateriPageState extends State<MateriPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup'),
+            child: Text(
+              'Tutup',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : const Color(0xFF2E7D32),
+              ),
+            ),
           ),
         ],
       ),
@@ -2097,12 +2262,18 @@ class _MateriPageState extends State<MateriPage> {
   }
 
   void _confirmDeleteMaterial(Map<String, dynamic> material) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Materi?'),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
+          'Hapus Materi?',
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        ),
         content: Text(
           'Materi "${material['title']}" akan dihapus dari daftar publik.',
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
         ),
         actions: [
           TextButton(
@@ -2122,7 +2293,6 @@ class _MateriPageState extends State<MateriPage> {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString(_storageKey, jsonEncode(_materials));
 
-              // Hapus juga dari server jika memiliki ID database
               final idStr = (material['id'] ?? '').toString();
               if (!idStr.startsWith('MAT-')) {
                 try {
@@ -2191,26 +2361,41 @@ class _MateriPageState extends State<MateriPage> {
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,
+    bool isDark = false,
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-      prefixIcon: Icon(icon, color: const Color(0xFF2E7D32), size: 20),
+      hintStyle: TextStyle(
+        color: isDark ? Colors.white38 : Colors.grey.shade400,
+        fontSize: 13,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+        size: 20,
+      ),
       prefixIconConstraints: const BoxConstraints(minWidth: 38, minHeight: 38),
       filled: true,
-      fillColor: const Color(0xFFF9FBF9),
+      fillColor: isDark ? const Color(0xFF243329) : const Color(0xFFF9FBF9),
       contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 1.8),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+          width: 1.8,
+        ),
       ),
     );
   }
@@ -2219,6 +2404,10 @@ class _MateriPageState extends State<MateriPage> {
   Widget build(BuildContext context) {
     final filtered = _filteredMaterials;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mediaQuery = MediaQuery.of(context);
+    final isCompactWidth = mediaQuery.size.width < 360;
+    // Jarak aman dari floating BottomNav (tinggi 72 + margin 12 + safe area bottom)
+    final double bottomNavSafeOffset = mediaQuery.padding.bottom + 88;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2232,8 +2421,30 @@ class _MateriPageState extends State<MateriPage> {
           ),
         ),
         backgroundColor: isDark ? const Color(0xFF18221B) : Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: TextButton.icon(
+              onPressed: _showUploadMaterialModal,
+              style: TextButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFFF57C00).withValues(alpha: 0.14),
+                foregroundColor: const Color(0xFFF57C00),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.cloud_upload_outlined, size: 17),
+              label: const Text(
+                'Upload',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
           IconButton(
             icon: Icon(
               Icons.refresh_rounded,
@@ -2244,282 +2455,412 @@ class _MateriPageState extends State<MateriPage> {
               setState(() => _isLoading = true);
               final prefs = await SharedPreferences.getInstance();
               await _fetchLiveMaterialsFromServer(prefs);
-              setState(() => _isLoading = false);
+              if (mounted) {
+                setState(() => _isLoading = false);
+              }
             },
           ),
         ],
       ),
-      body: RefreshIndicator(
-        color: const Color(0xFF2E7D32),
-        onRefresh: () async {
-          final prefs = await SharedPreferences.getInstance();
-          await _fetchLiveMaterialsFromServer(prefs);
-        },
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 80),
-          children: [
-            // Banner Edukasi Publik
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF285C2E), Color(0xFF388E3C)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF285C2E).withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.menu_book_rounded,
-                      size: 36,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Materi Edukasi Bersama',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Dapat diakses oleh seluruh user & penyuluh. Lengkapi referensi dan panduan lapangan Anda.',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: const Color(0xFF2E7D32),
+          onRefresh: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await _fetchLiveMaterialsFromServer(prefs);
+          },
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              18,
+              16,
+              18,
+              bottomNavSafeOffset + 84,
             ),
-
-            const SizedBox(height: 16),
-
-            // Kolom Pencarian
-            TextField(
-              onChanged: (val) {
-                setState(() => _searchQuery = val);
-              },
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-              decoration: InputDecoration(
-                hintText: 'Cari materi, kategori, atau nama pengunggah...',
-                hintStyle: TextStyle(
-                  color: isDark ? Colors.white38 : Colors.grey.shade400,
-                  fontSize: 13,
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
-                ),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () => setState(() => _searchQuery = ''),
-                      )
-                    : null,
-                filled: true,
-                fillColor: isDark ? const Color(0xFF1E2822) : Colors.white,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
-                    width: 1.5,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // Kategori Filter Chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _categories.map((cat) {
-                  final isSelected = _selectedCategory == cat;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(cat),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedCategory = cat;
-                        });
-                      },
-                      selectedColor: isDark ? const Color(0xFF26352B) : const Color(0xFF2E7D32),
-                      backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected
-                            ? (isDark ? const Color(0xFF81C784) : Colors.white)
-                            : (isDark ? Colors.white70 : Colors.grey.shade800),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: BorderSide(
-                          color: isSelected
-                              ? (isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32))
-                              : (isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300),
-                        ),
-                      ),
-                      showCheckmark: false,
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            // Header Daftar & Jumlah
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Daftar Materi Edukasi',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E2923),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${filtered.length} Materi',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2E7D32),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-                ),
-              )
-            else if (filtered.isEmpty)
+            children: [
+              // Banner Edukasi Publik
               Container(
-                padding: const EdgeInsets.all(32),
-                alignment: Alignment.center,
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.menu_book_outlined,
-                      size: 56,
-                      color: Colors.grey.shade300,
+                padding: EdgeInsets.all(isCompactWidth ? 14 : 18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF285C2E), Color(0xFF388E3C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF285C2E).withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Tidak ada materi yang sesuai',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: Colors.grey.shade700,
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.menu_book_rounded,
+                        size: 34,
+                        color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Coba ubah kata kunci pencarian atau kategori filter.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Materi Edukasi Bersama',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Dapat diakses oleh seluruh user & penyuluh. Lengkapi referensi dan panduan lapangan Anda.',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              )
-            else
-              ...filtered.map((material) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _MaterialCard(
-                    material: material,
-                    isDownloading: _downloadingIds.contains(
-                      (material['id'] ?? material['title'] ?? '').toString(),
-                    ),
-                    onDownload: () => _handleDownloadMaterial(material),
-                    typeColor: _getTypeColor(
-                      (material['type'] ?? 'PDF').toString(),
-                    ),
-                    typeIcon: _getTypeIcon(
-                      (material['type'] ?? 'PDF').toString(),
-                    ),
-                    onTap: () => _showMaterialDetail(material),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Kolom Pencarian
+              TextField(
+                onChanged: (val) {
+                  setState(() => _searchQuery = val);
+                },
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                decoration: InputDecoration(
+                  hintText: 'Cari materi, kategori, atau nama pengunggah...',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.grey.shade400,
+                    fontSize: 13,
                   ),
-                );
-              }),
-          ],
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: isDark
+                        ? const Color(0xFF81C784)
+                        : const Color(0xFF2E7D32),
+                  ),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () => setState(() => _searchQuery = ''),
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: isDark
+                          ? const Color(0xFF2E3D34)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: isDark
+                          ? const Color(0xFF2E3D34)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: isDark
+                          ? const Color(0xFF81C784)
+                          : const Color(0xFF2E7D32),
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // Kategori Filter Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _categories.map((cat) {
+                    final isSelected = _selectedCategory == cat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(cat),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedCategory = cat;
+                          });
+                        },
+                        selectedColor: isDark
+                            ? const Color(0xFF26352B)
+                            : const Color(0xFF2E7D32),
+                        backgroundColor:
+                            isDark ? const Color(0xFF1E2822) : Colors.white,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected
+                              ? (isDark
+                                  ? const Color(0xFF81C784)
+                                  : Colors.white)
+                              : (isDark
+                                  ? Colors.white70
+                                  : Colors.grey.shade800),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: isSelected
+                                ? (isDark
+                                    ? const Color(0xFF81C784)
+                                    : const Color(0xFF2E7D32))
+                                : (isDark
+                                    ? const Color(0xFF2E3D34)
+                                    : Colors.grey.shade300),
+                          ),
+                        ),
+                        showCheckmark: false,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // Header Daftar & Jumlah
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Daftar Materi Edukasi',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : const Color(0xFF1E2923),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF1B3224)
+                          : const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${filtered.length} Materi',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isDark
+                            ? const Color(0xFF81C784)
+                            : const Color(0xFF2E7D32),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+                  ),
+                )
+              else if (_errorMessage != null && _materials.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E2822) : Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF2E3D34)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 48,
+                        color: Colors.orange.shade400,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Gagal Memuat Materi',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color:
+                              isDark ? Colors.white : const Color(0xFF1E2923),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color:
+                              isDark ? Colors.white70 : Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2E7D32),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: _loadUserAndMaterials,
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Coba Lagi'),
+                      ),
+                    ],
+                  ),
+                )
+              else if (filtered.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E2822) : Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF2E3D34)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.menu_book_outlined,
+                        size: 56,
+                        color: isDark
+                            ? const Color(0xFF81C784)
+                            : Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _materials.isEmpty
+                            ? 'Belum Ada Materi Edukasi'
+                            : 'Tidak ada materi yang sesuai filter',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15.5,
+                          color:
+                              isDark ? Colors.white : const Color(0xFF1E2923),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _materials.isEmpty
+                            ? 'Materi edukasi dari database akan tampil di sini. Anda juga dapat mengunggah dokumen PDF, Word, PPT, atau tautan Google Drive.'
+                            : 'Coba ubah kata kunci pencarian atau kategori filter di atas.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.45,
+                          color:
+                              isDark ? Colors.white70 : Colors.grey.shade600,
+                        ),
+                      ),
+                      if (_materials.isEmpty) ...[
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _showUploadMaterialModal,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFF57C00),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 18,
+                          ),
+                          label: const Text(
+                            'Upload Materi Pertama',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                )
+              else
+                ...filtered.map((material) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _MaterialCard(
+                      material: material,
+                      isDownloading: _downloadingIds.contains(
+                        (material['id'] ?? material['title'] ?? '').toString(),
+                      ),
+                      onDownload: () => _handleDownloadMaterial(material),
+                      typeColor: _getTypeColor(
+                        (material['type'] ?? 'PDF').toString(),
+                      ),
+                      typeIcon: _getTypeIcon(
+                        (material['type'] ?? 'PDF').toString(),
+                      ),
+                      onTap: () => _showMaterialDetail(material),
+                    ),
+                  );
+                }),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showUploadMaterialModal,
-        backgroundColor: const Color(0xFFF57C00),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.cloud_upload_outlined),
-        label: const Text(
-          'Upload Materi',
-          style: TextStyle(fontWeight: FontWeight.bold),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: bottomNavSafeOffset),
+        child: FloatingActionButton.extended(
+          onPressed: _showUploadMaterialModal,
+          backgroundColor: const Color(0xFFF57C00),
+          foregroundColor: Colors.white,
+          elevation: 4,
+          icon: const Icon(Icons.cloud_upload_outlined),
+          label: Text(
+            isCompactWidth ? 'Upload' : 'Upload Materi',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
@@ -2584,7 +2925,6 @@ class _MaterialCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Baris Atas: Ikon + Judul + Kategori Tag
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2609,7 +2949,8 @@ class _MaterialCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : const Color(0xFF1E2923),
+                          color:
+                              isDark ? Colors.white : const Color(0xFF1E2923),
                           height: 1.3,
                         ),
                       ),
@@ -2626,7 +2967,8 @@ class _MaterialCard extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: isDark
                                   ? const Color(0xFF1B3B22)
-                                  : const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                                  : const Color(0xFF2E7D32)
+                                      .withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -2646,13 +2988,17 @@ class _MaterialCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: isDark ? const Color(0xFF2D3530) : Colors.grey.shade100,
+                              color: isDark
+                                  ? const Color(0xFF2D3530)
+                                  : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               type,
                               style: TextStyle(
-                                color: isDark ? Colors.white70 : Colors.grey.shade700,
+                                color: isDark
+                                    ? Colors.white70
+                                    : Colors.grey.shade700,
                                 fontSize: 10.5,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -2681,13 +3027,17 @@ class _MaterialCard extends StatelessWidget {
                                   Icon(
                                     Icons.cloud_done_rounded,
                                     size: 11,
-                                    color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1A73E8),
+                                    color: isDark
+                                        ? const Color(0xFF64B5F6)
+                                        : const Color(0xFF1A73E8),
                                   ),
                                   const SizedBox(width: 3),
                                   Text(
                                     'Google Drive',
                                     style: TextStyle(
-                                      color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1A73E8),
+                                      color: isDark
+                                          ? const Color(0xFF64B5F6)
+                                          : const Color(0xFF1A73E8),
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -2702,7 +3052,6 @@ class _MaterialCard extends StatelessWidget {
                 ),
               ],
             ),
-
             if (description.isNotEmpty) ...[
               const SizedBox(height: 10),
               Text(
@@ -2716,18 +3065,17 @@ class _MaterialCard extends StatelessWidget {
                 ),
               ),
             ],
-
             const SizedBox(height: 12),
             const Divider(height: 1),
             const SizedBox(height: 10),
-
-            // BARIS UPLOAD BY SIAPA SIAPANYA
             Row(
               children: [
                 CircleAvatar(
                   radius: 12,
                   backgroundColor: isAdmin
-                      ? Colors.deepPurple.shade100
+                      ? (isDark
+                          ? const Color(0xFF351D4A)
+                          : Colors.deepPurple.shade100)
                       : const Color(0xFF2E7D32).withValues(alpha: 0.15),
                   child: Text(
                     uploaderName.isNotEmpty
@@ -2737,8 +3085,12 @@ class _MaterialCard extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
                       color: isAdmin
-                          ? Colors.deepPurple.shade800
-                          : const Color(0xFF2E7D32),
+                          ? (isDark
+                              ? const Color(0xFFCE93D8)
+                              : Colors.deepPurple.shade800)
+                          : (isDark
+                              ? const Color(0xFF81C784)
+                              : const Color(0xFF2E7D32)),
                     ),
                   ),
                 ),
@@ -2757,7 +3109,9 @@ class _MaterialCard extends StatelessWidget {
                           text: uploaderName,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF1E2923),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF1E2923),
                           ),
                         ),
                       ],
@@ -2775,7 +3129,8 @@ class _MaterialCard extends StatelessWidget {
                 IconButton(
                   tooltip: 'Unduh ke Penyimpanan HP',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  constraints:
+                      const BoxConstraints(minWidth: 34, minHeight: 34),
                   icon: isDownloading
                       ? SizedBox(
                           width: 16,
