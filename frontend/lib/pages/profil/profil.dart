@@ -1732,43 +1732,87 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   /// Fitur Laporan Bug ke Tim IT (DC) yang benar-benar mengirimkan laporan ke:
-  /// 1. Endpoint Backend `/api/bug-reports` (menyimpan ke database & meneruskan ke Discord Webhook Tim IT).
-  /// 2. Discord Webhook langsung (apabila URL Webhook Tim IT DC diisi/tersimpan).
-  /// 3. Mencatat ke daftar Notifikasi aplikasi & riwayat laporan kendala lokal.
-  void _showReportIssueDialog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedWebhook =
-        prefs.getString('phonebook_it_dc_webhook_url') ?? '';
-
-    if (!mounted) return;
-
+  /// Fitur Laporan Masalah pada Profil:
+  /// Pengguna mengisi form dan menekan tombol Kirim.
+  /// Laporan dikirim ke backend Laravel (`POST /api/bug-reports`),
+  /// yang kemudian memvalidasi data dan meneruskannya ke Discord via Webhook/Bot API.
+  void _showReportIssueDialog() {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    final webhookCtrl = TextEditingController(text: savedWebhook);
-    String category = 'Laporan Kegiatan & Foto';
-    String priority = 'Sedang';
+    final phoneCtrl = TextEditingController(
+      text: _whatsapp.isNotEmpty ? _whatsapp : '',
+    );
+    String category = 'Bug / Error';
     bool isSubmitting = false;
-    bool showWebhookConfig = savedWebhook.isNotEmpty;
+
+    final categories = const [
+      'Bug / Error',
+      'Tampilan Aplikasi',
+      'Login / Akun',
+      'Laporan Kegiatan',
+      'Jadwal',
+      'Materi',
+      'Notifikasi',
+      'Lainnya',
+    ];
+
+    final reporterName =
+        _nama.trim().isNotEmpty ? _nama.trim() : 'Pengguna Phonebook';
+    final reporterEmail = _email.trim().isNotEmpty ? _email.trim() : '-';
+    final devicePlatform = kIsWeb
+        ? 'Flutter Web'
+        : 'Flutter Android (${defaultTargetPlatform.name})';
+    const appVersion = 'Phonebook v1.0.0';
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDState) {
           final isDark = Theme.of(ctx).brightness == Brightness.dark;
           final textColor = isDark ? Colors.white : const Color(0xFF1E2923);
           final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
+          final cardBg =
+              isDark ? const Color(0xFF26332A) : const Color(0xFFF0F5F1);
+          final borderColor =
+              isDark ? const Color(0xFF334639) : const Color(0xFFD6E3D8);
           final primaryGreen =
-              isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E);
+              isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
 
-          Future<void> submitBugReport() async {
+          Future<void> submitReport() async {
             final title = titleCtrl.text.trim();
             final desc = descCtrl.text.trim();
-            final customWebhook = webhookCtrl.text.trim();
+            final rawPhone = phoneCtrl.text.trim();
 
             if (title.isEmpty || desc.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Judul dan deskripsi kendala wajib diisi.'),
+                  content: Text('Harap isi judul dan deskripsi masalah.'),
+                  backgroundColor: Color(0xFFC62828),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              return;
+            }
+
+            // Validasi format nomor WhatsApp Indonesia (628... atau 08...)
+            var cleanPhone = rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
+            if (cleanPhone.startsWith('0')) {
+              cleanPhone = '62${cleanPhone.substring(1)}';
+            } else if (cleanPhone.startsWith('8')) {
+              cleanPhone = '62$cleanPhone';
+            }
+
+            if (cleanPhone.length < 10 ||
+                cleanPhone.length > 15 ||
+                !cleanPhone.startsWith('628')) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Nomor WhatsApp tidak valid. Masukkan nomor aktif Indonesia (contoh: 081234567890).',
+                  ),
+                  backgroundColor: Color(0xFFC62828),
+                  behavior: SnackBarBehavior.floating,
                 ),
               );
               return;
@@ -1776,73 +1820,6 @@ class _ProfilPageState extends State<ProfilPage> {
 
             setDState(() => isSubmitting = true);
 
-            if (customWebhook.isNotEmpty) {
-              await prefs.setString(
-                'phonebook_it_dc_webhook_url',
-                customWebhook,
-              );
-            }
-
-            final devicePlatform = kIsWeb
-                ? 'Flutter Web'
-                : 'Flutter ${defaultTargetPlatform.name}';
-
-            bool sentToServer = false;
-            bool sentToDiscord = false;
-
-            // 1. Jika URL Discord Webhook (DC) diisi, kirim langsung embed ke Discord Tim IT
-            if (customWebhook.startsWith('https://discord.com/api/webhooks/') ||
-                customWebhook
-                    .startsWith('https://discordapp.com/api/webhooks/')) {
-              try {
-                final dcRes = await http
-                    .post(
-                      Uri.parse(customWebhook),
-                      headers: {'Content-Type': 'application/json'},
-                      body: jsonEncode({
-                        'username': 'Phonebook Bug Reporter (Tim IT DC)',
-                        'embeds': [
-                          {
-                            'title': '🛠️ [$priority] $title',
-                            'description': desc,
-                            'color': priority == 'Tinggi / Kritis'
-                                ? 15158332
-                                : (priority == 'Rendah' ? 3066993 : 15105570),
-                            'fields': [
-                              {
-                                'name': 'Kategori Fitur',
-                                'value': category,
-                                'inline': true,
-                              },
-                              {
-                                'name': 'Prioritas',
-                                'value': priority,
-                                'inline': true,
-                              },
-                              {
-                                'name': 'Pelapor',
-                                'value':
-                                    '$_nama (${_email.isNotEmpty ? _email : _role})',
-                                'inline': false,
-                              },
-                              {
-                                'name': 'Platform & Wilayah',
-                                'value': '$devicePlatform • $_wilayah',
-                                'inline': false,
-                              },
-                            ],
-                          },
-                        ],
-                      }),
-                    )
-                    .timeout(const Duration(seconds: 7));
-                if (dcRes.statusCode >= 200 && dcRes.statusCode < 300) {
-                  sentToDiscord = true;
-                }
-              } catch (_) {}
-            }
-
-            // 2. Kirim ke Backend API Laravel (/api/bug-reports)
             try {
               final headers = <String, String>{
                 'Accept': 'application/json',
@@ -1854,333 +1831,782 @@ class _ProfilPageState extends State<ProfilPage> {
                 headers['Authorization'] = 'Bearer $_token';
               }
 
-              final apiRes = await http
+              final payload = {
+                'title': title,
+                'category': category,
+                'description': desc,
+                'priority': 'Sedang',
+                'reporter_name': reporterName,
+                'reporter_email': reporterEmail,
+                'reporter_phone': cleanPhone,
+                'app_version': appVersion,
+                'device_info': '$devicePlatform • $_wilayah',
+              };
+
+              final response = await http
                   .post(
                     Uri.parse(ApiConstants.bugReportsUrl),
                     headers: headers,
-                    body: jsonEncode({
-                      'category': category,
-                      'priority': priority,
-                      'title': title,
-                      'description': desc,
-                      'reporter_name': _nama,
-                      'reporter_email': _email,
-                      'device_info': '$devicePlatform ($_wilayah)',
-                      if (customWebhook.isNotEmpty)
-                        'webhook_url': customWebhook,
-                    }),
+                    body: jsonEncode(payload),
                   )
-                  .timeout(const Duration(seconds: 8));
+                  .timeout(const Duration(seconds: 12));
 
-              if (apiRes.statusCode == 200 || apiRes.statusCode == 201) {
-                sentToServer = true;
+              if (response.statusCode >= 200 && response.statusCode < 300) {
+                String ticketCode = 'PB-2026';
                 try {
-                  final body = jsonDecode(apiRes.body);
-                  if (body['data']?['discord_sent'] == true) {
-                    sentToDiscord = true;
+                  final resBody = jsonDecode(response.body);
+                  if (resBody['data']?['ticket_code'] != null) {
+                    ticketCode = resBody['data']['ticket_code'].toString();
                   }
                 } catch (_) {}
-              }
-            } catch (_) {}
 
-            // 3. Simpan riwayat laporan bug secara lokal & buat notifikasi konfirmasi
-            try {
-              const bugStorageKey = 'phonebook_bug_reports_v1';
-              final rawBugs = prefs.getString(bugStorageKey);
-              final List<Map<String, dynamic>> bugList = [];
-              if (rawBugs != null && rawBugs.isNotEmpty) {
-                final decoded = jsonDecode(rawBugs) as List<dynamic>;
-                bugList.addAll(
-                  decoded.map((e) => Map<String, dynamic>.from(e)),
+                // Simpan riwayat lokal & notifikasi
+                try {
+                  final prefs = await SharedPreferences.getInstance();
+                  const bugStorageKey = 'phonebook_bug_reports_v1';
+                  final rawBugs = prefs.getString(bugStorageKey);
+                  final List<Map<String, dynamic>> bugList = [];
+                  if (rawBugs != null && rawBugs.isNotEmpty) {
+                    final decoded = jsonDecode(rawBugs) as List<dynamic>;
+                    bugList.addAll(
+                      decoded.map((e) => Map<String, dynamic>.from(e)),
+                    );
+                  }
+                  bugList.insert(0, {
+                    'id': 'bug_${DateTime.now().millisecondsSinceEpoch}',
+                    'ticket_code': ticketCode,
+                    'category': category,
+                    'title': title,
+                    'description': desc,
+                    'reporter': reporterName,
+                    'email': reporterEmail,
+                    'phone': cleanPhone,
+                    'status': 'MENUNGGU PERSETUJUAN',
+                    'createdAt': DateTime.now().toIso8601String(),
+                  });
+                  await prefs.setString(bugStorageKey, jsonEncode(bugList));
+                } catch (_) {}
+
+                await NotificationService.instance.addNotification(
+                  type: 'umum',
+                  title: 'Tiket Laporan #$ticketCode Terdaftar',
+                  message:
+                      'Laporan "$title" telah diteruskan ke Discord developer. Notifikasi WhatsApp akan otomatis dikirimkan ke $cleanPhone.',
+                  referenceId: 'ticket_$ticketCode',
+                  metadata: {
+                    'targetPage': 'profil',
+                    'ticket_code': ticketCode,
+                    'category': category,
+                    'title': title,
+                  },
+                );
+
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Tiket #$ticketCode berhasil dikirim! Notifikasi persetujuan akan dikirimkan ke WhatsApp Anda.',
+                    ),
+                    backgroundColor: const Color(0xFF245C3A),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              } else {
+                String errorMsg =
+                    'Gagal mengirim laporan (HTTP ${response.statusCode})';
+                try {
+                  final resBody = jsonDecode(response.body);
+                  if (resBody is Map && resBody['message'] != null) {
+                    errorMsg = resBody['message'].toString();
+                  }
+                } catch (_) {}
+
+                setDState(() => isSubmitting = false);
+
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(errorMsg),
+                    backgroundColor: const Color(0xFFC62828),
+                    behavior: SnackBarBehavior.floating,
+                  ),
                 );
               }
-              bugList.insert(0, {
-                'id': 'bug_${DateTime.now().millisecondsSinceEpoch}',
-                'category': category,
-                'priority': priority,
-                'title': title,
-                'description': desc,
-                'reporter': _nama,
-                'email': _email,
-                'sentToServer': sentToServer,
-                'sentToDiscord': sentToDiscord,
-                'createdAt': DateTime.now().toIso8601String(),
-              });
-              await prefs.setString(bugStorageKey, jsonEncode(bugList));
-            } catch (_) {}
+            } catch (e) {
+              setDState(() => isSubmitting = false);
 
-            await NotificationService.instance.addNotification(
-              type: 'umum',
-              title: 'Laporan Bug Terkirim ke Tim IT (DC)',
-              message:
-                  'Kendala "$title" pada kategori $category ($priority) telah dikirim ke Tim IT untuk ditindaklanjuti.',
-              referenceId: 'bug_${DateTime.now().millisecondsSinceEpoch}',
-              metadata: {
-                'targetPage': 'profil',
-                'category': category,
-                'priority': priority,
-                'title': title,
-              },
-            );
-
-            if (!ctx.mounted) return;
-            Navigator.pop(ctx);
-
-            if (!mounted) return;
-            final statusMsg = sentToDiscord
-                ? 'Laporan bug berhasil dikirim langsung ke kanal Discord Tim IT (DC) & server!'
-                : (sentToServer
-                    ? 'Laporan bug berhasil dikirim ke server Tim IT (DC)!'
-                    : 'Laporan bug disimpan & siap diteruskan ke Tim IT (DC).');
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(statusMsg),
-                backgroundColor: const Color(0xFF285C2E),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 5),
-                action: (!sentToServer && !sentToDiscord)
-                    ? SnackBarAction(
-                        label: 'Kirim via WA IT',
-                        textColor: const Color(0xFFA5D6A7),
-                        onPressed: () async {
-                          final text = Uri.encodeComponent(
-                            '*LAPORAN BUG PHONEBOOK - TIM IT (DC)*\n'
-                            'Pelapor: $_nama ($_email)\n'
-                            'Kategori: $category ($priority)\n'
-                            'Judul: $title\n'
-                            'Kronologi: $desc',
-                          );
-                          final uri = Uri.parse(
-                            'https://wa.me/6281223456789?text=$text',
-                          );
-                          try {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          } catch (_) {}
-                        },
-                      )
-                    : null,
-              ),
-            );
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Koneksi gagal saat mengirim laporan: $e. Silakan coba lagi.',
+                  ),
+                  backgroundColor: const Color(0xFFC62828),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
           }
 
-          return AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Icon(
-                  Icons.bug_report_rounded,
-                  color: isDark
-                      ? const Color(0xFFEF9A9A)
-                      : const Color(0xFFC62828),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Laporan Bug ke Tim IT (DC)',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 17,
-                      color: textColor,
+          return PopScope(
+            canPop: !isSubmitting,
+            child: AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: primaryGreen.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
                     ),
+                    child: Icon(
+                      Icons.bug_report_rounded,
+                      color: primaryGreen,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Laporan Masalah',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Auto-detected User & Device Info Banner
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.person_rounded,
+                                size: 16,
+                                color: primaryGreen,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  reporterName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                    color: textColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (reporterEmail != '-') ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.email_outlined,
+                                  size: 15,
+                                  color: subColor,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    reporterEmail,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: subColor,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.phone_android_rounded,
+                                size: 15,
+                                color: subColor,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '$appVersion • $devicePlatform',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: subColor,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Kategori Masalah
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      dropdownColor:
+                          isDark ? const Color(0xFF1E2822) : Colors.white,
+                      style: TextStyle(color: textColor, fontSize: 13.5),
+                      decoration: _adaptiveInputDecoration(
+                        context: ctx,
+                        label: 'Kategori Masalah *',
+                        prefixIcon: Icons.category_rounded,
+                      ),
+                      items: categories
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSubmitting
+                          ? null
+                          : (val) {
+                              if (val != null) {
+                                setDState(() => category = val);
+                              }
+                            },
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Nomor WhatsApp Pengguna (Aktif untuk Notifikasi)
+                    TextField(
+                      controller: phoneCtrl,
+                      enabled: !isSubmitting,
+                      keyboardType: TextInputType.phone,
+                      style: TextStyle(color: textColor),
+                      decoration: _adaptiveInputDecoration(
+                        context: ctx,
+                        label: 'Nomor WhatsApp Aktif *',
+                        hint: 'Contoh: 08123456789 atau 628123456789',
+                        prefixIcon: Icons.chat_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Text(
+                        'Pemberitahuan persetujuan dan penyelesaian akan dikirim ke nomor ini.',
+                        style: TextStyle(fontSize: 11, color: subColor),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Judul Laporan
+                    TextField(
+                      controller: titleCtrl,
+                      enabled: !isSubmitting,
+                      style: TextStyle(color: textColor),
+                      decoration: _adaptiveInputDecoration(
+                        context: ctx,
+                        label: 'Judul Laporan *',
+                        hint: 'Contoh: Halaman profil tidak menampilkan email',
+                        prefixIcon: Icons.title_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Deskripsi Masalah
+                    TextField(
+                      controller: descCtrl,
+                      enabled: !isSubmitting,
+                      maxLines: 4,
+                      style: TextStyle(color: textColor),
+                      decoration: _adaptiveInputDecoration(
+                        context: ctx,
+                        label: 'Deskripsi Masalah *',
+                        hint:
+                            'Jelaskan kronologi kendala, langkah yang dilakukan, atau pesan error...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          Navigator.pop(ctx);
+                          _showTicketStatusDialog();
+                        },
+                  icon: const Icon(
+                    Icons.confirmation_number_outlined,
+                    size: 16,
+                  ),
+                  label: const Text('Status Tiket'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: primaryGreen,
+                  ),
+                ),
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                  child: Text(
+                    'Batal',
+                    style: TextStyle(color: subColor),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF245C3A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                  ),
+                  onPressed: isSubmitting ? null : submitReport,
+                  icon: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send_rounded, size: 17),
+                  label: Text(
+                    isSubmitting ? 'Mengirim...' : 'Kirim Laporan',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
             ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Kirimkan laporan bug atau kendala teknis secara langsung ke server & kanal Tim IT (DC) Phonebook CDK V:',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: subColor,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  DropdownButtonFormField<String>(
-                    initialValue: category,
-                    dropdownColor:
-                        isDark ? const Color(0xFF1E2822) : Colors.white,
-                    style: TextStyle(color: textColor, fontSize: 13.5),
-                    decoration: _adaptiveInputDecoration(
-                      context: ctx,
-                      label: 'Kategori Kendala',
-                      prefixIcon: Icons.category_outlined,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Laporan Kegiatan & Foto',
-                        child: Text('Laporan Kegiatan & Foto'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Geolokasi & GPS',
-                        child: Text('Geolokasi & GPS'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Sinkronisasi Offline',
-                        child: Text('Sinkronisasi Offline'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Jadwal & Notifikasi',
-                        child: Text('Jadwal & Notifikasi'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Materi & Unduhan',
-                        child: Text('Materi & Unduhan'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Akun & Profil',
-                        child: Text('Akun & Profil'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Lainnya',
-                        child: Text('Lainnya'),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setDState(() => category = val);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: priority,
-                    dropdownColor:
-                        isDark ? const Color(0xFF1E2822) : Colors.white,
-                    style: TextStyle(color: textColor, fontSize: 13.5),
-                    decoration: _adaptiveInputDecoration(
-                      context: ctx,
-                      label: 'Tingkat Prioritas Bug',
-                      prefixIcon: Icons.flag_outlined,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'Rendah',
-                        child: Text('Rendah (Saran / Tampilan)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Sedang',
-                        child: Text('Sedang (Fungsi Terganggu)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'Tinggi / Kritis',
-                        child: Text('Tinggi / Kritis (Gagal Simpan / Error)'),
-                      ),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) setDState(() => priority = val);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: titleCtrl,
-                    style: TextStyle(color: textColor),
-                    decoration: _adaptiveInputDecoration(
-                      context: ctx,
-                      label: 'Ringkasan Kendala / Bug *',
-                      hint: 'Contoh: Upload foto gagal saat sinyal lemah',
-                      prefixIcon: Icons.short_text_rounded,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descCtrl,
-                    maxLines: 3,
-                    style: TextStyle(color: textColor),
-                    decoration: _adaptiveInputDecoration(
-                      context: ctx,
-                      label: 'Deskripsi & Kronologi Rinci *',
-                      hint:
-                          'Jelaskan langkah-langkah saat bug terjadi beserta pesan error...',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () {
-                        setDState(() => showWebhookConfig = !showWebhookConfig);
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: primaryGreen,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
-                        ),
-                      ),
-                      icon: Icon(
-                        showWebhookConfig
-                            ? Icons.expand_less_rounded
-                            : Icons.webhook_rounded,
-                        size: 17,
-                      ),
-                      label: Text(
-                        showWebhookConfig
-                            ? 'Sembunyikan Webhook Discord (DC)'
-                            : 'Atur URL Webhook Discord Tim IT (Opsional)',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (showWebhookConfig) ...[
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: webhookCtrl,
-                      style: TextStyle(color: textColor, fontSize: 12.5),
-                      decoration: _adaptiveInputDecoration(
-                        context: ctx,
-                        label: 'Discord Webhook URL (Tim IT DC)',
-                        hint: 'https://discord.com/api/webhooks/...',
-                        prefixIcon: Icons.link_rounded,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
-                child: Text('Batal', style: TextStyle(color: subColor)),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF285C2E),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                ),
-                onPressed: isSubmitting ? null : submitBugReport,
-                icon: isSubmitting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.send_rounded, size: 17),
-                label: Text(
-                  isSubmitting ? 'Mengirim...' : 'Kirim ke Tim IT (DC)',
-                ),
-              ),
-            ],
           );
         },
       ),
+    );
+  }
+
+  /// Menampilkan modal daftar status tiket pengaduan laporan masalah pengguna secara live dari backend database.
+  void _showTicketStatusDialog() async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setMState) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            final textColor = isDark ? Colors.white : const Color(0xFF1E2923);
+            final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
+            final primaryGreen =
+                isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+
+            Future<List<Map<String, dynamic>>> fetchTickets() async {
+              final tickets = <Map<String, dynamic>>[];
+              try {
+                final headers = <String, String>{
+                  'Accept': 'application/json',
+                };
+                if (_token.isNotEmpty &&
+                    !_token.startsWith('offline_') &&
+                    !_token.startsWith('google_session_')) {
+                  headers['Authorization'] = 'Bearer $_token';
+                }
+
+                final url = Uri.parse(
+                  '${ApiConstants.bugReportsUrl}?email=${Uri.encodeComponent(_email)}&phone=${Uri.encodeComponent(_whatsapp)}',
+                );
+                final res = await http.get(url, headers: headers).timeout(
+                      const Duration(seconds: 10),
+                    );
+
+                if (res.statusCode == 200) {
+                  final body = jsonDecode(res.body);
+                  final data = body['data'];
+                  final List items =
+                      data is Map && data['data'] is List ? data['data'] : (data is List ? data : []);
+
+                  for (final item in items) {
+                    if (item is Map) {
+                      tickets.add(Map<String, dynamic>.from(item));
+                    }
+                  }
+                }
+              } catch (_) {}
+
+              // Gabungkan dengan cache lokal jika ada tiket offline yang belum tersinkron
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                const bugStorageKey = 'phonebook_bug_reports_v1';
+                final rawBugs = prefs.getString(bugStorageKey);
+                if (rawBugs != null && rawBugs.isNotEmpty) {
+                  final List localList = jsonDecode(rawBugs);
+                  for (final loc in localList) {
+                    final locCode = loc['ticket_code'] ?? loc['id'];
+                    final alreadyInList = tickets.any(
+                      (t) => (t['ticket_code'] ?? t['id']) == locCode,
+                    );
+                    if (!alreadyInList) {
+                      tickets.add(Map<String, dynamic>.from(loc));
+                    }
+                  }
+                }
+              } catch (_) {}
+
+              return tickets;
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.75,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: fetchTickets(),
+                  builder: (context, snapshot) {
+                    final isLoading =
+                        snapshot.connectionState == ConnectionState.waiting;
+                    final tickets = snapshot.data ?? [];
+
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: primaryGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.confirmation_number_rounded,
+                                  color: primaryGreen,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Status Tiket Pengaduan',
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Pantau proses persetujuan dan penanganan tim IT',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: subColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.refresh_rounded),
+                                color: primaryGreen,
+                                onPressed: () {
+                                  setMState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          if (isLoading)
+                            const Expanded(
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                          else if (tickets.isEmpty)
+                            Expanded(
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.inbox_rounded,
+                                      size: 56,
+                                      color: subColor.withValues(alpha: 0.5),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'Belum ada tiket laporan masalah',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: textColor,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Laporan yang Anda kirimkan akan muncul di sini beserta status persetujuan Discord & WhatsApp.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: subColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else
+                            Expanded(
+                              child: ListView.separated(
+                                controller: scrollController,
+                                itemCount: tickets.length,
+                                separatorBuilder: (context, index) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, i) {
+                                  final t = tickets[i];
+                                  final ticketCode = (t['ticket_code'] ??
+                                          t['id'] ??
+                                          'PB-2026')
+                                      .toString();
+                                  final status = (t['status'] ??
+                                          'MENUNGGU PERSETUJUAN')
+                                      .toString()
+                                      .toUpperCase();
+                                  final title =
+                                      (t['title'] ?? '-').toString();
+                                  final cat =
+                                      (t['category'] ?? '-').toString();
+                                  final reason =
+                                      t['rejection_reason']?.toString();
+                                  final handledBy =
+                                      t['handled_by']?.toString();
+                                  final createdAt =
+                                      (t['created_at'] ?? t['createdAt'] ?? '')
+                                          .toString();
+
+                                  // Badge Color
+                                  Color badgeBg;
+                                  Color badgeText;
+                                  IconData badgeIcon;
+
+                                  if (status == 'DITERIMA') {
+                                    badgeBg = const Color(0xFF2E7D32);
+                                    badgeText = Colors.white;
+                                    badgeIcon = Icons.check_circle_rounded;
+                                  } else if (status == 'DITOLAK') {
+                                    badgeBg = const Color(0xFFC62828);
+                                    badgeText = Colors.white;
+                                    badgeIcon = Icons.cancel_rounded;
+                                  } else if (status == 'SELESAI') {
+                                    badgeBg = const Color(0xFF1565C0);
+                                    badgeText = Colors.white;
+                                    badgeIcon = Icons.task_alt_rounded;
+                                  } else if (status == 'SEDANG DIPROSES') {
+                                    badgeBg = const Color(0xFF00838F);
+                                    badgeText = Colors.white;
+                                    badgeIcon = Icons.hourglass_top_rounded;
+                                  } else {
+                                    badgeBg = const Color(0xFFF57F17);
+                                    badgeText = Colors.white;
+                                    badgeIcon = Icons.access_time_rounded;
+                                  }
+
+                                  return Container(
+                                    padding: const EdgeInsets.all(14),
+                                    decoration: BoxDecoration(
+                                      color: isDark
+                                          ? const Color(0xFF222F26)
+                                          : const Color(0xFFF9FBF9),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isDark
+                                            ? const Color(0xFF2E4033)
+                                            : const Color(0xFFE2EBE3),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              '#$ticketCode',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13.5,
+                                                color: primaryGreen,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 9,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: badgeBg,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize:
+                                                    MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    badgeIcon,
+                                                    size: 13,
+                                                    color: badgeText,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    status,
+                                                    style: TextStyle(
+                                                      color: badgeText,
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          title,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14.5,
+                                            color: textColor,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          cat,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: subColor,
+                                          ),
+                                        ),
+                                        if (reason != null &&
+                                            reason.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFC62828)
+                                                  .withValues(alpha: 0.08),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: const Color(0xFFC62828)
+                                                    .withValues(alpha: 0.25),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'Alasan Penolakan:',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFFC62828),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  reason,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: textColor,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                        if (handledBy != null &&
+                                            handledBy.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Penangan: $handledBy',
+                                            style: TextStyle(
+                                              fontSize: 11.5,
+                                              color: subColor,
+                                              fontStyle: FontStyle.italic,
+                                            ),
+                                          ),
+                                        ],
+                                        if (createdAt.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Dibuat: $createdAt',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: subColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2543,6 +2969,7 @@ class _ProfilPageState extends State<ProfilPage> {
                       onFaq: _showFaqDialog,
                       onContactAdmin: _contactAdmin,
                       onReportIssue: _showReportIssueDialog,
+                      onTicketStatus: _showTicketStatusDialog,
                       onPrivacyPolicy: _showPrivacyPolicy,
                       onAboutApp: _showAboutApp,
                     ),

@@ -672,7 +672,7 @@ class _MateriPageState extends State<MateriPage> {
                                 ),
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
-                                  value: selectedCat,
+                                  initialValue: selectedCat,
                                   isExpanded: true,
                                   dropdownColor: Theme.of(context).cardColor,
                                   style: TextStyle(
@@ -724,7 +724,7 @@ class _MateriPageState extends State<MateriPage> {
                                 ),
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
-                                  value: selectedType,
+                                  initialValue: selectedType,
                                   isExpanded: true,
                                   dropdownColor: Theme.of(context).cardColor,
                                   style: TextStyle(

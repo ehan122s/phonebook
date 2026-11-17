@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BugReportController;
+use App\Http\Controllers\Api\DiscordInteractionController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -109,13 +110,16 @@ Route::middleware('auth:sanctum')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Bug Reports (Laporan Kendala ke Tim IT / DC)
+| Bug Reports / Laporan Masalah (Sistem Tiket & Discord Approval)
 |--------------------------------------------------------------------------
 */
 
-Route::post('/bug-reports', [BugReportController::class, 'store']);
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['throttle:20,1'])->group(function () {
+    Route::post('/bug-reports', [BugReportController::class, 'store']);
     Route::get('/bug-reports', [BugReportController::class, 'index']);
+    Route::post('/bug-reports/{id}/action', [DiscordInteractionController::class, 'triggerAction']);
+    Route::post('/tickets/{ticketCode}/action', [DiscordInteractionController::class, 'triggerAction']);
+    Route::post('/discord/interactions', [DiscordInteractionController::class, 'handle']);
 });
 
 /*

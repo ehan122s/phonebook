@@ -13,6 +13,14 @@ return [
         )))),
     ],
 
+    'discord' => [
+        'report_webhook_url' => env('DISCORD_REPORT_WEBHOOK_URL', env('DISCORD_BUG_WEBHOOK_URL')),
+        'bot_token' => env('DISCORD_BOT_TOKEN'),
+        'channel_id' => env('DISCORD_CHANNEL_ID'),
+        'public_key' => env('DISCORD_PUBLIC_KEY'),
+        'allowed_developer_ids' => array_values(array_filter(array_map('trim', explode(',', env('DISCORD_ALLOWED_DEVELOPER_IDS', ''))))),
+    ],
+
 
 
     /*

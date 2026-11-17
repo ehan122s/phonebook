@@ -20,7 +20,7 @@ class LaporanHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.15),
+            color: Colors.green.withValues(alpha: 0.15),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -32,7 +32,7 @@ class LaporanHeader extends StatelessWidget {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(

@@ -2398,10 +2398,18 @@ class _PureDartDeflate {
 
         if (btype == 1) {
           final llLengths = List<int>.filled(288, 0);
-          for (int i = 0; i <= 143; i++) llLengths[i] = 8;
-          for (int i = 144; i <= 255; i++) llLengths[i] = 9;
-          for (int i = 256; i <= 279; i++) llLengths[i] = 7;
-          for (int i = 280; i <= 287; i++) llLengths[i] = 8;
+          for (int i = 0; i <= 143; i++) {
+            llLengths[i] = 8;
+          }
+          for (int i = 144; i <= 255; i++) {
+            llLengths[i] = 9;
+          }
+          for (int i = 256; i <= 279; i++) {
+            llLengths[i] = 7;
+          }
+          for (int i = 280; i <= 287; i++) {
+            llLengths[i] = 8;
+          }
           litLenTree = buildTree(llLengths);
           distTree = buildTree(List<int>.filled(32, 5));
         } else {
@@ -2423,13 +2431,19 @@ class _PureDartDeflate {
             } else if (sym == 16) {
               final prev = allLengths.isNotEmpty ? allLengths.last : 0;
               final repeat = readBits(2) + 3;
-              for (int r = 0; r < repeat; r++) allLengths.add(prev);
+              for (int r = 0; r < repeat; r++) {
+                allLengths.add(prev);
+              }
             } else if (sym == 17) {
               final repeat = readBits(3) + 3;
-              for (int r = 0; r < repeat; r++) allLengths.add(0);
+              for (int r = 0; r < repeat; r++) {
+                allLengths.add(0);
+              }
             } else if (sym == 18) {
               final repeat = readBits(7) + 11;
-              for (int r = 0; r < repeat; r++) allLengths.add(0);
+              for (int r = 0; r < repeat; r++) {
+                allLengths.add(0);
+              }
             }
           }
 

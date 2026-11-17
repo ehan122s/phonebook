@@ -68,7 +68,7 @@ class ProfileNotificationSettings extends StatelessWidget {
           ),
           Switch(
             value: value,
-            activeColor:
+            activeThumbColor:
                 isDark ? const Color(0xFF81C784) : const Color(0xFF285C2E),
             activeTrackColor:
                 isDark ? const Color(0xFF2E4D34) : const Color(0xFFC8E6C9),

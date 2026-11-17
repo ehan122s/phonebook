@@ -320,6 +320,7 @@ class _JadwalPageState extends State<JadwalPage> {
     );
     final timeController = TextEditingController(text: initialTimeStr);
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final userPhone = prefs.getString('profil_whatsapp') ??
         prefs.getString('whatsapp_number') ??
         prefs.getString('telepon') ??
@@ -758,7 +759,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                         ),
                                         Switch(
                                           value: enableWaNotification,
-                                          activeColor: green,
+                                          activeThumbColor: green,
                                           onChanged: (val) {
                                             setSheetState(() {
                                               enableWaNotification = val;
@@ -769,7 +770,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                     ),
                                     const SizedBox(height: 8),
                                     DropdownButtonFormField<int>(
-                                      value: selectedReminderMinutes,
+                                      initialValue: selectedReminderMinutes,
                                       dropdownColor: sheetBg,
                                       style: TextStyle(color: textColor),
                                       decoration: InputDecoration(

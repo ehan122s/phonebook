@@ -5,6 +5,7 @@ class ProfileHelpSection extends StatelessWidget {
   final VoidCallback onFaq;
   final VoidCallback onContactAdmin;
   final VoidCallback onReportIssue;
+  final VoidCallback? onTicketStatus;
   final VoidCallback onPrivacyPolicy;
   final VoidCallback onAboutApp;
 
@@ -14,6 +15,7 @@ class ProfileHelpSection extends StatelessWidget {
     required this.onFaq,
     required this.onContactAdmin,
     required this.onReportIssue,
+    this.onTicketStatus,
     required this.onPrivacyPolicy,
     required this.onAboutApp,
   });
@@ -181,6 +183,15 @@ class ProfileHelpSection extends StatelessWidget {
             title: 'Laporkan Kendala / Masalah',
             subtitle: 'Kirim keluhan atau bug sistem kepada tim IT',
             onTap: onReportIssue,
+          ),
+          Divider(height: 1, indent: 48, color: dividerColor),
+
+          _buildItem(
+            context: context,
+            icon: Icons.confirmation_number_outlined,
+            title: 'Status Tiket & Pengaduan',
+            subtitle: 'Pantau persetujuan developer IT & riwayat WhatsApp',
+            onTap: onTicketStatus ?? onReportIssue,
           ),
           Divider(height: 1, indent: 48, color: dividerColor),
 
