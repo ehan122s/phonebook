@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppNotification;
 use App\Models\Material;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class MaterialController extends Controller
@@ -71,14 +73,16 @@ class MaterialController extends Controller
         }
 
         // If stored in public storage disk
-        if ($filePath && Storage::disk('public')->exists($filePath)) {
-            return Storage::disk('public')->download($filePath, $fileName);
-        }
+        try {
+            if ($filePath && Storage::disk('public')->exists($filePath)) {
+                return Storage::disk('public')->download($filePath, $fileName);
+            }
 
-        // Check in default storage
-        if ($filePath && Storage::exists($filePath)) {
-            return Storage::download($filePath, $fileName);
-        }
+            // Check in default storage
+            if ($filePath && Storage::exists($filePath)) {
+                return Storage::download($filePath, $fileName);
+            }
+        } catch (\Throwable $e) {}
 
         // Fallback: Generate an official formatted summary document for download
         $content = "DINAS KEHUTANAN PROVINSI JAWA BARAT\n";
@@ -107,7 +111,7 @@ class MaterialController extends Controller
 
     /**
      * Store a newly created educational material.
-     * Records uploader details so it can show "uploaded by [who]".
+     * Records uploader details and creates notification with material_id reference.
      */
     public function store(Request $request)
     {
@@ -140,9 +144,18 @@ class MaterialController extends Controller
 
         if ($request->hasFile('file')) {
             $file = $request->file('file');
-            $filePath = $file->store('materials', 'public');
             $fileName = $file->getClientOriginalName();
-            $fileType = strtoupper($file->getClientOriginalExtension());
+            $fileType = strtoupper($file->getClientOriginalExtension() ?: $fileType);
+            try {
+                $stored = $file->store('materials', 'public');
+                if ($stored) {
+                    $filePath = $stored;
+                } else {
+                    $filePath = 'materials/' . $fileName;
+                }
+            } catch (\Throwable $e) {
+                $filePath = 'materials/' . $fileName;
+            }
         } elseif ($request->filled('drive_url')) {
             $filePath = $request->input('drive_url');
         } elseif ($request->filled('file_path')) {
@@ -161,6 +174,31 @@ class MaterialController extends Controller
             'uploader_name' => $uploaderName,
             'uploader_role' => $uploaderRole,
         ]);
+
+        // Catat notifikasi materi baru ke tabel app_notifications
+        try {
+            if (Schema::hasTable('app_notifications')) {
+                $targetUserId = $user ? $user->id : User::query()->value('id');
+                if ($targetUserId) {
+                    AppNotification::create([
+                        'user_id' => $targetUserId,
+                        'type' => 'materi',
+                        'title' => 'Materi Baru: ' . $material->title,
+                        'message' => "Materi edukasi \"{$material->title}\" ({$material->category_name}) telah diunggah oleh {$uploaderName}.",
+                        'reference_id' => 'material_' . $material->id,
+                        'metadata' => [
+                            'material_id' => $material->id,
+                            'materialId' => (string) $material->id,
+                            'title' => $material->title,
+                            'category' => $material->category_name,
+                            'file_type' => $material->file_type,
+                            'uploader_name' => $uploaderName,
+                        ],
+                        'is_read' => false,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {}
 
         $material->load(['user:id,name,email,role,nip,jabatan,wilayah', 'category']);
 
@@ -214,14 +252,21 @@ class MaterialController extends Controller
         }
 
         if ($request->hasFile('file')) {
-            if ($material->file_path && Storage::disk('public')->exists($material->file_path)) {
-                Storage::disk('public')->delete($material->file_path);
-            }
+            try {
+                if ($material->file_path && Storage::disk('public')->exists($material->file_path)) {
+                    Storage::disk('public')->delete($material->file_path);
+                }
+            } catch (\Throwable $e) {}
 
             $file = $request->file('file');
-            $material->file_path = $file->store('materials', 'public');
             $material->file_name = $file->getClientOriginalName();
             $material->file_type = strtoupper($file->getClientOriginalExtension());
+            try {
+                $stored = $file->store('materials', 'public');
+                if ($stored) {
+                    $material->file_path = $stored;
+                }
+            } catch (\Throwable $e) {}
         }
 
         $material->save();
@@ -257,9 +302,11 @@ class MaterialController extends Controller
             ], 403);
         }
 
-        if ($material->file_path && Storage::disk('public')->exists($material->file_path)) {
-            Storage::disk('public')->delete($material->file_path);
-        }
+        try {
+            if ($material->file_path && Storage::disk('public')->exists($material->file_path)) {
+                Storage::disk('public')->delete($material->file_path);
+            }
+        } catch (\Throwable $e) {}
 
         $material->delete();
 

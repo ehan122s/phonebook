@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\BugReportController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -106,6 +107,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 });
 
+/*
+|--------------------------------------------------------------------------
+| Bug Reports (Laporan Kendala ke Tim IT / DC)
+|--------------------------------------------------------------------------
+*/
+
+Route::post('/bug-reports', [BugReportController::class, 'store']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/bug-reports', [BugReportController::class, 'index']);
+});
 
 /*
 |--------------------------------------------------------------------------

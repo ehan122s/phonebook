@@ -10,6 +10,10 @@ abstract final class ApiConstants {
   static String userDetailUrl(dynamic id) => '$baseUrl/api/users/$id';
   static String get reportsUrl => '$baseUrl/api/reports';
   static String reportDetailUrl(dynamic id) => '$baseUrl/api/reports/$id';
+  static String reportPhotosUrl(dynamic reportId) =>
+      '$baseUrl/api/reports/$reportId/photos';
+  static String reportPhotoFileUrl(dynamic photoId) =>
+      '$baseUrl/api/report-photos/$photoId/file';
   static String get schedulesUrl => '$baseUrl/api/schedules';
   static String scheduleDetailUrl(dynamic id) => '$baseUrl/api/schedules/$id';
   static String get notificationsUrl => '$baseUrl/api/notifications';
@@ -17,6 +21,7 @@ abstract final class ApiConstants {
       '$baseUrl/api/notifications/$id';
   static String get clearAllNotificationsUrl =>
       '$baseUrl/api/notifications/clear-all';
+  static String get bugReportsUrl => '$baseUrl/api/bug-reports';
 
   /// Fonnte WhatsApp Gateway Token
   static const String fonnteToken = 'zN7n8bZVJE9N52ftjUuX';

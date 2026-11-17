@@ -15,6 +15,7 @@ class ReportPhoto extends Model
         'photo_base64',
         'latitude',
         'longitude',
+        'address',
     ];
 
     protected $hidden = [
@@ -32,7 +33,7 @@ class ReportPhoto extends Model
 
     public function getUrlAttribute()
     {
-        if (filter_var($this->photo, FILTER_VALIDATE_URL)) {
+        if (!empty($this->photo) && (filter_var($this->photo, FILTER_VALIDATE_URL) || str_starts_with($this->photo, 'data:image'))) {
             return $this->photo;
         }
         return url('/api/report-photos/' . $this->id . '/file');

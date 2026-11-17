@@ -44,6 +44,10 @@ class _LaporanPageState extends State<LaporanPage> {
   String? _loadErrorMessage;
   bool _hasOpenedInitialReport = false;
 
+  final ScrollController _userScrollController = ScrollController();
+  final GlobalKey _arsipSectionKey = GlobalKey();
+  bool _highlightLatestCard = false;
+
   final List<Map<String, dynamic>> _laporanList = [];
   final List<Map<String, dynamic>> _templatesList = [];
 
@@ -73,6 +77,8 @@ class _LaporanPageState extends State<LaporanPage> {
   @override
   void dispose() {
     _connectivitySub?.cancel();
+    _userScrollController.dispose();
+    _userScrollController.dispose();
     super.dispose();
   }
 
@@ -241,6 +247,24 @@ class _LaporanPageState extends State<LaporanPage> {
             '${item['id']}_${item['judul']?.toString().toLowerCase() ?? ''}';
         if (seenKeys.contains(key)) return;
         seenKeys.add(key);
+        final rawIsi = (item['isi'] ?? '').toString();
+        if (ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
+          item['isi'] = ReportTemplateManager.sanitizeReportIsi(
+            rawIsi: '',
+            jenis: (item['jenis'] ?? 'Laporan Kegiatan').toString(),
+            judul: (item['judul'] ?? 'Kegiatan Lapangan').toString(),
+            lokasi: (item['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+          );
+        }
+        final rawIsi = (item['isi'] ?? '').toString();
+        if (ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
+          item['isi'] = ReportTemplateManager.sanitizeReportIsi(
+            rawIsi: '',
+            jenis: (item['jenis'] ?? 'Laporan Kegiatan').toString(),
+            judul: (item['judul'] ?? 'Kegiatan Lapangan').toString(),
+            lokasi: (item['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+          );
+        }
         allReports.add(item);
       }
 
@@ -574,6 +598,74 @@ class _LaporanPageState extends State<LaporanPage> {
   // Actions (User & Admin)
   // ---------------------------------------------------------------------------
 
+  Future<void> _handleReportSavedFromForm() async {
+    await _loadSavedReports();
+    if (!mounted) return;
+    setState(() {
+      _selectedTab = 0;
+      _highlightLatestCard = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final arsipCtx = _arsipSectionKey.currentContext;
+      if (arsipCtx != null) {
+        Scrollable.ensureVisible(
+          arsipCtx,
+          duration: const Duration(milliseconds: 550),
+          curve: Curves.easeOutCubic,
+          alignment: 0.08,
+        );
+      } else if (_userScrollController.hasClients) {
+        _userScrollController.animateTo(
+          _userScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 550),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) {
+        setState(() => _highlightLatestCard = false);
+      }
+    });
+  }
+
+  Future<void> _handleReportSavedFromForm() async {
+    await _loadSavedReports();
+    if (!mounted) return;
+    setState(() {
+      _selectedTab = 0;
+      _highlightLatestCard = true;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final arsipCtx = _arsipSectionKey.currentContext;
+      if (arsipCtx != null) {
+        Scrollable.ensureVisible(
+          arsipCtx,
+          duration: const Duration(milliseconds: 550),
+          curve: Curves.easeOutCubic,
+          alignment: 0.08,
+        );
+      } else if (_userScrollController.hasClients) {
+        _userScrollController.animateTo(
+          _userScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 550),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted) {
+        setState(() => _highlightLatestCard = false);
+      }
+    });
+  }
+
   void _openReportForm(
     String jenisLaporan, {
     Map<String, dynamic>? existing,
@@ -583,7 +675,8 @@ class _LaporanPageState extends State<LaporanPage> {
       context,
       jenisLaporan: jenisLaporan,
       existing: existing,
-      onReportSaved: _loadSavedReports,
+      onReportSaved: _handleReportSavedFromForm,
+      onReportSaved: _handleReportSavedFromForm,
       isPreviewOnly: isPreviewOnly,
     );
   }
@@ -1439,7 +1532,12 @@ class _LaporanPageState extends State<LaporanPage> {
 
   Widget _buildUserLaporanBody(bool isDark, Color titleColor) {
     return SingleChildScrollView(
+<<<<<<< Updated upstream
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+=======
+      controller: _userScrollController,
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+>>>>>>> Stashed changes
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1456,6 +1554,8 @@ class _LaporanPageState extends State<LaporanPage> {
           ),
           const SizedBox(height: 28),
           Column(
+            key: _arsipSectionKey,
+            key: _arsipSectionKey,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -1683,21 +1783,80 @@ class _LaporanPageState extends State<LaporanPage> {
     }
 
     return Column(
-      children: _laporanList.map((laporan) {
-        return ReportCard(
-          laporan: laporan,
-          onView: () => showReportDetail(
-            context,
+      children: _laporanList.asMap().entries.map((entry) {
+        final index = entry.key;
+        final laporan = entry.value;
+        final isHighlighted = index == 0 && _highlightLatestCard;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+          margin: EdgeInsets.only(bottom: isHighlighted ? 6 : 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: isHighlighted
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF245C3A).withValues(alpha: 0.22),
+                      blurRadius: 18,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
+          ),
+          child: ReportCard(
             laporan: laporan,
-            onEdit: _openReportForm,
-            onDownload: _downloadReport,
+            onView: () => showReportDetail(
+              context,
+              laporan: laporan,
+              onEdit: _openReportForm,
+              onDownload: _downloadReport,
+            ),
+            onEdit: () => _openReportForm(
+              (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
+              existing: laporan,
+            ),
+            onDownload: () => _downloadReport(laporan),
+            onDelete: () => _deleteReport(laporan),
           ),
-          onEdit: () => _openReportForm(
-            (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
-            existing: laporan,
+      children: _laporanList.asMap().entries.map((entry) {
+        final index = entry.key;
+        final laporan = entry.value;
+        final isHighlighted = index == 0 && _highlightLatestCard;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+          margin: EdgeInsets.only(bottom: isHighlighted ? 6 : 0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: isHighlighted
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF245C3A).withValues(alpha: 0.22),
+                      blurRadius: 18,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : null,
           ),
-          onDownload: () => _downloadReport(laporan),
-          onDelete: () => _deleteReport(laporan),
+          child: ReportCard(
+            laporan: laporan,
+            onView: () => showReportDetail(
+              context,
+              laporan: laporan,
+              onEdit: _openReportForm,
+              onDownload: _downloadReport,
+            ),
+            onEdit: () => _openReportForm(
+              (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
+              existing: laporan,
+            ),
+            onDownload: () => _downloadReport(laporan),
+            onDelete: () => _deleteReport(laporan),
+          ),
         );
       }).toList(),
     );

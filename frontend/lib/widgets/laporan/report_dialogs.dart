@@ -17,6 +17,454 @@ import '../../services/notification_service.dart';
 import 'report_templates.dart';
 
 // ---------------------------------------------------------------------------
+// 0. Notifikasi Overlay di Bagian Depan (Tampil di Atas Modal Bottom Sheet)
+// ---------------------------------------------------------------------------
+
+OverlayEntry? _activeTopNotificationEntry;
+
+void showTopFrontNotification(
+  BuildContext context, {
+  required String message,
+  bool isError = false,
+  Duration duration = const Duration(seconds: 3),
+}) {
+  try {
+    _activeTopNotificationEntry?.remove();
+    _activeTopNotificationEntry = null;
+  } catch (_) {}
+
+  final overlay =
+      Overlay.maybeOf(context, rootOverlay: true) ?? Overlay.maybeOf(context);
+  if (overlay == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? Colors.red.shade700 : const Color(0xFF245C3A),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return;
+  }
+
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (ctx) => _TopFrontNotificationBanner(
+      message: message,
+      isError: isError,
+      duration: duration,
+      onDismissed: () {
+        if (_activeTopNotificationEntry == entry) {
+          try {
+            entry.remove();
+          } catch (_) {}
+          _activeTopNotificationEntry = null;
+        }
+      },
+    ),
+  );
+
+  _activeTopNotificationEntry = entry;
+  overlay.insert(entry);
+}
+
+class _TopFrontNotificationBanner extends StatefulWidget {
+  final String message;
+  final bool isError;
+  final Duration duration;
+  final VoidCallback onDismissed;
+
+  const _TopFrontNotificationBanner({
+    required this.message,
+    required this.isError,
+    required this.duration,
+    required this.onDismissed,
+  });
+
+  @override
+  State<_TopFrontNotificationBanner> createState() =>
+      _TopFrontNotificationBannerState();
+}
+
+class _TopFrontNotificationBannerState
+    extends State<_TopFrontNotificationBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnim;
+  late final Animation<double> _fadeAnim;
+  late final Animation<double> _scaleAnim;
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+      reverseDuration: const Duration(milliseconds: 260),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, -1.1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    _scaleAnim = Tween<double>(begin: 0.94, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    _controller.forward();
+    Future.delayed(widget.duration, _dismiss);
+  }
+
+  Future<void> _dismiss() async {
+    if (_closing || !mounted) return;
+    _closing = true;
+    try {
+      await _controller.reverse();
+    } catch (_) {}
+    widget.onDismissed();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top + 14;
+    final bgColor =
+        widget.isError ? const Color(0xFFC62828) : const Color(0xFF1E5631);
+
+    return Positioned(
+      top: topPad,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: SlideTransition(
+              position: _slideAnim,
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: ScaleTransition(
+                  scale: _scaleAnim,
+                  child: Dismissible(
+                    key: const ValueKey('top_front_notif'),
+                    direction: DismissDirection.up,
+                    onDismissed: (_) => widget.onDismissed(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 13,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.28),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              widget.isError
+                                  ? Icons.error_outline_rounded
+                                  : Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.message,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: _dismiss,
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 0. Notifikasi Overlay di Bagian Depan (Tampil di Atas Modal Bottom Sheet)
+// ---------------------------------------------------------------------------
+
+OverlayEntry? _activeTopNotificationEntry;
+
+void showTopFrontNotification(
+  BuildContext context, {
+  required String message,
+  bool isError = false,
+  Duration duration = const Duration(seconds: 3),
+}) {
+  try {
+    _activeTopNotificationEntry?.remove();
+    _activeTopNotificationEntry = null;
+  } catch (_) {}
+
+  final overlay =
+      Overlay.maybeOf(context, rootOverlay: true) ?? Overlay.maybeOf(context);
+  if (overlay == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? Colors.red.shade700 : const Color(0xFF245C3A),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+    return;
+  }
+
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (ctx) => _TopFrontNotificationBanner(
+      message: message,
+      isError: isError,
+      duration: duration,
+      onDismissed: () {
+        if (_activeTopNotificationEntry == entry) {
+          try {
+            entry.remove();
+          } catch (_) {}
+          _activeTopNotificationEntry = null;
+        }
+      },
+    ),
+  );
+
+  _activeTopNotificationEntry = entry;
+  overlay.insert(entry);
+}
+
+class _TopFrontNotificationBanner extends StatefulWidget {
+  final String message;
+  final bool isError;
+  final Duration duration;
+  final VoidCallback onDismissed;
+
+  const _TopFrontNotificationBanner({
+    required this.message,
+    required this.isError,
+    required this.duration,
+    required this.onDismissed,
+  });
+
+  @override
+  State<_TopFrontNotificationBanner> createState() =>
+      _TopFrontNotificationBannerState();
+}
+
+class _TopFrontNotificationBannerState
+    extends State<_TopFrontNotificationBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<Offset> _slideAnim;
+  late final Animation<double> _fadeAnim;
+  late final Animation<double> _scaleAnim;
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 360),
+      reverseDuration: const Duration(milliseconds: 260),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, -1.1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutBack,
+        reverseCurve: Curves.easeInCubic,
+      ),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    _scaleAnim = Tween<double>(begin: 0.94, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    _controller.forward();
+    Future.delayed(widget.duration, _dismiss);
+  }
+
+  Future<void> _dismiss() async {
+    if (_closing || !mounted) return;
+    _closing = true;
+    try {
+      await _controller.reverse();
+    } catch (_) {}
+    widget.onDismissed();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final topPad = MediaQuery.of(context).padding.top + 14;
+    final bgColor =
+        widget.isError ? const Color(0xFFC62828) : const Color(0xFF1E5631);
+
+    return Positioned(
+      top: topPad,
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: SlideTransition(
+              position: _slideAnim,
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: ScaleTransition(
+                  scale: _scaleAnim,
+                  child: Dismissible(
+                    key: const ValueKey('top_front_notif'),
+                    direction: DismissDirection.up,
+                    onDismissed: (_) => widget.onDismissed(),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 13,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.28),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              widget.isError
+                                  ? Icons.error_outline_rounded
+                                  : Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.message,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: _dismiss,
+                            borderRadius: BorderRadius.circular(20),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: Colors.white70,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 1. Bottom Sheet Pemilihan Jenis Laporan
 // ---------------------------------------------------------------------------
 
@@ -146,7 +594,14 @@ Future<void> showReportForm(
     for (final field in templateFields) field: TextEditingController(),
   };
 
-  final existingIsi = existing?['isi']?.toString() ?? '';
+  final rawExistingIsi = existing?['isi']?.toString() ?? '';
+  final existingIsi = ReportTemplateManager.isCorruptedBinaryText(rawExistingIsi)
+      ? ''
+      : rawExistingIsi;
+  final rawExistingIsi = existing?['isi']?.toString() ?? '';
+  final existingIsi = ReportTemplateManager.isCorruptedBinaryText(rawExistingIsi)
+      ? ''
+      : rawExistingIsi;
   final isiCtrl = TextEditingController(
     text: existingIsi.isNotEmpty
         ? existingIsi
@@ -207,10 +662,44 @@ Future<void> showReportForm(
   }
 
   bool isGettingLocation = false;
+<<<<<<< Updated upstream
   bool isProcessingPhoto = false;
   String? locationWarningMessage;
+=======
+  bool isSubmittingForm = false;
+>>>>>>> Stashed changes
   bool showCoordinateInputs =
       latCtrl.text.isNotEmpty || lngCtrl.text.isNotEmpty;
+  final ScrollController formScrollCtrl = ScrollController();
+  String? inlineStatusMessage;
+  bool inlineStatusIsError = false;
+
+  void scrollFormToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (formScrollCtrl.hasClients) {
+        formScrollCtrl.animateTo(
+          formScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
+  final ScrollController formScrollCtrl = ScrollController();
+  String? inlineStatusMessage;
+  bool inlineStatusIsError = false;
+
+  void scrollFormToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (formScrollCtrl.hasClients) {
+        formScrollCtrl.animateTo(
+          formScrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+  }
 
   showModalBottomSheet(
     context: context,
@@ -258,6 +747,7 @@ Future<void> showReportForm(
               showCoordinateInputs = true;
             });
 
+<<<<<<< Updated upstream
             final loc = await LocationService.instance.refreshLocation();
             if (!sheetContext.mounted) return null;
 
@@ -280,6 +770,49 @@ Future<void> showReportForm(
                     ),
                     backgroundColor: const Color(0xFF245C3A),
                   ),
+=======
+            Future<void> handleFallbackLocation() async {
+              try {
+                final res = await http
+                    .get(Uri.parse('http://ip-api.com/json'))
+                    .timeout(const Duration(seconds: 4));
+                if (res.statusCode == 200) {
+                  final data = jsonDecode(res.body);
+                  if (data['status'] == 'success') {
+                    final lat = (data['lat'] as num).toDouble();
+                    final lon = (data['lon'] as num).toDouble();
+                    final city =
+                        '${data['city'] ?? ''}, ${data['regionName'] ?? ''}'
+                            .trim();
+                    latCtrl.text = lat.toStringAsFixed(6);
+                    lngCtrl.text = lon.toStringAsFixed(6);
+                    if (lokasiCtrl.text.trim().isEmpty && city.isNotEmpty) {
+                      lokasiCtrl.text = city;
+                    }
+                    if (sheetContext.mounted) {
+                      showTopFrontNotification(
+                        sheetContext,
+                        message: 'Lokasi berhasil didapatkan ($city)',
+                      showTopFrontNotification(
+                        sheetContext,
+                        message: 'Lokasi berhasil didapatkan ($city)',
+                      );
+                    }
+                    return;
+                  }
+                }
+              } catch (_) {}
+
+              latCtrl.text = '-7.227900';
+              lngCtrl.text = '107.908700';
+              if (lokasiCtrl.text.trim().isEmpty) {
+                lokasiCtrl.text = 'Kawasan Hutan Garut';
+              }
+              if (sheetContext.mounted) {
+                showTopFrontNotification(
+                  sheetContext,
+                  message: 'Koordinat default wilayah Garut berhasil disetel.',
+>>>>>>> Stashed changes
                 );
               }
               return loc;
@@ -291,6 +824,7 @@ Future<void> showReportForm(
                 locationWarningMessage = err;
               });
 
+<<<<<<< Updated upstream
               if (showSnackBar) {
                 ScaffoldMessenger.of(sheetContext).showSnackBar(
                   SnackBar(
@@ -317,6 +851,134 @@ Future<void> showReportForm(
                 );
               }
               return null;
+=======
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
+              await handleFallbackLocation();
+              if (sheetContext.mounted) {
+                setModalState(() => isGettingLocation = false);
+              }
+              return;
+            }
+
+            try {
+              bool serviceEnabled =
+                  await Geolocator.isLocationServiceEnabled();
+              if (!serviceEnabled) {
+                if (sheetContext.mounted) {
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
+                    isError: true,
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
+                    isError: true,
+                  );
+                }
+                return;
+              }
+
+              LocationPermission permission =
+                  await Geolocator.checkPermission();
+              if (permission == LocationPermission.denied) {
+                permission = await Geolocator.requestPermission();
+                if (permission == LocationPermission.denied) {
+                  if (sheetContext.mounted) {
+                    showTopFrontNotification(
+                      sheetContext,
+                      message: 'Izin akses lokasi GPS ditolak.',
+                      isError: true,
+                    showTopFrontNotification(
+                      sheetContext,
+                      message: 'Izin akses lokasi GPS ditolak.',
+                      isError: true,
+                    );
+                  }
+                  return;
+                }
+              }
+
+              if (permission == LocationPermission.deniedForever) {
+                if (sheetContext.mounted) {
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
+                    isError: true,
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
+                    isError: true,
+                  );
+                }
+                return;
+              }
+
+              final position = await Geolocator.getCurrentPosition(
+                locationSettings: const LocationSettings(
+                  accuracy: LocationAccuracy.high,
+                  timeLimit: Duration(seconds: 12),
+                ),
+              );
+
+              latCtrl.text = position.latitude.toStringAsFixed(6);
+              lngCtrl.text = position.longitude.toStringAsFixed(6);
+
+              if (lokasiCtrl.text.trim().isEmpty) {
+                lokasiCtrl.text =
+                    'Titik Koordinat (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
+              }
+
+              if (sheetContext.mounted) {
+                showTopFrontNotification(
+                  sheetContext,
+                  message: 'Koordinat GPS berhasil diperoleh!',
+                showTopFrontNotification(
+                  sheetContext,
+                  message: 'Koordinat GPS berhasil diperoleh!',
+                );
+              }
+            } on MissingPluginException {
+              await handleFallbackLocation();
+            } on PlatformException catch (pe) {
+              if (pe.code == 'MissingPluginException' ||
+                  pe.message?.contains('No implementation') == true) {
+                await handleFallbackLocation();
+              } else {
+                if (sheetContext.mounted) {
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
+                    isError: true,
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
+                    isError: true,
+                  );
+                }
+              }
+            } catch (e) {
+              final msg = e.toString();
+              if (msg.contains('MissingPluginException') ||
+                  msg.contains('No implementation')) {
+                await handleFallbackLocation();
+              } else {
+                if (sheetContext.mounted) {
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Gagal mendapatkan lokasi GPS: $e',
+                    isError: true,
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Gagal mendapatkan lokasi GPS: $e',
+                    isError: true,
+                  );
+                }
+              }
+            } finally {
+              if (sheetContext.mounted) {
+                setModalState(() => isGettingLocation = false);
+              }
+>>>>>>> Stashed changes
             }
           }
 
@@ -455,6 +1117,7 @@ Future<void> showReportForm(
                 }
               }
 
+<<<<<<< Updated upstream
               if (picked == null) return;
 
               setModalState(() => isProcessingPhoto = true);
@@ -477,6 +1140,43 @@ Future<void> showReportForm(
                 reverseGeocodedAddress = rev.fullAddress;
                 if (lokasiCtrl.text.trim().isEmpty) {
                   lokasiCtrl.text = rev.shortName;
+=======
+                if (picked != null) {
+                  final bytes = await picked.readAsBytes();
+                  setModalState(() {
+                    pickedPhotoFile = picked;
+                    pickedPhotoBytes = bytes;
+                    inlineStatusMessage =
+                        'Foto dokumentasi "${picked!.name}" berhasil dilampirkan. Silakan simpan atau selesaikan laporan di bawah.';
+                    inlineStatusIsError = false;
+                  });
+                  scrollFormToBottom();
+                  if (sheetContext.mounted) {
+                    showTopFrontNotification(
+                      sheetContext,
+                      message: 'Foto dokumentasi berhasil dilampirkan!',
+                    );
+                  }
+                    inlineStatusMessage =
+                        'Foto dokumentasi "${picked!.name}" berhasil dilampirkan. Silakan simpan atau selesaikan laporan di bawah.';
+                    inlineStatusIsError = false;
+                  });
+                  scrollFormToBottom();
+                  if (sheetContext.mounted) {
+                    showTopFrontNotification(
+                      sheetContext,
+                      message: 'Foto dokumentasi berhasil dilampirkan!',
+                    );
+                  }
+                }
+              } catch (e) {
+                if (sheetContext.mounted) {
+                  showTopFrontNotification(
+                    sheetContext,
+                    message: 'Gagal mengambil foto: $e',
+                    isError: true,
+                  );
+>>>>>>> Stashed changes
                 }
               }
 
@@ -619,6 +1319,8 @@ Future<void> showReportForm(
                     // ── ISI FORM DALAM KARTU SEKSI YANG LEGA & RESPONSIF ──
                     Flexible(
                       child: SingleChildScrollView(
+                        controller: formScrollCtrl,
+                        controller: formScrollCtrl,
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
                         child: LayoutBuilder(
                           builder: (context, constraints) {
@@ -1409,6 +2111,76 @@ Future<void> showReportForm(
                                     ],
                                   ),
                                 ),
+
+                                // Banner Status / Notifikasi Transisi di Bawah Kartu Form
+                                AnimatedSize(
+                                  duration: const Duration(milliseconds: 280),
+                                  curve: Curves.easeOutCubic,
+                                  child: inlineStatusMessage == null
+                                      ? const SizedBox.shrink()
+                                      : Padding(
+                                          padding: const EdgeInsets.only(top: 14),
+                                          child: TweenAnimationBuilder<double>(
+                                            key: ValueKey(inlineStatusMessage),
+                                            tween: Tween(begin: 0.0, end: 1.0),
+                                            duration: const Duration(milliseconds: 320),
+                                            curve: Curves.easeOutCubic,
+                                            builder: (context, value, child) {
+                                              return Opacity(
+                                                opacity: value,
+                                                child: Transform.translate(
+                                                  offset: Offset(0, 12 * (1 - value)),
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
+                                            child: Container(
+                                              width: double.infinity,
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 14,
+                                                vertical: 12,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: inlineStatusIsError
+                                                    ? Colors.red.withValues(alpha: 0.12)
+                                                    : LaporanColors.primary.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  color: inlineStatusIsError
+                                                      ? Colors.red.withValues(alpha: 0.45)
+                                                      : LaporanColors.primary.withValues(alpha: 0.45),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    inlineStatusIsError
+                                                        ? Icons.error_outline_rounded
+                                                        : Icons.check_circle_rounded,
+                                                    color: inlineStatusIsError
+                                                        ? Colors.red.shade700
+                                                        : primaryGreen,
+                                                    size: 20,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Text(
+                                                      inlineStatusMessage!,
+                                                      style: TextStyle(
+                                                        fontSize: 12.8,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: inlineStatusIsError
+                                                            ? Colors.red.shade700
+                                                            : primaryGreen,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ),
                               ],
                             );
                           },
@@ -1451,6 +2223,7 @@ Future<void> showReportForm(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
+<<<<<<< Updated upstream
                                     onPressed: () async {
                                       if (existing == null &&
                                           templateFields.isNotEmpty) {
@@ -1476,6 +2249,66 @@ Future<void> showReportForm(
                                         existingPhotoUrl: existingPhotoUrl,
                                       );
                                     },
+=======
+                                    onPressed: isSubmittingForm
+                                        ? null
+                                        : () async {
+                                            if (existing == null &&
+                                                templateFields.isNotEmpty) {
+                                              syncTemplateFieldsToIsi();
+                                            }
+                                            if (judulCtrl.text.trim().isEmpty ||
+                                                lokasiCtrl.text.trim().isEmpty) {
+                                              const msg =
+                                                  'Judul dan lokasi kegiatan wajib diisi terlebih dahulu.';
+                                              setModalState(() {
+                                                inlineStatusMessage = msg;
+                                                inlineStatusIsError = true;
+                                              });
+                                              scrollFormToBottom();
+                                              showTopFrontNotification(
+                                                sheetContext,
+                                                message: msg,
+                                                isError: true,
+                                              );
+                                              return;
+                                            }
+                                            setModalState(() {
+                                              isSubmittingForm = true;
+                                              inlineStatusMessage =
+                                                  'Menyimpan draft laporan...';
+                                              inlineStatusIsError = false;
+                                            });
+                                            scrollFormToBottom();
+                                            await _handleSubmit(
+                                              context: sheetContext,
+                                              parentContext: context,
+                                              jenisLaporan: jenisLaporan,
+                                              existing: existing,
+                                              judulCtrl: judulCtrl,
+                                              isiCtrl: isiCtrl,
+                                              lokasiCtrl: lokasiCtrl,
+                                              latCtrl: latCtrl,
+                                              lngCtrl: lngCtrl,
+                                              customActivityDate: formattedDateApi,
+                                              status: 'Draft',
+                                              onReportSaved: onReportSaved,
+                                              closeOnSuccess: true,
+                                              photoBytes: pickedPhotoBytes,
+                                              photoFilename: pickedPhotoFile?.name,
+                                              onStatusFeedback: (msg, isErr) {
+                                                if (sheetContext.mounted) {
+                                                  setModalState(() {
+                                                    inlineStatusMessage = msg;
+                                                    inlineStatusIsError = isErr;
+                                                    isSubmittingForm = false;
+                                                  });
+                                                  scrollFormToBottom();
+                                                }
+                                              },
+                                            );
+                                          },
+>>>>>>> Stashed changes
                                     icon: const Icon(
                                       Icons.save_outlined,
                                       size: 18,
@@ -1498,21 +2331,79 @@ Future<void> showReportForm(
                                 Expanded(
                                   flex: 2,
                                   child: ElevatedButton.icon(
-                                    onPressed: () async {
-                                      if (existing == null &&
-                                          templateFields.isNotEmpty) {
-                                        syncTemplateFieldsToIsi();
-                                      }
-                                      if (judulCtrl.text.trim().isEmpty ||
-                                          isiCtrl.text.trim().isEmpty) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Isi judul dan bagian laporan sebelum menyelesaikan laporan.',
+                                    onPressed: isSubmittingForm
+                                        ? null
+                                        : () async {
+                                            if (existing == null &&
+                                                templateFields.isNotEmpty) {
+                                              syncTemplateFieldsToIsi();
+                                            }
+                                            if (judulCtrl.text.trim().isEmpty ||
+                                                lokasiCtrl.text.trim().isEmpty ||
+                                                isiCtrl.text.trim().isEmpty) {
+                                              const msg =
+                                                  'Lengkapi judul, lokasi, dan isi laporan sebelum menyelesaikan laporan.';
+                                              setModalState(() {
+                                                inlineStatusMessage = msg;
+                                                inlineStatusIsError = true;
+                                              });
+                                              scrollFormToBottom();
+                                              showTopFrontNotification(
+                                                sheetContext,
+                                                message: msg,
+                                                isError: true,
+                                              );
+                                              return;
+                                            }
+                                            setModalState(() {
+                                              isSubmittingForm = true;
+                                              inlineStatusMessage =
+                                                  'Mengirim dan menyelesaikan laporan...';
+                                              inlineStatusIsError = false;
+                                            });
+                                            scrollFormToBottom();
+                                            await _handleSubmit(
+                                              context: sheetContext,
+                                              parentContext: context,
+                                              jenisLaporan: jenisLaporan,
+                                              existing: existing,
+                                              judulCtrl: judulCtrl,
+                                              isiCtrl: isiCtrl,
+                                              lokasiCtrl: lokasiCtrl,
+                                              latCtrl: latCtrl,
+                                              lngCtrl: lngCtrl,
+                                              customActivityDate: formattedDateApi,
+                                              status: 'Selesai',
+                                              onReportSaved: onReportSaved,
+                                              closeOnSuccess: true,
+                                              photoBytes: pickedPhotoBytes,
+                                              photoFilename: pickedPhotoFile?.name,
+                                              onStatusFeedback: (msg, isErr) {
+                                                if (sheetContext.mounted) {
+                                                  setModalState(() {
+                                                    inlineStatusMessage = msg;
+                                                    inlineStatusIsError = isErr;
+                                                    isSubmittingForm = false;
+                                                  });
+                                                  scrollFormToBottom();
+                                                }
+                                              },
+                                            );
+                                          },
+                                    icon: isSubmittingForm
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
                                             ),
+                                          )
+                                        : const Icon(
+                                            Icons.check_circle_outline,
+                                            size: 18,
                                           ),
+<<<<<<< Updated upstream
                                         );
                                         return;
                                       }
@@ -1544,6 +2435,13 @@ Future<void> showReportForm(
                                     label: const Text(
                                       'Selesaikan Laporan',
                                       style: TextStyle(
+=======
+                                    label: Text(
+                                      isSubmittingForm
+                                          ? 'Memproses...'
+                                          : 'Selesaikan Laporan',
+                                      style: const TextStyle(
+>>>>>>> Stashed changes
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -3166,10 +4064,20 @@ void showReportDetail(
                       ),
                     ),
                     child: Text(
+<<<<<<< Updated upstream
                       (laporan['isi']?.toString().isNotEmpty ?? false)
                           ? laporan['isi'].toString()
                           : 'Isi laporan belum dilengkapi.',
                       style: TextStyle(height: 1.5, color: textColor),
+=======
+                      ReportTemplateManager.sanitizeReportIsi(
+                        rawIsi: (laporan['isi'] ?? '').toString(),
+                        jenis: (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
+                        judul: (laporan['judul'] ?? 'Kegiatan Lapangan').toString(),
+                        lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+                      ),
+                      style: const TextStyle(height: 1.5),
+>>>>>>> Stashed changes
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -3641,15 +4549,29 @@ Future<void> _handleSubmit({
   bool closeOnSuccess = false,
   Uint8List? photoBytes,
   String? photoFilename,
+<<<<<<< Updated upstream
   String? existingPhotoUrl,
+=======
+  void Function(String message, bool isError)? onStatusFeedback,
+>>>>>>> Stashed changes
 }) async {
   final prefs = await SharedPreferences.getInstance();
   final token = prefs.getString('token');
 
   if (token == null || token.isEmpty) {
+    const msg = 'Sesi berakhir. Silakan login kembali.';
+    onStatusFeedback?.call(msg, true);
+    const msg = 'Sesi berakhir. Silakan login kembali.';
+    onStatusFeedback?.call(msg, true);
     if (!parentContext.mounted) return;
-    ScaffoldMessenger.of(parentContext).showSnackBar(
-      const SnackBar(content: Text('Silakan login kembali.')),
+    showTopFrontNotification(
+      parentContext,
+      message: msg,
+      isError: true,
+    showTopFrontNotification(
+      parentContext,
+      message: msg,
+      isError: true,
     );
     return;
   }
@@ -3658,11 +4580,19 @@ Future<void> _handleSubmit({
   final location = lokasiCtrl.text.trim();
 
   if (title.isEmpty || location.isEmpty) {
+    const msg = 'Judul dan lokasi wajib diisi.';
+    onStatusFeedback?.call(msg, true);
+    const msg = 'Judul dan lokasi wajib diisi.';
+    onStatusFeedback?.call(msg, true);
     if (!parentContext.mounted) return;
-    ScaffoldMessenger.of(parentContext).showSnackBar(
-      const SnackBar(
-        content: Text('Judul dan lokasi wajib diisi.'),
-      ),
+    showTopFrontNotification(
+      parentContext,
+      message: msg,
+      isError: true,
+    showTopFrontNotification(
+      parentContext,
+      message: msg,
+      isError: true,
     );
     return;
   }
@@ -3796,6 +4726,7 @@ Future<void> _handleSubmit({
         reportId: recordId,
       );
 
+<<<<<<< Updated upstream
       await onReportSaved();
 
       if (!parentContext.mounted) return;
@@ -3809,14 +4740,36 @@ Future<void> _handleSubmit({
           ),
         ),
       );
+=======
+      final offlineMsg = photoBytes != null
+          ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan saat online.'
+          : 'Laporan disimpan secara offline. Akan otomatis dikirim saat ada koneksi.';
+      onStatusFeedback?.call(offlineMsg, false);
+>>>>>>> Stashed changes
 
       if (context.mounted) {
         Navigator.pop(context);
       }
-    } catch (e) {
+      await onReportSaved();
+
       if (!parentContext.mounted) return;
+<<<<<<< Updated upstream
       ScaffoldMessenger.of(parentContext).showSnackBar(
         SnackBar(content: Text('Gagal menyimpan laporan: $e')),
+=======
+      showTopFrontNotification(
+        parentContext,
+        message: offlineMsg,
+      );
+    } catch (e) {
+      final errMsg = 'Gagal menyimpan offline: $e';
+      onStatusFeedback?.call(errMsg, true);
+      if (!parentContext.mounted) return;
+      showTopFrontNotification(
+        parentContext,
+        message: errMsg,
+        isError: true,
+>>>>>>> Stashed changes
       );
     }
     return;
@@ -3881,6 +4834,7 @@ Future<void> _handleSubmit({
         savedPhotoUrl: photoDataUri,
         serverPhotos: serverPhotos.isNotEmpty ? serverPhotos : null,
       );
+<<<<<<< Updated upstream
 
       await NotificationService.instance.addReportCreatedNotification(
         title: title,
@@ -3893,6 +4847,8 @@ Future<void> _handleSubmit({
       await onReportSaved();
 
       if (!parentContext.mounted) return;
+=======
+>>>>>>> Stashed changes
 
       final String notifyMsg;
       if (apiStatus == 'draft') {
@@ -3905,16 +4861,36 @@ Future<void> _handleSubmit({
             : 'Laporan berhasil dikirim ke database.';
       }
 
+<<<<<<< Updated upstream
       ScaffoldMessenger.of(parentContext).showSnackBar(
         SnackBar(
           backgroundColor: const Color(0xFF245C3A),
           content: Text(notifyMsg),
         ),
       );
+=======
+      onStatusFeedback?.call(notifyMsg, photoError != null);
+>>>>>>> Stashed changes
 
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
+      await onReportSaved();
+
+      if (!parentContext.mounted) return;
+      showTopFrontNotification(
+        parentContext,
+        message: notifyMsg,
+        isError: photoError != null,
+      );
+      await onReportSaved();
+
+      if (!parentContext.mounted) return;
+      showTopFrontNotification(
+        parentContext,
+        message: notifyMsg,
+        isError: photoError != null,
+      );
     } else {
       final insertedId = await LaporanService.saveOffline(
         payload: payload,
@@ -3922,6 +4898,7 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
+<<<<<<< Updated upstream
       final recordId = 'local_$insertedId';
       await syncToLocalMonitoringStorage(
         recordId,
@@ -3947,9 +4924,24 @@ Future<void> _handleSubmit({
           ),
         ),
       );
+=======
+      await syncToLocalMonitoringStorage('local_$insertedId');
+      final localMsg = status == 'Draft'
+          ? 'Draft laporan disimpan lokal di perangkat.'
+          : 'Laporan disimpan lokal di perangkat dan siap diunduh.';
+      onStatusFeedback?.call(localMsg, false);
+
+>>>>>>> Stashed changes
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
+      await onReportSaved();
+
+      if (!parentContext.mounted) return;
+      showTopFrontNotification(
+        parentContext,
+        message: localMsg,
+      );
     }
   } catch (e) {
     try {
@@ -3959,6 +4951,7 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
+<<<<<<< Updated upstream
       final recordId = 'local_$insertedId';
       await syncToLocalMonitoringStorage(
         recordId,
@@ -3982,13 +4975,37 @@ Future<void> _handleSubmit({
           ),
         );
       }
+=======
+      await syncToLocalMonitoringStorage('local_$insertedId');
+      const fallbackMsg =
+          'Koneksi bermasalah. Laporan dan foto disimpan di perangkat.';
+      onStatusFeedback?.call(fallbackMsg, false);
+
+>>>>>>> Stashed changes
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
+      await onReportSaved();
+      if (parentContext.mounted) {
+        showTopFrontNotification(
+          parentContext,
+          message: fallbackMsg,
+        );
+      }
     } catch (_) {
+      final errMsg = 'Gagal mengirim laporan: $e';
+      onStatusFeedback?.call(errMsg, true);
+      final errMsg = 'Gagal mengirim laporan: $e';
+      onStatusFeedback?.call(errMsg, true);
       if (!parentContext.mounted) return;
-      ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(content: Text('Gagal mengirim laporan: $e')),
+      showTopFrontNotification(
+        parentContext,
+        message: errMsg,
+        isError: true,
+      showTopFrontNotification(
+        parentContext,
+        message: errMsg,
+        isError: true,
       );
     }
   }

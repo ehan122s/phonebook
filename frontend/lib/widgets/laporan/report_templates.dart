@@ -178,21 +178,160 @@ class ReportTemplateManager {
     };
   }
 
-  /// Normalisasi map template agar tipe datanya selalu konsisten.
+  /// Mendeteksi apakah suatu teks mengandung byte biner / ZIP (.docx) mentah
+  /// yang rusak seperti `PK!TF-.xml` atau `word/document.xml`.
+  static bool isCorruptedBinaryText(String? text) {
+    if (text == null) return false;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return false;
+
+    final lower = trimmed.toLowerCase();
+    if (trimmed.contains('PK!') ||
+        trimmed.contains('PK\x03') ||
+        lower.contains('word/document.xml') ||
+        lower.contains('[content_types]') ||
+        lower.contains('_rels/.rels') ||
+        lower.contains('docprops/') ||
+        lower.contains('theme/theme') ||
+        lower.contains('fonttable.xml') ||
+        lower.contains('websettings.xml') ||
+        lower.contains('endstream')) {
+      return true;
+    }
+
+    int weirdSymbolCount = 0;
+    int printableCount = 0;
+    for (int i = 0; i < trimmed.length; i++) {
+      final code = trimmed.codeUnitAt(i);
+      if (code >= 32 && code <= 126) {
+        printableCount++;
+        const noisyChars = '~\$`^|\\@#%*<>[]{}';
+        if (noisyChars.contains(String.fromCharCode(code))) {
+          weirdSymbolCount++;
+        }
+      }
+    }
+    if (printableCount > 24 && (weirdSymbolCount / printableCount) > 0.10) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Memvalidasi apakah nama field/kolom form layak dibaca manusia (bukan byte biner).
+  static bool _isValidHumanFieldName(String? field) {
+    if (field == null) return false;
+    final f = field.trim();
+    if (f.length < 3 || f.length > 55) return false;
+    if (isCorruptedBinaryText(f)) return false;
+    if (!RegExp(r'^[A-Za-z0-9 .,/()&-]+$').hasMatch(f)) return false;
+    final letters = RegExp(r'[A-Za-z]').allMatches(f).length;
+    if (letters < 3) return false;
+    if (!RegExp(r'[aiueoAIUEO]').hasMatch(f)) return false;
+    return true;
+  }
+
+  /// Memvalidasi apakah satu baris teks hasil ekstraksi layak masuk ke template.
+  static bool _isValidHumanReadableLine(String line) {
+    final l = line.trim();
+    if (l.isEmpty) return false;
+    if (isCorruptedBinaryText(l)) return false;
+    final cleaned = l.replaceAll(RegExp(r'\{\{[^}]+\}\}'), '');
+    if (RegExp(r'[~^`|\\\$@#%*<>]').hasMatch(cleaned)) return false;
+    final letters = RegExp(r'[A-Za-z]').allMatches(l).length;
+    if (letters < 2) return false;
+    return true;
+  }
+
+  /// Mengembalikan daftar field standar yang bersih sesuai kategori/judul laporan.
+  static List<String> defaultFieldsForCategory(String categoryOrTitle) {
+    final hint = categoryOrTitle.toLowerCase();
+    if (hint.contains('trk') ||
+        hint.contains('rehab') ||
+        hint.contains('tanam') ||
+        hint.contains('bibit')) {
+      return <String>[
+        'Blok / Petak Kawasan Rehabilitasi',
+        'Jenis & Jumlah Bibit Tanaman',
+        'Luas Area Penanaman (Ha)',
+        'Kondisi Tanaman & Evaluasi Lapangan',
+      ];
+    } else if (hint.contains('monitor') ||
+        hint.contains('patroli') ||
+        hint.contains('batas')) {
+      return <String>[
+        'Kawasan / Titik Pantau Hutan',
+        'Kondisi Tegakan & Patok Batas',
+        'Temuan Lapangan / Kerawanan',
+        'Rekomendasi Tindakan',
+      ];
+    } else if (hint.contains('kejadian') ||
+        hint.contains('kebakaran') ||
+        hint.contains('bencana') ||
+        hint.contains('darurat')) {
+      return <String>[
+        'Jenis Kejadian (Kebakaran / Longsor / Gangguan)',
+        'Perkiraan Dampak / Luas Terdampak',
+        'Tindakan Penanganan Awal',
+      ];
+    } else if (hint.contains('kegiatan')) {
+      return <String>[
+        'Nama Kegiatan & Instansi Terkait',
+        'Tujuan Pelaksanaan Kegiatan',
+        'Ringkasan Hasil Kegiatan',
+      ];
+    }
+    return <String>[
+      'Kelompok Tani Hutan (KTH) / Sasaran',
+      'Materi Penyuluhan',
+      'Jumlah Peserta (Orang)',
+      'Hasil & Tindak Lanjut',
+    ];
+  }
+
+  /// Membangun kerangka template standar yang bersih dari judul dan daftar field.
+  static String buildCleanDefaultTemplateBody(
+    String title,
+    List<String> fields,
+  ) {
+    final cleanTitle =
+        title.trim().isEmpty ? 'LAPORAN KEGIATAN LAPANGAN' : title.trim().toUpperCase();
+    final buffer = StringBuffer();
+    buffer.writeln(cleanTitle);
+    buffer.writeln('Cabang Dinas Kehutanan Wilayah V\n');
+    for (int i = 0; i < fields.length; i++) {
+      final f = fields[i];
+      buffer.writeln('${i + 1}. $f : {{$f}}');
+    }
+    return buffer.toString().trim();
+  }
+
+  /// Normalisasi map template agar tipe datanya selalu konsisten dan bebas dari korupsi biner.
   static Map<String, dynamic> normalizeTemplate(Map<String, dynamic> raw) {
+    final title = (raw['title'] ?? 'Laporan Kegiatan').toString().trim();
+    final category = (raw['category'] ?? 'Penyuluhan').toString().trim();
+
     final rawFields = raw['fields'];
-    final List<String> fields = rawFields is List
+    List<String> fields = rawFields is List
         ? rawFields
               .map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty)
+              .where(_isValidHumanFieldName)
               .toList()
         : <String>[];
+
+    if (fields.isEmpty) {
+      fields = defaultFieldsForCategory('$title $category');
+    }
+
+    String templateBody = (raw['templateBody'] ?? '').toString().trim();
+    if (templateBody.isEmpty || isCorruptedBinaryText(templateBody)) {
+      templateBody = buildCleanDefaultTemplateBody(title, fields);
+    }
 
     return {
       'id': (raw['id'] ?? 'tpl_${DateTime.now().millisecondsSinceEpoch}')
           .toString(),
-      'title': (raw['title'] ?? 'Laporan Kegiatan').toString(),
-      'category': (raw['category'] ?? 'Penyuluhan').toString(),
+      'title': title.isEmpty ? 'Laporan Kegiatan' : title,
+      'category': category.isEmpty ? 'Penyuluhan' : category,
       'iconKey': (raw['iconKey'] ?? 'description').toString(),
       'description':
           (raw['description'] ??
@@ -203,18 +342,20 @@ class ReportTemplateManager {
       'requireLocation': raw['requireLocation'] != false,
       'sampleFileName': (raw['sampleFileName'] ?? '').toString(),
       'fields': fields,
-      'templateBody': (raw['templateBody'] ?? '').toString(),
+      'templateBody': templateBody,
       'updatedBy': (raw['updatedBy'] ?? 'Administrator').toString(),
     };
   }
 
-  /// Memuat seluruh template dari SharedPreferences.
+  /// Memuat seluruh template dari SharedPreferences dan otomatis memperbaiki template
+  /// yang sebelumnya sempat tersimpan dalam kondisi rusak (`PK!...`).
   static Future<List<Map<String, dynamic>>> loadTemplates() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(storageKey);
 
     if (raw != null && raw.isNotEmpty) {
       try {
+        final bool hadCorruption = isCorruptedBinaryText(raw);
         final List<dynamic> decoded = jsonDecode(raw);
         final list = decoded
             .map(
@@ -232,6 +373,8 @@ class ReportTemplateManager {
               (t) => t['id'] == 'tpl_trk',
             );
             list.insert(1, trkDefault);
+            await saveTemplates(list);
+          } else if (hadCorruption) {
             await saveTemplates(list);
           }
           return list;
@@ -277,13 +420,15 @@ class ReportTemplateManager {
     required Map<String, String> fieldValues,
     String additionalNotes = '',
   }) {
-    String body = (template['templateBody'] ?? '').toString().trim();
+    final cleanTemplate = normalizeTemplate(template);
+    String body = (cleanTemplate['templateBody'] ?? '').toString().trim();
     final List<String> fields =
-        (template['fields'] as List?)?.map((e) => e.toString()).toList() ?? [];
+        (cleanTemplate['fields'] as List?)?.map((e) => e.toString()).toList() ??
+        [];
 
-    if (body.isEmpty) {
+    if (body.isEmpty || isCorruptedBinaryText(body)) {
       final buffer = StringBuffer();
-      buffer.writeln(template['title'].toString().toUpperCase());
+      buffer.writeln(cleanTemplate['title'].toString().toUpperCase());
       buffer.writeln('Cabang Dinas Kehutanan Wilayah V\n');
       for (int i = 0; i < fields.length; i++) {
         final f = fields[i];
@@ -296,6 +441,15 @@ class ReportTemplateManager {
         final val = (fieldValues[f] ?? '').trim();
         body = body.replaceAll('{{$f}}', val.isEmpty ? '-' : val);
       }
+      // Bersihkan sisa placeholder {{...}} yang belum terisi agar rapi saat dicetak
+      body = body.replaceAllMapped(
+        RegExp(r'\{\{([^}]+)\}\}'),
+        (m) {
+          final key = (m.group(1) ?? '').trim();
+          final val = (fieldValues[key] ?? '').trim();
+          return val.isNotEmpty ? val : '-';
+        },
+      );
     }
 
     if (additionalNotes.trim().isNotEmpty) {
@@ -303,6 +457,54 @@ class ReportTemplateManager {
     }
 
     return body;
+  }
+
+  /// Menyaring dan memperbaiki isi laporan (`isi`) jika terdeteksi korup (`PK!...`)
+  /// atau kosong sehingga baik tampilan di aplikasi maupun unduhan PDF/Word selalu bersih.
+  static String sanitizeReportIsi({
+    required String rawIsi,
+    required String jenis,
+    required String judul,
+    required String lokasi,
+    Map<String, dynamic>? template,
+  }) {
+    final trimmed = rawIsi.trim();
+    if (trimmed.isNotEmpty && !isCorruptedBinaryText(trimmed)) {
+      return trimmed.replaceAll(RegExp(r'\{\{[^}]+\}\}'), '-');
+    }
+
+    final List<String> fields = template != null && template['fields'] is List
+        ? (template['fields'] as List).map((e) => e.toString()).toList()
+        : defaultFieldsForCategory(jenis);
+
+    final Map<String, String> fallbackValues = {};
+    for (int i = 0; i < fields.length; i++) {
+      final f = fields[i];
+      final fl = f.toLowerCase();
+      if (fl.contains('lokasi') || fl.contains('kawasan') || fl.contains('blok') || fl.contains('kth') || i == 0) {
+        fallbackValues[f] = lokasi.trim().isNotEmpty ? lokasi.trim() : 'Kawasan Hutan CDK Wilayah V Garut';
+      } else if (fl.contains('materi') || fl.contains('kegiatan') || fl.contains('jenis') || i == 1) {
+        fallbackValues[f] = judul.trim().isNotEmpty ? judul.trim() : jenis;
+      } else if (fl.contains('jumlah') || fl.contains('luas')) {
+        fallbackValues[f] = 'Terlampir sesuai daftar hadir / pengukuran lapangan';
+      } else {
+        fallbackValues[f] =
+            'Kegiatan $judul di $lokasi telah dilaksanakan dengan baik dan lancar sesuai prosedur lapangan.';
+      }
+    }
+
+    final cleanTpl = template != null
+        ? normalizeTemplate(template)
+        : <String, dynamic>{
+            'title': jenis.trim().isEmpty ? 'Laporan Kegiatan' : jenis,
+            'fields': fields,
+            'templateBody': buildCleanDefaultTemplateBody(jenis, fields),
+          };
+
+    return buildFormattedBody(
+      template: cleanTpl,
+      fieldValues: fallbackValues,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -324,13 +526,27 @@ class ReportTemplateManager {
     String extractedRawText = '';
 
     if (bytes != null && bytes.isNotEmpty) {
-      if (ext == 'docx') {
+      if (ext == 'docx' ||
+          (bytes.length >= 4 &&
+              bytes[0] == 0x50 &&
+              bytes[1] == 0x4B &&
+              bytes[2] == 0x03 &&
+              bytes[3] == 0x04)) {
         extractedRawText = _extractTextFromDocxBytes(bytes);
-      } else if (ext == 'pdf') {
+      } else if (ext == 'pdf' ||
+          (bytes.length >= 4 &&
+              bytes[0] == 0x25 &&
+              bytes[1] == 0x50 &&
+              bytes[2] == 0x44 &&
+              bytes[3] == 0x46)) {
         extractedRawText = _extractTextFromPdfBytes(bytes);
       } else {
         extractedRawText = _extractPlainText(bytes);
       }
+    }
+
+    if (isCorruptedBinaryText(extractedRawText)) {
+      extractedRawText = '';
     }
 
     final List<String> detectedFields = [];
@@ -371,7 +587,7 @@ class ReportTemplateManager {
     final rawLines = extractedRawText
         .split(RegExp(r'\r?\n'))
         .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
+        .where(_isValidHumanReadableLine)
         .toList();
 
     final placeholderRegex = RegExp(r'\{\{([^}]+)\}\}|\[([^\]]+)\]');
@@ -393,17 +609,21 @@ class ReportTemplateManager {
       'longitude',
       'foto',
       'dokumentasi',
+      'nama pegawai',
+      'nama penyuluh',
+      'status',
     };
 
     for (final line in rawLines) {
       final matches = placeholderRegex.allMatches(line);
       if (matches.isNotEmpty) {
         String updatedLine = line;
+        bool hasValidMatch = false;
         for (final m in matches) {
           final fieldName = (m.group(1) ?? m.group(2) ?? '').trim();
-          if (fieldName.length >= 3 &&
-              fieldName.length <= 45 &&
+          if (_isValidHumanFieldName(fieldName) &&
               !ignoredStandardLabels.contains(fieldName.toLowerCase())) {
+            hasValidMatch = true;
             if (!detectedFields.contains(fieldName)) {
               detectedFields.add(fieldName);
             }
@@ -413,17 +633,19 @@ class ReportTemplateManager {
             );
           }
         }
-        templateLines.add(updatedLine);
-        continue;
+        if (hasValidMatch && _isValidHumanReadableLine(updatedLine)) {
+          templateLines.add(updatedLine);
+          continue;
+        }
       }
 
       final colonMatch = colonLineRegex.firstMatch(line);
       if (colonMatch != null) {
         final rawLabel = colonMatch.group(1)!.trim();
         final lowerLabel = rawLabel.toLowerCase();
-        if (!ignoredStandardLabels.contains(lowerLabel) &&
-            !lowerLabel.contains('http') &&
-            rawLabel.length >= 3) {
+        if (_isValidHumanFieldName(rawLabel) &&
+            !ignoredStandardLabels.contains(lowerLabel) &&
+            !lowerLabel.contains('http')) {
           if (!detectedFields.contains(rawLabel)) {
             detectedFields.add(rawLabel);
           }
@@ -433,53 +655,24 @@ class ReportTemplateManager {
         }
       }
 
-      templateLines.add(line);
+      if (_isValidHumanReadableLine(line)) {
+        templateLines.add(line);
+      }
     }
 
     if (detectedFields.isEmpty) {
-      if (inferredCategory == 'TRK & Rehabilitasi') {
-        detectedFields.addAll([
-          'Blok / Petak Kawasan Rehabilitasi',
-          'Jenis & Jumlah Bibit Tanaman',
-          'Luas Area Penanaman (Ha)',
-          'Kondisi Tanaman & Evaluasi Lapangan',
-        ]);
-      } else if (inferredCategory == 'Monitoring & Patroli') {
-        detectedFields.addAll([
-          'Kawasan / Titik Pantau Hutan',
-          'Kondisi Tegakan & Patok Batas',
-          'Temuan Lapangan / Kerawanan',
-          'Rekomendasi Tindakan',
-        ]);
-      } else if (inferredCategory == 'Kejadian Khusus') {
-        detectedFields.addAll([
-          'Jenis Kejadian Lapangan',
-          'Perkiraan Dampak / Luas Terdampak',
-          'Tindakan Penanganan Awal',
-        ]);
-      } else {
-        detectedFields.addAll([
-          'Kelompok Tani Hutan (KTH) / Sasaran',
-          'Materi / Pokok Kegiatan',
-          'Jumlah Peserta Hadir (Orang)',
-          'Hasil Kegiatan & Tindak Lanjut',
-        ]);
-      }
+      detectedFields.addAll(defaultFieldsForCategory(inferredCategory));
     }
 
     String finalTemplateBody;
-    if (templateLines.length >= 3 &&
-        templateLines.join('\n').contains('{{')) {
-      finalTemplateBody = templateLines.join('\n');
+    final candidateBody = templateLines.join('\n').trim();
+    if (templateLines.length >= 2 &&
+        candidateBody.contains('{{') &&
+        !isCorruptedBinaryText(candidateBody)) {
+      finalTemplateBody = candidateBody;
     } else {
-      final buffer = StringBuffer();
-      buffer.writeln(inferredTitle.toUpperCase());
-      buffer.writeln('Cabang Dinas Kehutanan Wilayah V\n');
-      for (int i = 0; i < detectedFields.length; i++) {
-        final f = detectedFields[i];
-        buffer.writeln('${i + 1}. $f : {{$f}}');
-      }
-      finalTemplateBody = buffer.toString().trim();
+      finalTemplateBody =
+          buildCleanDefaultTemplateBody(inferredTitle, detectedFields);
     }
 
     return {
@@ -495,23 +688,64 @@ class ReportTemplateManager {
     };
   }
 
+  /// Mengekstrak teks paragraf dari file `.docx` (ZIP XML) secara lintas platform
+  /// (mendukung Android, iOS, Desktop, maupun Flutter Web tanpa menghasilkan byte `PK!`).
   static String _extractTextFromDocxBytes(Uint8List bytes) {
     try {
       const targetName = 'word/document.xml';
       final targetBytes = ascii.encode(targetName);
 
-      int i = 0;
+      // 1. Cari ukuran & offset akurat dari Central Directory ZIP (PK\x01\x02) jika tersedia
+      int? cdCompSize;
+      int? cdLocalOffset;
+      for (int j = bytes.length - 46; j >= 0; j--) {
+        if (bytes[j] == 0x50 &&
+            bytes[j + 1] == 0x4B &&
+            bytes[j + 2] == 0x01 &&
+            bytes[j + 3] == 0x02) {
+          final fnLen = bytes[j + 28] | (bytes[j + 29] << 8);
+          final namePos = j + 46;
+          if (fnLen == targetBytes.length &&
+              namePos + fnLen <= bytes.length) {
+            bool match = true;
+            for (int k = 0; k < targetBytes.length; k++) {
+              if (bytes[namePos + k] != targetBytes[k]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              cdCompSize =
+                  bytes[j + 20] |
+                  (bytes[j + 21] << 8) |
+                  (bytes[j + 22] << 16) |
+                  (bytes[j + 23] << 24);
+              cdLocalOffset =
+                  bytes[j + 42] |
+                  (bytes[j + 43] << 8) |
+                  (bytes[j + 44] << 16) |
+                  (bytes[j + 45] << 24);
+              break;
+            }
+          }
+        }
+      }
+
+      // 2. Telusuri Local File Header (PK\x03\x04) untuk word/document.xml
+      int i = cdLocalOffset ?? 0;
       while (i <= bytes.length - 30) {
         if (bytes[i] == 0x50 &&
             bytes[i + 1] == 0x4B &&
             bytes[i + 2] == 0x03 &&
             bytes[i + 3] == 0x04) {
           final compressionMethod = bytes[i + 8] | (bytes[i + 9] << 8);
-          final compressedSize =
+          final localCompSize =
               bytes[i + 18] |
               (bytes[i + 19] << 8) |
               (bytes[i + 20] << 16) |
               (bytes[i + 21] << 24);
+          final compressedSize =
+              (localCompSize > 0) ? localCompSize : (cdCompSize ?? 0);
           final fileNameLength = bytes[i + 26] | (bytes[i + 27] << 8);
           final extraFieldLength = bytes[i + 28] | (bytes[i + 29] << 8);
 
@@ -530,45 +764,61 @@ class ReportTemplateManager {
             final dataStart = nameStart + fileNameLength + extraFieldLength;
             if (isTarget && dataStart < bytes.length) {
               final endIndex =
-                  (dataStart + compressedSize <= bytes.length &&
-                      compressedSize > 0)
+                  (compressedSize > 0 &&
+                      dataStart + compressedSize <= bytes.length)
                   ? dataStart + compressedSize
                   : bytes.length;
-              final slice = bytes.sublist(dataStart, endIndex);
+              final slice = Uint8List.sublistView(bytes, dataStart, endIndex);
 
               List<int>? xmlBytes;
               if (compressionMethod == 0) {
                 xmlBytes = slice;
-              } else if (!kIsWeb && compressionMethod == 8) {
+              } else if (compressionMethod == 8) {
+                // Dekompresi DEFLATE murni lintas platform (berfungsi di Web & Mobile)
                 try {
-                  final filter = RawZLibFilter.inflateFilter(raw: true);
-                  filter.process(slice, 0, slice.length);
-                  final out = <int>[];
-                  List<int>? chunk;
-                  while ((chunk = filter.processed()) != null) {
-                    out.addAll(chunk!);
-                  }
-                  xmlBytes = out;
+                  xmlBytes = _PureDartDeflate.inflate(slice);
                 } catch (_) {}
+
+                // Fallback native RawZLibFilter jika diperlukan di non-Web
+                if ((xmlBytes == null || xmlBytes.isEmpty) && !kIsWeb) {
+                  try {
+                    final filter = RawZLibFilter.inflateFilter(raw: true);
+                    filter.process(slice, 0, slice.length);
+                    final out = <int>[];
+                    List<int>? chunk;
+                    while ((chunk = filter.processed()) != null) {
+                      out.addAll(chunk!);
+                    }
+                    xmlBytes = out;
+                  } catch (_) {}
+                }
               }
 
               if (xmlBytes != null && xmlBytes.isNotEmpty) {
                 final xmlString = utf8.decode(xmlBytes, allowMalformed: true);
-                return _stripXmlToParagraphs(xmlString);
+                final stripped = _stripXmlToParagraphs(xmlString);
+                if (stripped.isNotEmpty && !isCorruptedBinaryText(stripped)) {
+                  return stripped;
+                }
               }
+              break;
             }
           }
         }
         i++;
       }
     } catch (_) {}
-    return _extractPlainText(bytes);
+    // Jangan pernah mengembalikan byte ZIP mentah (PK!...) jika dekompresi gagal
+    return '';
   }
 
   static String _stripXmlToParagraphs(String xml) {
     final withLineBreaks = xml
         .replaceAll('</w:p>', '\n')
+        .replaceAll('</w:tr>', '\n')
+        .replaceAll('</w:tc>', '  ')
         .replaceAll('<w:br/>', '\n')
+        .replaceAll('<w:br />', '\n')
         .replaceAll('<w:tab/>', ' ');
     final withoutTags = withLineBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
     return withoutTags
@@ -576,6 +826,7 @@ class ReportTemplateManager {
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
         .trim();
   }
 
@@ -586,26 +837,38 @@ class ReportTemplateManager {
       final buffer = StringBuffer();
       for (final m in matches) {
         final txt = m.group(1)!.trim();
-        if (RegExp(r'^[A-Za-z0-9 .,:/()&-]+$').hasMatch(txt)) {
+        if (_isValidHumanReadableLine(txt) &&
+            RegExp(r'^[A-Za-z0-9 .,:/()&-]+$').hasMatch(txt)) {
           buffer.writeln(txt);
         }
       }
       final res = buffer.toString().trim();
-      if (res.isNotEmpty) return res;
+      if (res.isNotEmpty && !isCorruptedBinaryText(res)) return res;
     } catch (_) {}
     return '';
   }
 
   static String _extractPlainText(Uint8List bytes) {
     try {
+      // Cegah file biner ZIP (.docx) atau PDF dibaca mentah sebagai teks UTF-8
+      if (bytes.length >= 4) {
+        if ((bytes[0] == 0x50 && bytes[1] == 0x4B) ||
+            (bytes[0] == 0x25 &&
+                bytes[1] == 0x50 &&
+                bytes[2] == 0x44 &&
+                bytes[3] == 0x46)) {
+          return '';
+        }
+      }
       final decoded = utf8.decode(bytes, allowMalformed: true);
+      if (isCorruptedBinaryText(decoded)) return '';
       final lines = decoded
           .split(RegExp(r'\r?\n'))
           .map(
             (l) =>
                 l.replaceAll(RegExp(r'[^\x20-\x7E\u00A0-\u00FF]'), '').trim(),
           )
-          .where((l) => l.length >= 3)
+          .where((l) => l.length >= 3 && _isValidHumanReadableLine(l))
           .toList();
       return lines.take(40).join('\n');
     } catch (_) {
@@ -1018,30 +1281,20 @@ class ReportDocumentExporter {
     final judul = (copy['judul'] ?? 'Kegiatan Lapangan').toString();
     final lokasi = (copy['lokasi'] ?? 'Kawasan Hutan Garut').toString();
 
-    if (rawIsi.isEmpty || !rawIsi.contains('\n')) {
-      final template = await ReportTemplateManager.findByTitle(jenis);
-      final List<String> fields =
-          (template['fields'] as List?)?.map((e) => e.toString()).toList() ??
-          [];
-      final Map<String, String> defaultValues = {};
-      for (int i = 0; i < fields.length; i++) {
-        final f = fields[i];
-        if (i == 0) {
-          defaultValues[f] = lokasi;
-        } else if (i == 1) {
-          defaultValues[f] = judul;
-        } else if (i == fields.length - 1 && rawIsi.isNotEmpty) {
-          defaultValues[f] = rawIsi;
-        } else {
-          defaultValues[f] = rawIsi.isNotEmpty
-              ? rawIsi
-              : 'Telah dilaksanakan sesuai jadwal dan prosedur lapangan.';
-        }
-      }
-      copy['isi'] = ReportTemplateManager.buildFormattedBody(
+    final template = await ReportTemplateManager.findByTitle(jenis);
+
+    if (rawIsi.isEmpty ||
+        !rawIsi.contains('\n') ||
+        ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
+      copy['isi'] = ReportTemplateManager.sanitizeReportIsi(
+        rawIsi: ReportTemplateManager.isCorruptedBinaryText(rawIsi) ? '' : rawIsi,
+        jenis: jenis,
+        judul: judul,
+        lokasi: lokasi,
         template: template,
-        fieldValues: defaultValues,
       );
+    } else {
+      copy['isi'] = rawIsi.replaceAll(RegExp(r'\{\{[^}]+\}\}'), '-');
     }
     return copy;
   }
@@ -1074,7 +1327,15 @@ class ReportDocumentExporter {
     final koordinat = (lat.isNotEmpty && lng.isNotEmpty)
         ? '$lat, $lng'
         : 'Terlampir pada sistem';
-    final isiRaw = (laporan['isi'] ?? '').toString().trim();
+    final rawIsiCandidate = (laporan['isi'] ?? '').toString().trim();
+    final isiRaw = ReportTemplateManager.isCorruptedBinaryText(rawIsiCandidate)
+        ? ReportTemplateManager.sanitizeReportIsi(
+            rawIsi: '',
+            jenis: (laporan['jenis'] ?? 'Laporan Penyuluhan').toString(),
+            judul: (laporan['judul'] ?? 'Kegiatan Lapangan').toString(),
+            lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+          )
+        : rawIsiCandidate;
 
     final bool hasAttachedPhoto = photo != null;
     final int totalPages = hasAttachedPhoto ? 2 : 1;
@@ -1220,7 +1481,7 @@ class ReportDocumentExporter {
     if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
       drawText(
         'Waktu Unduh: $waktuUnduh',
-        320,
+        290,
         42,
         fontSize: 8,
       );
@@ -1479,9 +1740,16 @@ class ReportDocumentExporter {
     final status = (laporan['status'] ?? 'Selesai').toString();
     final lat = (laporan['latitude'] ?? '').toString();
     final lng = (laporan['longitude'] ?? '').toString();
-    final isi = (laporan['isi'] ?? '')
-        .toString()
-        .replaceAll('\n', '<br/>');
+    final rawWordIsi = (laporan['isi'] ?? '').toString().trim();
+    final cleanWordIsi = ReportTemplateManager.isCorruptedBinaryText(rawWordIsi)
+        ? ReportTemplateManager.sanitizeReportIsi(
+            rawIsi: '',
+            jenis: jenis,
+            judul: judul,
+            lokasi: lokasi,
+          )
+        : rawWordIsi;
+    final isi = cleanWordIsi.replaceAll('\n', '<br/>');
 
     String photoHtmlSection = '';
     if (photo != null) {
@@ -2020,5 +2288,175 @@ class _FieldBadge extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+// ============================================================================
+// DEKOMPRESOR DEFLATE (RFC 1951) MURNI LINTAS PLATFORM (WEB & MOBILE)
+// ============================================================================
+
+class _PureDartDeflate {
+  static const List<int> _lenBase = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31,
+    35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258
+  ];
+  static const List<int> _lenExtra = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0
+  ];
+  static const List<int> _distBase = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
+    257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
+    8193, 12289, 16385, 24577
+  ];
+  static const List<int> _distExtra = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13
+  ];
+  static const List<int> _clOrder = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+  ];
+
+  static Uint8List inflate(Uint8List src) {
+    final out = <int>[];
+    int bytePos = 0;
+    int bitBuf = 0;
+    int bitCount = 0;
+
+    int readBits(int n) {
+      while (bitCount < n) {
+        if (bytePos >= src.length) {
+          throw const FormatException('Unexpected EOF in DEFLATE stream');
+        }
+        bitBuf |= src[bytePos++] << bitCount;
+        bitCount += 8;
+      }
+      final val = bitBuf & ((1 << n) - 1);
+      bitBuf >>= n;
+      bitCount -= n;
+      return val;
+    }
+
+    Map<int, int> buildTree(List<int> lengths) {
+      int maxBits = 0;
+      for (final l in lengths) {
+        if (l > maxBits) maxBits = l;
+      }
+      if (maxBits == 0) return {};
+
+      final blCount = List<int>.filled(maxBits + 1, 0);
+      for (final l in lengths) {
+        if (l > 0) blCount[l]++;
+      }
+
+      final nextCode = List<int>.filled(maxBits + 1, 0);
+      int code = 0;
+      for (int bits = 1; bits <= maxBits; bits++) {
+        code = (code + blCount[bits - 1]) << 1;
+        nextCode[bits] = code;
+      }
+
+      final table = <int, int>{};
+      for (int n = 0; n < lengths.length; n++) {
+        final len = lengths[n];
+        if (len != 0) {
+          final c = nextCode[len]++;
+          table[(len << 16) | c] = n;
+        }
+      }
+      return table;
+    }
+
+    int decodeSymbol(Map<int, int> tree) {
+      int code = 0;
+      for (int len = 1; len <= 15; len++) {
+        code = (code << 1) | readBits(1);
+        final sym = tree[(len << 16) | code];
+        if (sym != null) return sym;
+      }
+      throw const FormatException('Invalid Huffman code in DEFLATE stream');
+    }
+
+    int bfinal = 0;
+    while (bfinal == 0) {
+      bfinal = readBits(1);
+      final btype = readBits(2);
+
+      if (btype == 0) {
+        bitBuf = 0;
+        bitCount = 0;
+        if (bytePos + 4 > src.length) break;
+        final len = src[bytePos] | (src[bytePos + 1] << 8);
+        bytePos += 4;
+        for (int k = 0; k < len && bytePos < src.length; k++) {
+          out.add(src[bytePos++]);
+        }
+      } else if (btype == 1 || btype == 2) {
+        Map<int, int> litLenTree;
+        Map<int, int> distTree;
+
+        if (btype == 1) {
+          final llLengths = List<int>.filled(288, 0);
+          for (int i = 0; i <= 143; i++) llLengths[i] = 8;
+          for (int i = 144; i <= 255; i++) llLengths[i] = 9;
+          for (int i = 256; i <= 279; i++) llLengths[i] = 7;
+          for (int i = 280; i <= 287; i++) llLengths[i] = 8;
+          litLenTree = buildTree(llLengths);
+          distTree = buildTree(List<int>.filled(32, 5));
+        } else {
+          final hlit = readBits(5) + 257;
+          final hdist = readBits(5) + 1;
+          final hclen = readBits(4) + 4;
+
+          final clLengths = List<int>.filled(19, 0);
+          for (int i = 0; i < hclen; i++) {
+            clLengths[_clOrder[i]] = readBits(3);
+          }
+          final clTree = buildTree(clLengths);
+
+          final allLengths = <int>[];
+          while (allLengths.length < hlit + hdist) {
+            final sym = decodeSymbol(clTree);
+            if (sym < 16) {
+              allLengths.add(sym);
+            } else if (sym == 16) {
+              final prev = allLengths.isNotEmpty ? allLengths.last : 0;
+              final repeat = readBits(2) + 3;
+              for (int r = 0; r < repeat; r++) allLengths.add(prev);
+            } else if (sym == 17) {
+              final repeat = readBits(3) + 3;
+              for (int r = 0; r < repeat; r++) allLengths.add(0);
+            } else if (sym == 18) {
+              final repeat = readBits(7) + 11;
+              for (int r = 0; r < repeat; r++) allLengths.add(0);
+            }
+          }
+
+          litLenTree = buildTree(allLengths.sublist(0, hlit));
+          distTree = buildTree(allLengths.sublist(hlit, hlit + hdist));
+        }
+
+        while (true) {
+          final sym = decodeSymbol(litLenTree);
+          if (sym < 256) {
+            out.add(sym);
+          } else if (sym == 256) {
+            break;
+          } else {
+            final lenIdx = sym - 257;
+            final length = _lenBase[lenIdx] + readBits(_lenExtra[lenIdx]);
+            final dSym = decodeSymbol(distTree);
+            final dist = _distBase[dSym] + readBits(_distExtra[dSym]);
+            final start = out.length - dist;
+            for (int k = 0; k < length; k++) {
+              out.add(out[start + k]);
+            }
+          }
+        }
+      } else {
+        throw const FormatException('Invalid DEFLATE block type');
+      }
+    }
+
+    return Uint8List.fromList(out);
   }
 }
