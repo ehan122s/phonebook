@@ -19,8 +19,7 @@ class ReportPhoto extends Model
     ];
 
     protected $hidden = [
-        // Jangan sembunyikan photo_base64 agar klien Flutter dapat langsung merender/mengunduh dokumen
-        // tanpa bergantung pada HTTP roundtrip sekunder yang rawan lambat atau terblokir.
+        'photo_base64', // Wajib disembunyikan agar query list laporan tidak meledak hingga 7MB+ yang menyebabkan HTTP 500 FUNCTION_RESPONSE_PAYLOAD_TOO_LARGE di Vercel
     ];
 
     protected $appends = [

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,7 +6,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-/// SQLite database helper for storing reports offline.
+/// SQLite database helper for storing reports and caching templates offline.
 ///
 /// Uses a singleton pattern so the database is opened only once and
 /// shared across the entire application.
@@ -13,6 +14,7 @@ class OfflineDatabase {
   OfflineDatabase._();
 
   static final OfflineDatabase instance = OfflineDatabase._();
+  static bool _ffiInitialized = false;
 
   Database? _database;
 
@@ -27,8 +29,11 @@ class OfflineDatabase {
   Future<Database> _initDatabase() async {
     if (!kIsWeb &&
         (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
+      if (!_ffiInitialized) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+        _ffiInitialized = true;
+      }
     }
 
     final dbPath = await getDatabasesPath();
@@ -36,7 +41,7 @@ class OfflineDatabase {
 
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -56,6 +61,27 @@ class OfflineDatabase {
             await db.execute(
               'ALTER TABLE offline_reports ADD COLUMN address TEXT',
             );
+          } catch (_) {}
+        }
+        if (oldVersion < 4) {
+          try {
+            await db.execute('''
+              CREATE TABLE IF NOT EXISTS offline_report_templates (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                category TEXT,
+                description TEXT,
+                template_body TEXT,
+                fields_config TEXT,
+                placeholders TEXT,
+                icon_key TEXT,
+                default_title TEXT,
+                require_photo INTEGER,
+                require_location INTEGER,
+                is_active INTEGER,
+                updated_at TEXT
+              )
+            ''');
           } catch (_) {}
         }
       },
@@ -81,6 +107,24 @@ class OfflineDatabase {
         photo_path TEXT,
         photo_base64 TEXT,
         created_at TEXT,
+        updated_at TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS offline_report_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        category TEXT,
+        description TEXT,
+        template_body TEXT,
+        fields_config TEXT,
+        placeholders TEXT,
+        icon_key TEXT,
+        default_title TEXT,
+        require_photo INTEGER,
+        require_location INTEGER,
+        is_active INTEGER,
         updated_at TEXT
       )
     ''');
@@ -201,5 +245,88 @@ class OfflineDatabase {
       where: "sync_status = ?",
       whereArgs: ['synced'],
     );
+  }
+
+  /// Menyimpan seluruh template laporan ke tabel SQLite lokal untuk keperluan offline.
+  Future<void> cacheTemplates(List<Map<String, dynamic>> templates) async {
+    try {
+      final db = await database;
+      final batch = db.batch();
+      for (final t in templates) {
+        final id = (t['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+        batch.insert(
+          'offline_report_templates',
+          {
+            'id': id,
+            'name': t['name'] ?? t['title'] ?? '',
+            'category': t['category'] ?? '',
+            'description': t['description'] ?? '',
+            'template_body': t['template_body'] ?? t['templateBody'] ?? t['body'] ?? '',
+            'fields_config': jsonEncode(t['fields_config'] ?? t['fieldsConfig'] ?? []),
+            'placeholders': jsonEncode(t['placeholders'] ?? []),
+            'icon_key': t['icon_key'] ?? t['iconKey'] ?? '',
+            'default_title': t['default_title'] ?? t['defaultTitle'] ?? '',
+            'require_photo': (t['require_photo'] == true || t['requirePhoto'] == true) ? 1 : 0,
+            'require_location': (t['require_location'] == true || t['requireLocation'] == true) ? 1 : 0,
+            'is_active': (t['is_active'] == false) ? 0 : 1,
+            'updated_at': DateTime.now().toIso8601String(),
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (e) {
+      debugPrint('OfflineDatabase cacheTemplates error: $e');
+    }
+  }
+
+  /// Mengambil daftar template laporan terakhir yang tersimpan di SQLite.
+  Future<List<Map<String, dynamic>>> getCachedTemplates() async {
+    try {
+      final db = await database;
+      final rows = await db.query('offline_report_templates', orderBy: 'id ASC');
+      if (rows.isEmpty) return [];
+
+      return rows.map<Map<String, dynamic>>((row) {
+        List<dynamic> fieldsConfig = [];
+        List<dynamic> placeholders = [];
+        try {
+          if (row['fields_config'] != null) {
+            fieldsConfig = jsonDecode(row['fields_config'].toString());
+          }
+        } catch (_) {}
+        try {
+          if (row['placeholders'] != null) {
+            placeholders = jsonDecode(row['placeholders'].toString());
+          }
+        } catch (_) {}
+
+        return {
+          'id': row['id'],
+          'name': row['name'],
+          'title': row['name'],
+          'category': row['category'],
+          'description': row['description'],
+          'template_body': row['template_body'],
+          'templateBody': row['template_body'],
+          'fields_config': fieldsConfig,
+          'fieldsConfig': fieldsConfig,
+          'placeholders': placeholders,
+          'icon_key': row['icon_key'],
+          'iconKey': row['icon_key'],
+          'default_title': row['default_title'],
+          'defaultTitle': row['default_title'],
+          'require_photo': row['require_photo'] == 1,
+          'requirePhoto': row['require_photo'] == 1,
+          'require_location': row['require_location'] == 1,
+          'requireLocation': row['require_location'] == 1,
+          'is_active': row['is_active'] == 1,
+        };
+      }).toList();
+    } catch (e) {
+      debugPrint('OfflineDatabase getCachedTemplates error: $e');
+      return [];
+    }
   }
 }

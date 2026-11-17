@@ -13,10 +13,18 @@ class ReportController extends Controller
 {
     public function index(Request $request)
     {
-        $reports = Report::with(['user', 'category', 'photos'])
-            ->where('user_id', $request->user()->id)
-            ->latest()
-            ->get();
+        $user = $request->user();
+        $query = Report::with(['user', 'category', 'photos']);
+
+        // Jika user bukan admin, HANYA ambil laporan milik user tersebut agar tidak tercampur
+        if (!$user || $user->role !== 'admin') {
+            $query->where('user_id', $user->id);
+        } else if ($request->filled('user_id')) {
+            // Admin memiliki hak akses melihat seluruh laporan atau memfilter per user_id
+            $query->where('user_id', $request->query('user_id'));
+        }
+
+        $reports = $query->latest()->get();
 
         return response()->json([
             'success' => true,
@@ -27,15 +35,24 @@ class ReportController extends Controller
 
     public function show(Request $request, $id)
     {
-        $report = Report::with(['user', 'category', 'photos'])
-            ->where('user_id', $request->user()->id)
-            ->find($id);
+        $user = $request->user();
+        $query = Report::with(['user', 'category', 'photos']);
+        if (!$user || $user->role !== 'admin') {
+            $query->where('user_id', $user->id);
+        }
+
+        $report = $query->find($id);
 
         if (!$report) {
             return response()->json([
                 'success' => false,
                 'message' => 'Laporan tidak ditemukan',
             ], 404);
+        }
+
+        // Khusus laporan individual, buka photo_base64 untuk keperluan export dokumen
+        if ($report->relationLoaded('photos')) {
+            $report->photos->each->makeVisible('photo_base64');
         }
 
         return response()->json([

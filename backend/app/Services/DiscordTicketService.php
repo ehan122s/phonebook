@@ -110,6 +110,14 @@ class DiscordTicketService
             ];
         }
 
+        if (!empty($ticket->resolution_reason)) {
+            $fields[] = [
+                'name' => 'Keterangan Penyelesaian',
+                'value' => $ticket->resolution_reason,
+                'inline' => false,
+            ];
+        }
+
         if ($ticket->resolved_at) {
             $fields[] = [
                 'name' => 'Waktu Selesai',
@@ -118,9 +126,13 @@ class DiscordTicketService
             ];
         }
 
+        $baseUrl = rtrim(config('app.url') ?: 'https://phonebook-five-umber.vercel.app', '/');
+        $code = $ticket->ticket_code ?: "PB-2026-{$ticket->id}";
+        $quickLinks = "[🟡 ACC TIKET]({$baseUrl}/api/tickets/{$code}/action?action=acc) • [🟢 SELESAIKAN TIKET]({$baseUrl}/api/tickets/{$code}/action?action=selesai)";
+
         return [
-            'title' => 'LAPORAN MASALAH PHONEBOOK',
-            'description' => "**" . $ticket->title . "**\n" . $ticket->category,
+            'title' => 'TIKET LAPORAN MASALAH PHONEBOOK',
+            'description' => "**" . $ticket->title . "**\n" . $ticket->category . "\n\n" . $quickLinks,
             'color' => $color,
             'fields' => $fields,
             'footer' => [
@@ -139,8 +151,8 @@ class DiscordTicketService
         $id = $ticket->id;
 
         // Jika sudah ditolak atau selesai, tombol dinonaktifkan
-        $isClosed = in_array($statusUpper, ['DITOLAK', 'SELESAI']);
-        $isAccepted = in_array($statusUpper, ['DITERIMA', 'SEDANG DIPROSES']);
+        $isClosed = in_array($statusUpper, ['DITOLAK', 'SELESAI', 'RESOLVED', 'REJECTED']);
+        $isAccepted = in_array($statusUpper, ['DITERIMA', 'SEDANG DIPROSES', 'IN_PROGRESS']);
 
         return [
             [
@@ -148,27 +160,27 @@ class DiscordTicketService
                 'components' => [
                     [
                         'type' => 2, // BUTTON
-                        'style' => 3, // SUCCESS (Hijau)
-                        'label' => 'ACC LAPORAN',
+                        'style' => 3, // SUCCESS
+                        'label' => 'ACC / AMBIL TIKET',
                         'custom_id' => "ticket_acc_{$id}",
                         'disabled' => $isAccepted || $isClosed,
-                        'emoji' => ['name' => '✅'],
+                        'emoji' => ['name' => '🟡'],
                     ],
                     [
                         'type' => 2,
-                        'style' => 4, // DANGER (Merah)
+                        'style' => 1, // PRIMARY
+                        'label' => 'SELESAIKAN TIKET',
+                        'custom_id' => "ticket_selesai_{$id}",
+                        'disabled' => $isClosed,
+                        'emoji' => ['name' => '🟢'],
+                    ],
+                    [
+                        'type' => 2,
+                        'style' => 4, // DANGER
                         'label' => 'TOLAK LAPORAN',
                         'custom_id' => "ticket_tolak_{$id}",
                         'disabled' => $isClosed,
-                        'emoji' => ['name' => '❌'],
-                    ],
-                    [
-                        'type' => 2,
-                        'style' => 1, // PRIMARY (Biru)
-                        'label' => 'SELESAI DIPROSES',
-                        'custom_id' => "ticket_selesai_{$id}",
-                        'disabled' => $statusUpper === 'SELESAI' || $statusUpper === 'DITOLAK',
-                        'emoji' => ['name' => '🏁'],
+                        'emoji' => ['name' => '🔴'],
                     ],
                 ],
             ],

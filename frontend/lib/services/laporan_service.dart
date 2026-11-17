@@ -34,13 +34,15 @@ class LaporanService {
       return [];
     }
 
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/reports'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/api/reports'),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 10));
 
     if (response.statusCode == 401) {
       throw const UnauthorizedException(

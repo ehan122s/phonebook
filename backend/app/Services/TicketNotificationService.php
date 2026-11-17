@@ -2,13 +2,101 @@
 
 namespace App\Services;
 
+use App\Models\AppNotification;
 use App\Models\BugReport;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class TicketNotificationService
 {
+    /**
+     * Membuat notifikasi dalam aplikasi (AppNotification) untuk pengguna pemilik tiket.
+     * Tersimpan di PostgreSQL Supabase sehingga tetap tersedia saat user online/offline.
+     */
+    public static function createAppNotification(BugReport $ticket, string $action, ?string $reason = null): ?AppNotification
+    {
+        if (empty($ticket->user_id)) {
+            return null;
+        }
+
+        try {
+            if (!Schema::hasTable('app_notifications')) {
+                return null;
+            }
+
+            $code = $ticket->ticket_code ?: "PB-{$ticket->id}";
+            $devName = $ticket->handled_by ?: 'Tim Developer Phonebook';
+            $refId = 'ticket_' . strtolower($action) . '_' . $ticket->id;
+
+            // Idempoten: Jangan buat notifikasi ganda dengan reference_id yang sama
+            $existing = AppNotification::where('user_id', $ticket->user_id)
+                ->where('reference_id', $refId)
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $title = '';
+            $message = '';
+            $statusStr = '';
+
+            switch (strtolower($action)) {
+                case 'acc':
+                case 'in_progress':
+                    $statusStr = 'in_progress';
+                    $title = 'Laporan Masalah Sedang Ditangani';
+                    $message = "Laporan masalah Anda (#{$code}: \"{$ticket->title}\") telah disetujui dan sedang ditangani oleh {$devName}.";
+                    break;
+
+                case 'selesai':
+                case 'resolved':
+                    $statusStr = 'resolved';
+                    $title = 'Laporan Masalah Telah Diselesaikan';
+                    $reasonText = trim($reason ?: ($ticket->resolution_reason ?: 'Masalah telah berhasil diperbaiki oleh tim developer.'));
+                    $message = "Laporan masalah Anda (#{$code}) telah diselesaikan oleh tim developer.\n\nKeterangan Developer:\n{$reasonText}";
+                    break;
+
+                case 'tolak':
+                case 'rejected':
+                    $statusStr = 'rejected';
+                    $title = 'Laporan Masalah Belum Dapat Diproses';
+                    $reasonText = trim($reason ?: ($ticket->rejection_reason ?: 'Laporan belum dapat ditindaklanjuti.'));
+                    $message = "Laporan masalah Anda (#{$code}) belum dapat diproses.\n\nAlasan:\n{$reasonText}";
+                    break;
+
+                default:
+                    $statusStr = $action;
+                    $title = 'Pembaruan Status Laporan Masalah';
+                    $message = "Status laporan tiket #{$code} diperbarui: {$ticket->status}";
+            }
+
+            return AppNotification::create([
+                'user_id' => $ticket->user_id,
+                'type' => 'laporan_masalah',
+                'title' => $title,
+                'message' => $message,
+                'reference_id' => $refId,
+                'metadata' => [
+                    'ticket_id' => $ticket->id,
+                    'ticket_code' => $code,
+                    'category' => $ticket->category,
+                    'title' => $ticket->title,
+                    'status' => $statusStr,
+                    'developer' => $devName,
+                    'reason' => $reason ?: ($ticket->resolution_reason ?: $ticket->rejection_reason),
+                    'action' => $action,
+                    'resolved_at' => $ticket->resolved_at?->toIso8601String(),
+                    'approved_at' => $ticket->approved_at?->toIso8601String(),
+                ],
+                'is_read' => false,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning("TicketNotificationService: Gagal mencatat AppNotification untuk tiket #{$ticket->id}: " . $e->getMessage());
+            return null;
+        }
+    }
     /**
      * Mengirimkan pesan notifikasi WhatsApp kepada pelapor tiket berdasarkan status.
      * Menggunakan Fonnte WhatsApp API Gateway dengan konfigurasi services.fonnte.token.
@@ -144,13 +232,16 @@ class TicketNotificationService
                     "*Tim IT Phonebook*";
 
             case 'selesai':
-                return "Halo, *{$name}*.\n\n" .
-                    "Kami ingin menginformasikan bahwa laporan masalah Anda telah selesai ditangani.\n\n" .
-                    "ID Tiket: {$code}\n" .
-                    "Judul: {$title}\n" .
-                    "Status: SELESAI\n\n" .
-                    "Terima kasih atas laporan dan kontribusi Anda untuk aplikasi Phonebook.\n\n" .
-                    "*Tim IT Phonebook*";
+            case 'resolved':
+                $reasonText = trim($reason ?: ($ticket->resolution_reason ?: 'Masalah telah diselesaikan oleh tim developer.'));
+                return "PHONEBOOK - INFORMASI PENYELESAIAN TIKET\n\n" .
+                    "Halo, *{$name}*. Laporan masalah Anda telah diselesaikan.\n\n" .
+                    "Ticket ID: {$code}\n" .
+                    "Status: RESOLVED\n\n" .
+                    "Keterangan Developer:\n" .
+                    "{$reasonText}\n\n" .
+                    "Terima kasih telah membantu meningkatkan aplikasi Phonebook.\n" .
+                    "- Tim Developer Phonebook";
 
             default:
                 return "Halo, *{$name}*.\n\n" .

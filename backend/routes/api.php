@@ -130,11 +130,11 @@ Route::middleware('auth:sanctum')->group(function () {
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['throttle:20,1'])->group(function () {
+Route::middleware(['throttle:30,1'])->group(function () {
     Route::post('/bug-reports', [BugReportController::class, 'store']);
     Route::get('/bug-reports', [BugReportController::class, 'index']);
-    Route::post('/bug-reports/{id}/action', [DiscordInteractionController::class, 'triggerAction']);
-    Route::post('/tickets/{ticketCode}/action', [DiscordInteractionController::class, 'triggerAction']);
+    Route::match(['GET', 'POST'], '/bug-reports/{id}/action', [DiscordInteractionController::class, 'triggerAction']);
+    Route::match(['GET', 'POST'], '/tickets/{ticketCode}/action', [DiscordInteractionController::class, 'triggerAction']);
     Route::post('/discord/interactions', [DiscordInteractionController::class, 'handle']);
 });
 

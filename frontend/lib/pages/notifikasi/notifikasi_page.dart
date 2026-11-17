@@ -223,6 +223,9 @@ class _NotificationPageState extends State<NotificationPage> {
     final message = (item['message'] ?? '').toString();
     final createdAt = (item['createdAt'] ?? '').toString();
     final type = (item['type'] ?? 'umum').toString();
+    final meta = item['metadata'] is Map
+        ? Map<String, dynamic>.from(item['metadata'])
+        : <String, dynamic>{};
 
     showDialog(
       context: context,
@@ -253,6 +256,53 @@ class _NotificationPageState extends State<NotificationPage> {
               message,
               style: TextStyle(fontSize: 14, height: 1.45, color: textColor),
             ),
+            if (meta['ticket_code'] != null || meta['reason'] != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF26332A) : const Color(0xFFF0F5F1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334639) : const Color(0xFFD6E3D8),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (meta['ticket_code'] != null)
+                      Text(
+                        'ID Tiket: ${meta['ticket_code']}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A),
+                        ),
+                      ),
+                    if (meta['developer'] != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Developer: ${meta['developer']}',
+                        style: TextStyle(fontSize: 12, color: subColor),
+                      ),
+                    ],
+                    if (meta['reason'] != null && meta['reason'].toString().isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Keterangan Developer:',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        meta['reason'].toString(),
+                        style: TextStyle(fontSize: 13, color: textColor),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(
               _formatTimestamp(createdAt),
@@ -400,6 +450,9 @@ class _NotificationPageState extends State<NotificationPage> {
     switch (type.toLowerCase()) {
       case 'laporan':
         return Icons.description_rounded;
+      case 'laporan_masalah':
+      case 'tiket':
+        return Icons.support_agent_rounded;
       case 'jadwal':
         return Icons.calendar_month_rounded;
       case 'reminder':
@@ -419,6 +472,9 @@ class _NotificationPageState extends State<NotificationPage> {
     switch (type.toLowerCase()) {
       case 'laporan':
         return isDark ? const Color(0xFF81C784) : kPrimary;
+      case 'laporan_masalah':
+      case 'tiket':
+        return isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
       case 'jadwal':
         return isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0);
       case 'reminder':
@@ -434,6 +490,9 @@ class _NotificationPageState extends State<NotificationPage> {
     switch (type.toLowerCase()) {
       case 'laporan':
         return 'Laporan';
+      case 'laporan_masalah':
+      case 'tiket':
+        return 'Tiket Bantuan';
       case 'jadwal':
         return 'Jadwal';
       case 'reminder':

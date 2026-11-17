@@ -26,6 +26,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/device_file_storage_service.dart';
+import '../../services/offline_database.dart';
 
 /// Manager untuk mengelola penyimpanan, ekstraksi file contoh, & format Template Laporan.
 class ReportTemplateManager {
@@ -418,80 +419,137 @@ class ReportTemplateManager {
     };
   }
 
-  /// Memuat seluruh template dari server PostgreSQL Supabase (dengan cache SharedPreferences).
-  static Future<List<Map<String, dynamic>>> loadTemplates() async {
-    final prefs = await SharedPreferences.getInstance();
+  static List<Map<String, dynamic>>? _memoryCache;
+  static Future<List<Map<String, dynamic>>>? _activeFetch;
+  static DateTime? _lastFetchTime;
 
-    // 1. Coba ambil data live dari PostgreSQL Supabase melalui Laravel API
-    try {
-      final response = await http
-          .get(
-            Uri.parse(ApiConstants.reportTemplatesUrl),
-            headers: {'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        if (decoded['success'] == true && decoded['data'] is List) {
-          final List<dynamic> list = decoded['data'];
-          if (list.isNotEmpty) {
-            final normalized = list
-                .map((item) => normalizeTemplate(Map<String, dynamic>.from(item)))
-                .toList();
-            await prefs.setString(storageKey, jsonEncode(normalized));
-            return normalized;
-          }
-        }
+  /// Memuat seluruh template laporan:
+  /// - Menggunakan deduplikasi request agar tidak terjadi request ganda/berulang.
+  /// - Online: Mengambil template terbaru dari Supabase melalui Laravel API dan menyimpannya ke SQLite & SharedPreferences.
+  /// - Offline/Lambat: Menggunakan template terakhir yang tersimpan di SQLite (atau SharedPreferences).
+  /// - Menggunakan timeout wajar (8 detik) dan retry terbatas (1x) agar UI tidak terblokir.
+  static Future<List<Map<String, dynamic>>> loadTemplates({bool forceRefresh = false}) async {
+    // 1. Jika dalam 15 detik terakhir sudah diambil dan tidak dipaksa refresh, kembalikan dari memori
+    if (!forceRefresh && _memoryCache != null && _memoryCache!.isNotEmpty && _lastFetchTime != null) {
+      if (DateTime.now().difference(_lastFetchTime!).inSeconds < 15) {
+        return _memoryCache!;
       }
-    } catch (e) {
-      debugPrint('ReportTemplateManager live fetch error: $e');
     }
 
-    // 2. Fallback dari cache SharedPreferences jika offline / lambat
-    final raw = prefs.getString(storageKey);
-    if (raw != null && raw.isNotEmpty) {
+    // 2. Hindari request berulang bersamaan: jika sedang ada fetch aktif, gunakan Future yang sama
+    if (_activeFetch != null) {
+      return _activeFetch!;
+    }
+
+    _activeFetch = _executeLoadTemplates(forceRefresh: forceRefresh);
+    try {
+      final result = await _activeFetch!;
+      return result;
+    } finally {
+      _activeFetch = null;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _executeLoadTemplates({bool forceRefresh = false}) async {
+    // 1. Baca cache SQLite terlebih dahulu jika memori belum ada
+    if (_memoryCache == null || _memoryCache!.isEmpty) {
       try {
-        final bool hadCorruption = isCorruptedBinaryText(raw);
-        final List<dynamic> decoded = jsonDecode(raw);
-        final list = decoded
-            .map(
-              (item) => normalizeTemplate(Map<String, dynamic>.from(item)),
-            )
-            .toList();
-        if (list.isNotEmpty) {
-          final hasTrk = list.any(
-            (t) =>
-                t['title'].toString().toLowerCase().contains('trk') ||
-                t['id'] == 'tpl_trk' ||
-                t['id'] == '2',
-          );
-          if (!hasTrk) {
-            final trkDefault = defaultTemplates().firstWhere(
-              (t) => t['id'] == 'tpl_trk' || t['id'] == '2',
-              orElse: () => defaultTemplates()[1],
-            );
-            list.insert(1, trkDefault);
-            await saveTemplates(list);
-          } else if (hadCorruption) {
-            await saveTemplates(list);
-          }
-          return list;
+        final sqliteTemplates = await OfflineDatabase.instance.getCachedTemplates();
+        if (sqliteTemplates.isNotEmpty) {
+          _memoryCache = sqliteTemplates.map(normalizeTemplate).toList();
         }
       } catch (_) {}
     }
 
+    // 2. Fallback baca SharedPreferences jika SQLite belum terisi
+    final prefs = await SharedPreferences.getInstance();
+    if (_memoryCache == null || _memoryCache!.isEmpty) {
+      final raw = prefs.getString(storageKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final List<dynamic> decoded = jsonDecode(raw);
+          if (decoded.isNotEmpty) {
+            _memoryCache = decoded.map((e) => normalizeTemplate(Map<String, dynamic>.from(e))).toList();
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 3. Ambil data terbaru dari backend Laravel / Supabase (dengan timeout 8 detik & max 1 retry)
+    List<Map<String, dynamic>>? liveTemplates;
+    int attempts = 0;
+    while (attempts < 2 && liveTemplates == null) {
+      attempts++;
+      try {
+        final response = await http
+            .get(
+              Uri.parse(ApiConstants.reportTemplatesUrl),
+              headers: {'Accept': 'application/json'},
+            )
+            .timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          if (decoded['success'] == true && decoded['data'] is List) {
+            final List<dynamic> list = decoded['data'];
+            if (list.isNotEmpty) {
+              liveTemplates = list.map((item) => normalizeTemplate(Map<String, dynamic>.from(item))).toList();
+            }
+          }
+        }
+      } catch (e) {
+        if (attempts < 2) {
+          await Future.delayed(const Duration(milliseconds: 1500));
+        } else {
+          debugPrint('ReportTemplateManager fetch info (offline/fallback mode): $e');
+        }
+      }
+    }
+
+    if (liveTemplates != null && liveTemplates.isNotEmpty) {
+      _memoryCache = liveTemplates;
+      _lastFetchTime = DateTime.now();
+
+      // Sinkronkan ke SQLite untuk penggunaan offline
+      try {
+        await OfflineDatabase.instance.cacheTemplates(liveTemplates);
+      } catch (_) {}
+
+      // Simpan juga ke SharedPreferences
+      await prefs.setString(storageKey, jsonEncode(liveTemplates));
+      return liveTemplates;
+    }
+
+    // 4. Jika fetch live gagal, kembalikan dari cache (SQLite / SharedPreferences)
+    if (_memoryCache != null && _memoryCache!.isNotEmpty) {
+      return _memoryCache!;
+    }
+
+    // 5. Fallback terakhir jika instalasi baru dan offline: gunakan default templates
     final defaults = defaultTemplates();
-    await saveTemplates(defaults);
+    _memoryCache = defaults;
+    try {
+      await OfflineDatabase.instance.cacheTemplates(defaults);
+    } catch (_) {}
+    await prefs.setString(storageKey, jsonEncode(defaults));
     return defaults;
   }
 
-  /// Menyimpan daftar template ke SharedPreferences & menyinkronkannya ke PostgreSQL Supabase.
+  /// Menyimpan daftar template ke SQLite, SharedPreferences & menyinkronkannya ke PostgreSQL Supabase.
   static Future<void> saveTemplates(
     List<Map<String, dynamic>> templates,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
     final normalized = templates.map(normalizeTemplate).toList();
+    _memoryCache = normalized;
+    _lastFetchTime = DateTime.now();
+
+    // Simpan ke SQLite
+    try {
+      await OfflineDatabase.instance.cacheTemplates(normalized);
+    } catch (_) {}
+
+    // Simpan ke SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setString(storageKey, jsonEncode(normalized));
   }
 
@@ -537,35 +595,25 @@ class ReportTemplateManager {
       });
 
       final headers = {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
       };
 
-      http.Response res;
       if (isServerNumericId) {
-        res = await http
-            .put(uri, headers: headers, body: payload)
-            .timeout(const Duration(seconds: 6));
+        await http.put(uri, headers: headers, body: payload).timeout(const Duration(seconds: 8));
       } else {
-        res = await http
-            .post(uri, headers: headers, body: payload)
-            .timeout(const Duration(seconds: 6));
-      }
-
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        final resJson = jsonDecode(res.body);
-        if (resJson['data'] != null && resJson['data'] is Map) {
-          final serverTpl = normalizeTemplate(Map<String, dynamic>.from(resJson['data']));
-          final updateIdx = all.indexWhere((t) => t['title'] == serverTpl['title']);
-          if (updateIdx != -1) {
-            all[updateIdx] = serverTpl;
+        final res = await http.post(uri, headers: headers, body: payload).timeout(const Duration(seconds: 8));
+        if (res.statusCode == 200 || res.statusCode == 201) {
+          final resJson = jsonDecode(res.body);
+          if (resJson['data']?['id'] != null) {
+            clean['id'] = resJson['data']['id'].toString();
+            clean['serverId'] = resJson['data']['id'];
             await saveTemplates(all);
-            return serverTpl;
           }
         }
       }
     } catch (e) {
-      debugPrint('Sync template to Supabase backend warning: $e');
+      debugPrint('Sync template to Supabase offline info: $e');
     }
 
     return clean;
