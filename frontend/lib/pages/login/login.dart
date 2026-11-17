@@ -1,18 +1,6 @@
 // ============================================================================
 // [HALAMAN LOGIN - REDESIGN UI "MODERN SOFT GREEN"]
-// File: lib/pages/login.dart
-//
-// DESAIN:
-// - Layout referensi nomor 5 : Modern Soft Green (minimalis, dekorasi abstrak
-//   berupa lingkaran & lengkungan transparan, card putih rounded, shadow lembut)
-// - Palet warna referensi nomor 4 : hijau tua / hijau sedang / putih (split green)
-// - Logo pohon resmi aplikasi (assets/images/logo_phonebook.jpeg)
-//
-// CATATAN PENTING:
-// - Seluruh logika autentikasi dipertahankan 100% dari versi sebelumnya:
-//   login API Laravel, validasi, token SharedPreferences, Ingat Saya,
-//   login Google, fallback offline, dan routing Admin/User.
-// - Perubahan hanya pada tampilan (UI/UX).
+// File: lib/pages/login/login.dart
 // ============================================================================
 
 import 'dart:convert';
@@ -28,16 +16,13 @@ import '../home/home.dart';
 
 String get baseUrl => ApiConstants.baseUrl;
 
-// ----------------------------------------------------------------------------
-// PALET WARNA (referensi desain nomor 4 - Split Green)
-// ----------------------------------------------------------------------------
-const Color kPrimaryGreen = Color(0xFF086B45); // Hijau utama
-const Color kDarkGreen = Color(0xFF064E38); // Hijau gelap
-const Color kSecondaryGreen = Color(0xFF21834A); // Hijau sekunder
-const Color kLightGreen = Color(0xFFDCEFE2); // Hijau muda
-const Color kBackground = Color(0xFFF7FAF7); // Background putih kehijauan
-const Color kTextMain = Color(0xFF26352D); // Teks utama
-const Color kTextSecondary = Color(0xFF858D88); // Teks sekunder
+const Color kPrimaryGreen = Color(0xFF086B45);
+const Color kDarkGreen = Color(0xFF064E38);
+const Color kSecondaryGreen = Color(0xFF21834A);
+const Color kLightGreen = Color(0xFFDCEFE2);
+const Color kBackground = Color(0xFFF7FAF7);
+const Color kTextMain = Color(0xFF26352D);
+const Color kTextSecondary = Color(0xFF858D88);
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -152,21 +137,25 @@ class _LoginPageState extends State<LoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         final userMap = data['data']['user'] ?? {};
+        final userId = (userMap['id'] ?? '').toString().trim();
         final userEmail = (userMap['email'] ?? inputEmail).toString().trim();
         final rawName = (userMap['name'] ?? '').toString().trim();
-        final userName = rawName.isNotEmpty
-            ? rawName
-            : userEmail.split('@').first;
+        final userName =
+            rawName.isNotEmpty ? rawName : userEmail.split('@').first;
         final userRole = (userMap['role'] ?? '').toString();
         final userNip = (userMap['nip'] ?? '').toString().trim();
         final userJabatan = (userMap['jabatan'] ?? '').toString().trim();
         final userWilayah = (userMap['wilayah'] ?? '').toString().trim();
-        final userWhatsapp = (userMap['whatsapp_number'] ?? '').toString().trim();
+        final userWhatsapp =
+            (userMap['whatsapp_number'] ?? '').toString().trim();
         final userAvatar = (userMap['avatar'] ?? '').toString().trim();
 
         final isAdmin = _isAdminAccount(email: userEmail, role: userRole);
 
         await prefs.setString('token', data['data']['token']);
+        if (userId.isNotEmpty) {
+          await prefs.setString('user_id', userId);
+        }
         await prefs.setString('name', userName);
         await prefs.setString('profil_nama', userName);
         await prefs.setString('email', userEmail);
@@ -200,6 +189,10 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('avatar', userAvatar);
         await prefs.setString('profil_avatar', userAvatar);
 
+        // Simpan kredensial terverifikasi terakhir untuk mendukung mode offline akun asli
+        await prefs.setString('last_verified_email', userEmail.toLowerCase());
+        await prefs.setString('last_verified_password', inputPassword);
+
         try {
           const userKey = 'phonebook_admin_users_v1';
           final rawUsers = prefs.getString(userKey);
@@ -208,16 +201,21 @@ class _LoginPageState extends State<LoginPage> {
             users = jsonDecode(rawUsers);
           }
           final alreadyPresent = users.any(
-            (u) => (u['email'] ?? '').toString().toLowerCase() == userEmail.toLowerCase(),
+            (u) =>
+                (u['email'] ?? '').toString().toLowerCase() ==
+                userEmail.toLowerCase(),
           );
           if (!alreadyPresent) {
             users.add({
-              'id': 'USR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
-              'nip': (userMap['nip'] ?? '').toString().isNotEmpty ? userMap['nip'].toString() : '-',
-              'name': userName.isNotEmpty ? userName : userEmail.split('@').first,
+              'id': userId.isNotEmpty
+                  ? userId
+                  : 'USR-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+              'nip': userNip.isNotEmpty ? userNip : '-',
+              'name': userName,
               'email': userEmail,
-              'whatsapp': (userMap['whatsapp_number'] ?? '').toString(),
-              'wilayah': (userMap['wilayah'] ?? '').toString().isNotEmpty ? userMap['wilayah'].toString() : 'CDK Wilayah Garut',
+              'whatsapp': userWhatsapp,
+              'wilayah':
+                  userWilayah.isNotEmpty ? userWilayah : 'CDK Wilayah Garut',
               'role': isAdmin ? 'Administrator' : 'Penyuluh',
               'status': 'Aktif',
             });
@@ -253,52 +251,41 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (!mounted) return;
 
-      // Offline fallback login for testing credentials when server is offline
-      if (inputEmail == 'admin@kehutanan.go.id' && inputPassword == 'admin123') {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', 'offline_admin_token');
-        await prefs.setString('name', 'Admin Kehutanan');
-        await prefs.setString('email', inputEmail);
-        await prefs.setString('role', 'admin');
-        if (rememberMe) {
-          await prefs.setBool('remember_me', true);
-          await prefs.setString('remember_email', inputEmail);
-          await prefs.setString('remember_password', inputPassword);
-        }
+      // Mode offline hanya untuk akun asli yang sebelumnya pernah login di perangkat ini
+      final prefs = await SharedPreferences.getInstance();
+      final lastVerifiedEmail =
+          (prefs.getString('last_verified_email') ?? '').toLowerCase();
+      final lastVerifiedPassword =
+          prefs.getString('last_verified_password') ?? '';
+
+      if (lastVerifiedEmail.isNotEmpty &&
+          inputEmail.toLowerCase() == lastVerifiedEmail &&
+          inputPassword == lastVerifiedPassword) {
+        final savedRole = prefs.getString('role') ?? 'user';
+        final isAdmin =
+            _isAdminAccount(email: inputEmail, role: savedRole);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login berhasil (Mode Offline)')),
+          const SnackBar(
+            content: Text('Masuk menggunakan sesi tersimpan (Mode Offline).'),
+          ),
         );
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AdminPage()),
-          (route) => false,
-        );
-        return;
-      } else if (inputEmail == 'ehan@gmail.com' && inputPassword == '12345678') {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('token', 'offline_user_token');
-        await prefs.setString('name', 'Ehan (Penyuluh Kehutanan)');
-        await prefs.setString('email', inputEmail);
-        await prefs.setString('role', 'user');
-        if (rememberMe) {
-          await prefs.setBool('remember_me', true);
-          await prefs.setString('remember_email', inputEmail);
-          await prefs.setString('remember_password', inputPassword);
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login berhasil (Mode Offline)')),
-        );
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const HomePage()),
+          MaterialPageRoute(
+            builder: (_) => isAdmin ? const AdminPage() : const HomePage(),
+          ),
           (route) => false,
         );
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gagal terhubung ke server: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Gagal terhubung ke server. Periksa koneksi internet Anda ($e)',
+          ),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -315,21 +302,16 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // --------------------------------------------------------------------------
-  // ============================ BUILD UI ====================================
-  // --------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgCol = isDark ? const Color(0xFF121814) : kBackground;
+
     return Scaffold(
-      backgroundColor: kBackground,
-      // resizeToAvoidBottomInset default true: form otomatis naik saat keyboard muncul
+      backgroundColor: bgCol,
       body: Stack(
         children: [
-          // Dekorasi abstrak latar belakang (lingkaran & lengkungan transparan)
           const _SoftGreenDecoration(),
-
-          // Konten utama (bisa di-scroll pada layar kecil)
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -337,7 +319,7 @@ class _LoginPageState extends State<LoginPage> {
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
-                  child: _buildLoginCard(),
+                  child: _buildLoginCard(isDark),
                 ),
               ),
             ),
@@ -347,53 +329,52 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Card putih utama berisi seluruh elemen form login
-  Widget _buildLoginCard() {
+  Widget _buildLoginCard(bool isDark) {
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final borderCol = isDark
+        ? const Color(0xFF2E3D34)
+        : kLightGreen.withValues(alpha: 0.6);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(26, 34, 26, 30),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
-          // Shadow lembut kehijauan, tidak berlebihan
           BoxShadow(
-            color: kPrimaryGreen.withOpacity(0.10),
+            color: kPrimaryGreen.withValues(alpha: isDark ? 0.22 : 0.10),
             blurRadius: 32,
             spreadRadius: 0,
             offset: const Offset(0, 14),
           ),
         ],
-        border: Border.all(color: kLightGreen.withOpacity(0.6), width: 1),
+        border: Border.all(color: borderCol, width: 1),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeader(),
+          _buildHeader(isDark),
           const SizedBox(height: 30),
-          _buildEmailField(),
+          _buildEmailField(isDark),
           const SizedBox(height: 18),
-          _buildPasswordField(),
+          _buildPasswordField(isDark),
           const SizedBox(height: 14),
-          _buildRememberMe(),
+          _buildRememberMe(isDark),
           const SizedBox(height: 26),
           _buildLoginButton(),
           const SizedBox(height: 24),
-          _buildOrDivider(),
+          _buildOrDivider(isDark),
           const SizedBox(height: 24),
-          _buildGoogleButton(),
+          _buildGoogleButton(isDark),
         ],
       ),
     );
   }
 
-  /// A. Bagian Header : logo pohon, judul PHONEBOOK, dan subtitle
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isDark) {
     return Column(
       children: [
-        // Logo pohon resmi aplikasi (tidak diubah / tidak diganti).
-        // errorBuilder memakai ikon cadangan agar aplikasi tetap aman
-        // bila asset belum ditambahkan ke pubspec.yaml.
         ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: Image.asset(
@@ -407,7 +388,7 @@ class _LoginPageState extends State<LoginPage> {
                 height: 104,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: kLightGreen.withOpacity(0.45),
+                  color: kLightGreen.withValues(alpha: 0.45),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -420,31 +401,33 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         const SizedBox(height: 18),
-        const Text(
+        Text(
           'PHONEBOOK',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 27,
             fontWeight: FontWeight.w800,
             letterSpacing: 3,
-            color: kDarkGreen,
+            color: isDark ? Colors.white : kDarkGreen,
           ),
         ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            color: kLightGreen.withOpacity(0.5),
+            color: isDark
+                ? const Color(0xFF26352B)
+                : kLightGreen.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Text(
+          child: Text(
             'Aplikasi Pelaporan Kehutanan',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.4,
-              color: kSecondaryGreen,
+              color: isDark ? const Color(0xFF81C784) : kSecondaryGreen,
             ),
           ),
         ),
@@ -452,40 +435,47 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Input Email dengan ikon email
-  Widget _buildEmailField() {
+  Widget _buildEmailField(bool isDark) {
     return TextField(
       controller: emailController,
       keyboardType: TextInputType.emailAddress,
       textInputAction: TextInputAction.next,
-      style: const TextStyle(fontSize: 16, color: kTextMain),
+      style: TextStyle(
+        fontSize: 16,
+        color: isDark ? Colors.white : kTextMain,
+      ),
       decoration: _inputDecoration(
         label: 'Email',
         icon: Icons.email_outlined,
+        isDark: isDark,
       ),
     );
   }
 
-  /// Input Password dengan ikon gembok + tombol lihat/sembunyikan password
-  Widget _buildPasswordField() {
+  Widget _buildPasswordField(bool isDark) {
     return TextField(
       controller: passwordController,
       obscureText: obscurePassword,
       textInputAction: TextInputAction.done,
-      style: const TextStyle(fontSize: 16, color: kTextMain),
+      style: TextStyle(
+        fontSize: 16,
+        color: isDark ? Colors.white : kTextMain,
+      ),
       onSubmitted: (_) {
         if (!isLoading) login();
       },
       decoration: _inputDecoration(
         label: 'Password',
         icon: Icons.lock_outline,
+        isDark: isDark,
         suffix: IconButton(
-          tooltip: obscurePassword ? 'Tampilkan password' : 'Sembunyikan password',
+          tooltip:
+              obscurePassword ? 'Tampilkan password' : 'Sembunyikan password',
           icon: Icon(
             obscurePassword
                 ? Icons.visibility_outlined
                 : Icons.visibility_off_outlined,
-            color: kSecondaryGreen,
+            color: isDark ? const Color(0xFF81C784) : kSecondaryGreen,
             size: 24,
           ),
           onPressed: () {
@@ -498,10 +488,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Gaya input standar: border tipis hijau keabu-abuan, fokus hijau utama
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
+    required bool isDark,
     Widget? suffix,
   }) {
     OutlineInputBorder border(Color color, {double width = 1}) {
@@ -511,30 +501,38 @@ class _LoginPageState extends State<LoginPage> {
       );
     }
 
+    final borderCol = isDark ? const Color(0xFF2E3D34) : kLightGreen;
+    final focusCol = isDark ? const Color(0xFF81C784) : kPrimaryGreen;
+
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(fontSize: 15.5, color: kTextSecondary),
-      floatingLabelStyle: const TextStyle(
+      labelStyle: TextStyle(
+        fontSize: 15.5,
+        color: isDark ? Colors.white70 : kTextSecondary,
+      ),
+      floatingLabelStyle: TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w600,
-        color: kPrimaryGreen,
+        color: focusCol,
       ),
-      prefixIcon: Icon(icon, color: kSecondaryGreen, size: 24),
-      prefixIconColor: kSecondaryGreen,
+      prefixIcon: Icon(
+        icon,
+        color: isDark ? const Color(0xFF81C784) : kSecondaryGreen,
+        size: 24,
+      ),
       suffixIcon: suffix,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: isDark ? const Color(0xFF243329) : Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-      border: border(kLightGreen),
-      enabledBorder: border(kLightGreen),
-      focusedBorder: border(kPrimaryGreen, width: 1.6),
+      border: border(borderCol),
+      enabledBorder: border(borderCol),
+      focusedBorder: border(focusCol, width: 1.6),
       errorBorder: border(Colors.red.shade300),
       focusedErrorBorder: border(Colors.red.shade400, width: 1.4),
     );
   }
 
-  /// Checkbox "Ingat Saya" dengan area sentuh yang besar
-  Widget _buildRememberMe() {
+  Widget _buildRememberMe(bool isDark) {
     return Align(
       alignment: Alignment.centerLeft,
       child: InkWell(
@@ -560,7 +558,10 @@ class _LoginPageState extends State<LoginPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  side: const BorderSide(color: kLightGreen, width: 1.6),
+                  side: BorderSide(
+                    color: isDark ? Colors.white54 : kLightGreen,
+                    width: 1.6,
+                  ),
                   onChanged: (val) {
                     setState(() {
                       rememberMe = val ?? false;
@@ -569,11 +570,11 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'Ingat Saya',
                 style: TextStyle(
                   fontSize: 15,
-                  color: kTextMain,
+                  color: isDark ? Colors.white : kTextMain,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -584,7 +585,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Tombol MASUK - hijau utama, tinggi nyaman ditekan (56)
   Widget _buildLoginButton() {
     return SizedBox(
       width: double.infinity,
@@ -593,13 +593,13 @@ class _LoginPageState extends State<LoginPage> {
         style: ElevatedButton.styleFrom(
           backgroundColor: kPrimaryGreen,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: kPrimaryGreen.withOpacity(0.6),
+          disabledBackgroundColor: kPrimaryGreen.withValues(alpha: 0.6),
           disabledForegroundColor: Colors.white70,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 2,
-          shadowColor: kPrimaryGreen.withOpacity(0.35),
+          shadowColor: kPrimaryGreen.withValues(alpha: 0.35),
         ),
         onPressed: isLoading ? null : login,
         child: isLoading
@@ -623,40 +623,41 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Pemisah dengan tulisan "ATAU"
-  Widget _buildOrDivider() {
+  Widget _buildOrDivider(bool isDark) {
+    final divColor = isDark ? const Color(0xFF2E3D34) : kLightGreen;
     return Row(
       children: [
-        Expanded(child: Divider(color: kLightGreen, thickness: 1)),
+        Expanded(child: Divider(color: divColor, thickness: 1)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'ATAU',
             style: TextStyle(
-              color: kTextSecondary,
+              color: isDark ? Colors.white60 : kTextSecondary,
               fontSize: 12.5,
               fontWeight: FontWeight.bold,
               letterSpacing: 1.4,
             ),
           ),
         ),
-        Expanded(child: Divider(color: kLightGreen, thickness: 1)),
+        Expanded(child: Divider(color: divColor, thickness: 1)),
       ],
     );
   }
 
-  /// C. Tombol "Masuk dengan Google" (ikon Google resmi dari project)
-  Widget _buildGoogleButton() {
+  Widget _buildGoogleButton(bool isDark) {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: OutlinedButton(
         onPressed: (isLoading || isGoogleLoading) ? null : _handleGoogleSignIn,
         style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: kTextMain,
+          backgroundColor: isDark ? const Color(0xFF243329) : Colors.white,
+          foregroundColor: isDark ? Colors.white : kTextMain,
           side: BorderSide(
-            color: isGoogleLoading ? kPrimaryGreen : kLightGreen,
+            color: isGoogleLoading
+                ? kPrimaryGreen
+                : (isDark ? const Color(0xFF2E3D34) : kLightGreen),
             width: 1.2,
           ),
           shape: RoundedRectangleBorder(
@@ -665,7 +666,7 @@ class _LoginPageState extends State<LoginPage> {
           elevation: 0,
         ),
         child: isGoogleLoading
-            ? const Row(
+            ? Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(
@@ -673,29 +674,31 @@ class _LoginPageState extends State<LoginPage> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      color: kPrimaryGreen,
+                      color:
+                          isDark ? const Color(0xFF81C784) : kPrimaryGreen,
                     ),
                   ),
-                  SizedBox(width: 12),
+                  const SizedBox(width: 12),
                   Text(
                     'Menghubungkan Akun Google...',
                     style: TextStyle(
-                      color: kPrimaryGreen,
+                      color:
+                          isDark ? const Color(0xFF81C784) : kPrimaryGreen,
                       fontWeight: FontWeight.bold,
                       fontSize: 14.5,
                     ),
                   ),
                 ],
               )
-            : const Row(
+            : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  GoogleLogoWidget(size: 24),
-                  SizedBox(width: 12),
+                  const GoogleLogoWidget(size: 24),
+                  const SizedBox(width: 12),
                   Text(
                     'Masuk dengan Google',
                     style: TextStyle(
-                      color: kTextMain,
+                      color: isDark ? Colors.white : kTextMain,
                       fontWeight: FontWeight.bold,
                       fontSize: 15.5,
                     ),
@@ -707,12 +710,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 }
 
-// ============================================================================
-// DEKORASI LATAR BELAKANG - Modern Soft Green
-// Lingkaran & lengkungan transparan berwarna hijau muda.
-// Semua elemen diposisikan "overflow" ke luar tepi layar dan otomatis
-// terpotong oleh Stack, sehingga aman untuk semua ukuran layar.
-// ============================================================================
 class _SoftGreenDecoration extends StatelessWidget {
   const _SoftGreenDecoration();
 
@@ -721,7 +718,6 @@ class _SoftGreenDecoration extends StatelessWidget {
     return const Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        // Lingkaran besar transparan kanan atas (hijau muda)
         Positioned(
           top: -110,
           right: -80,
@@ -731,19 +727,16 @@ class _SoftGreenDecoration extends StatelessWidget {
             opacity: 0.85,
           ),
         ),
-        // Cincin (ring) kecil kanan atas
         Positioned(
           top: 92,
           right: 34,
           child: _Ring(size: 46, color: kSecondaryGreen, opacity: 0.22),
         ),
-        // Titik hijau sekunder kecil
         Positioned(
           top: 170,
           right: 78,
           child: _Circle(size: 14, color: kSecondaryGreen, opacity: 0.30),
         ),
-        // Lengkungan gelombang halus di bagian atas layar
         Positioned(
           top: 0,
           left: 0,
@@ -751,7 +744,6 @@ class _SoftGreenDecoration extends StatelessWidget {
           height: 190,
           child: _TopWavePainter(),
         ),
-        // Lingkaran besar transparan kiri bawah (hijau muda)
         Positioned(
           bottom: -120,
           left: -90,
@@ -761,19 +753,16 @@ class _SoftGreenDecoration extends StatelessWidget {
             opacity: 0.7,
           ),
         ),
-        // Cincin kecil kiri bawah
         Positioned(
           bottom: 150,
           left: 30,
           child: _Ring(size: 34, color: kPrimaryGreen, opacity: 0.16),
         ),
-        // Titik kecil kanan bawah
         Positioned(
           bottom: 90,
           right: 46,
           child: _Circle(size: 18, color: kLightGreen, opacity: 0.9),
         ),
-        // Lingkaran sedikit lebih gelap kanan bawah
         Positioned(
           bottom: -40,
           right: -60,
@@ -788,7 +777,6 @@ class _SoftGreenDecoration extends StatelessWidget {
   }
 }
 
-/// Lingkaran solid transparan
 class _Circle extends StatelessWidget {
   const _Circle({
     required this.size,
@@ -806,14 +794,13 @@ class _Circle extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: color.withOpacity(opacity),
         shape: BoxShape.circle,
+        color: color.withValues(alpha: opacity),
       ),
     );
   }
 }
 
-/// Cincin / outline lingkaran transparan
 class _Ring extends StatelessWidget {
   const _Ring({
     required this.size,
@@ -833,74 +820,51 @@ class _Ring extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: color.withOpacity(opacity),
-          width: 2.4,
+          color: color.withValues(alpha: opacity),
+          width: 4,
         ),
       ),
     );
   }
 }
 
-/// Lengkungan halus (dua kurva bezier) sebagai aksen bagian atas layar
 class _TopWavePainter extends StatelessWidget {
   const _TopWavePainter();
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: const Size(double.infinity, 190),
-      painter: _WavePainter(),
+      painter: _WaveCustomPainter(),
     );
   }
 }
 
-class _WavePainter extends CustomPainter {
+class _WaveCustomPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint1 = Paint()
-      ..color = kSecondaryGreen.withOpacity(0.10)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4;
+    final paint = Paint()
+      ..color = kLightGreen.withValues(alpha: 0.45)
+      ..style = PaintingStyle.fill;
 
-    final paint2 = Paint()
-      ..color = kPrimaryGreen.withOpacity(0.10)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(0, size.height * 0.65)
+      ..quadraticBezierTo(
+        size.width * 0.35,
+        size.height * 0.95,
+        size.width * 0.72,
+        size.height * 0.48,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.88,
+        size.height * 0.25,
+        size.width,
+        size.height * 0.38,
+      )
+      ..lineTo(size.width, 0)
+      ..close();
 
-    // Kurva pertama
-    final path1 = Path();
-    path1.moveTo(0, size.height * 0.38);
-    path1.quadraticBezierTo(
-      size.width * 0.28,
-      size.height * 0.10,
-      size.width * 0.55,
-      size.height * 0.34,
-    );
-    path1.quadraticBezierTo(
-      size.width * 0.80,
-      size.height * 0.56,
-      size.width,
-      size.height * 0.30,
-    );
-
-    // Kurva kedua, sedikit di bawah kurva pertama
-    final path2 = Path();
-    path2.moveTo(0, size.height * 0.52);
-    path2.quadraticBezierTo(
-      size.width * 0.30,
-      size.height * 0.24,
-      size.width * 0.58,
-      size.height * 0.48,
-    );
-    path2.quadraticBezierTo(
-      size.width * 0.82,
-      size.height * 0.68,
-      size.width,
-      size.height * 0.44,
-    );
-
-    canvas.drawPath(path1, paint1);
-    canvas.drawPath(path2, paint2);
+    canvas.drawPath(path, paint);
   }
 
   @override

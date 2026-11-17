@@ -82,7 +82,8 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
         lower == 'budi.santoso@kehutanan.go.id' ||
         lower == 'andi.wijaya@kehutanan.go.id' ||
         lower == 'atmin@gmail.com' ||
-        lower == 'r4yy73@gmail.com' ||
+        lower == 'ehan@gmail.com' ||
+        lower == 'petugas@kehutanan.go.id' ||
         lower == 'r4yy73@gmailcom' ||
         lower == 'test@example.com' ||
         lowerId == 'usr-001' ||
@@ -131,6 +132,8 @@ class _AdminFolderPageState extends State<AdminFolderPage> {
         final List<dynamic> jadwalList = jsonDecode(rawJadwal);
         for (final j in jadwalList) {
           final map = Map<String, dynamic>.from(j);
+          final rawId = (map['id'] ?? '').toString().trim().toLowerCase();
+          if ({'jadwal_1', 'jadwal_2', 'jadwal_3', 'jadwal_4', 'jadwal_5', 'jadwal_6'}.contains(rawId)) continue;
           final id = 'sync_jadwal_${map['id']}';
           if (!items.any((e) => e['id'] == id)) {
             items.insert(0, {

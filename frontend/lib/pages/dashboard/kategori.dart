@@ -1,18 +1,7 @@
 // ============================================================================
 // [KHUSUS USER - HALAMAN FOLDER LAPORAN & ARSIP KEGIATAN SAYA]
-// Simpan file ini di: lib/pages/kategori.dart
+// Simpan file ini di: lib/pages/dashboard/kategori.dart
 // Hanya untuk User: Melihat folder kategori laporan & arsip kegiatan milik user
-//
-// REDESIGN UI: "Soft Green Forest - Modern Professional"
-// - Palet Forest Green (#245C3A) yang konsisten, tanpa ungu/biru.
-// - Header ringkasan gradasi soft green + ilustrasi daun minimalis.
-// - Card putih rounded, shadow sangat tipis, white space lega.
-// - Ikon berbeda tiap kategori folder, satu gaya visual.
-// - Item arsip menampilkan status (Draft / Terjadwal / Selesai).
-//
-// CATATAN: Seluruh logika & fungsi lama dipertahankan 100%
-// (sinkronisasi jadwal/draft, pencarian, filter, navigasi folder,
-// tambah folder, detail item, hapus item, penyimpanan SharedPreferences).
 // ============================================================================
 
 import 'dart:convert';
@@ -20,18 +9,20 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ----------------------------------------------------------------------------
-// PALET WARNA - Soft Green Forest
-// ----------------------------------------------------------------------------
-const Color kPrimary = Color(0xFF245C3A); // Forest Green (utama)
-const Color kSecondary = Color(0xFF4F8A5B); // Hijau sekunder
-const Color kLightGreen = Color(0xFFE8F2E8); // Light green
-const Color kSoftGreen = Color(0xFFF2F7F0); // Soft green
-const Color kBackground = Color(0xFFF7F9F6); // Background
-const Color kCard = Color(0xFFFFFFFF); // Card
-const Color kTextPrimary = Color(0xFF24352A); // Teks utama
-const Color kTextSecondary = Color(0xFF758278); // Teks sekunder
-const Color kBorder = Color(0xFFE1EAE0); // Border
+import '../../constants/jadwal_constants.dart';
+import '../../services/jadwal_service.dart';
+import '../../services/laporan_service.dart';
+import '../../services/offline_database.dart';
+
+const Color kPrimary = Color(0xFF245C3A);
+const Color kSecondary = Color(0xFF4F8A5B);
+const Color kLightGreen = Color(0xFFE8F2E8);
+const Color kSoftGreen = Color(0xFFF2F7F0);
+const Color kBackground = Color(0xFFF7F9F6);
+const Color kCard = Color(0xFFFFFFFF);
+const Color kTextPrimary = Color(0xFF24352A);
+const Color kTextSecondary = Color(0xFF758278);
+const Color kBorder = Color(0xFFE1EAE0);
 
 class KategoriPage extends StatefulWidget {
   const KategoriPage({super.key});
@@ -42,11 +33,24 @@ class KategoriPage extends StatefulWidget {
 
 class _KategoriPageState extends State<KategoriPage> {
   static const String _userArchiveKey = 'phonebook_user_folder_archives_v1';
-  static const String _jadwalStorageKey = 'phonebook_jadwal_items_v1';
   static const String _laporanDraftKey = 'phonebook_laporan_drafts_v1';
+  static const Set<String> _legacyDummyArchiveIds = {
+    'usr_arc_1',
+    'usr_arc_2',
+    'usr_arc_3',
+    'my_jadwal_jadwal_1',
+    'my_jadwal_jadwal_2',
+    'my_jadwal_jadwal_3',
+    'my_jadwal_jadwal_4',
+    'my_jadwal_jadwal_5',
+    'my_jadwal_jadwal_6',
+  };
+
+  final LaporanService _laporanService = LaporanService();
 
   String _searchQuery = '';
   String _selectedTypeFilter = 'Semua';
+  bool _isLoading = true;
 
   /// Jika tidak null, berarti sedang membuka salah satu folder kategori
   String? _openedCategoryFolder;
@@ -78,54 +82,113 @@ class _KategoriPageState extends State<KategoriPage> {
     _loadUserFolderData();
   }
 
+  static bool _isDummyArchiveItem(Map<String, dynamic> item) {
+    final id = (item['id'] ?? '').toString().trim().toLowerCase();
+    return _legacyDummyArchiveIds.contains(id) || isDummyScheduleId(id);
+  }
+
   Future<void> _loadUserFolderData() async {
+    setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
 
-    List<Map<String, dynamic>> items = _buildDefaultUserItems();
+    List<Map<String, dynamic>> items = [];
     final rawSaved = prefs.getString(_userArchiveKey);
     if (rawSaved != null && rawSaved.isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(rawSaved);
-        items = decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        items = decoded
+            .map((e) => Map<String, dynamic>.from(e))
+            .where((e) => !_isDummyArchiveItem(e))
+            .toList();
       } catch (_) {}
     }
 
-    // Sinkronkan jadwal dari halaman Jadwal user
-    final rawJadwal = prefs.getString(_jadwalStorageKey);
-    if (rawJadwal != null && rawJadwal.isNotEmpty) {
-      try {
-        final List<dynamic> jadwalList = jsonDecode(rawJadwal);
-        for (final j in jadwalList) {
-          final map = Map<String, dynamic>.from(j);
-          final id = 'my_jadwal_${map['id']}';
-          if (!items.any((e) => e['id'] == id)) {
-            items.insert(0, {
-              'id': id,
-              'judul': map['judul'] ?? 'Kegiatan Terjadwal',
-              'tipe': 'Arsip Jadwal',
-              'kategori': _normalizeCategory(
-                (map['kategori'] ?? 'Penyuluhan').toString(),
-              ),
-              'lokasi': map['lokasi'] ?? 'Kecamatan Garut',
-              'tanggal': map['tanggalIso'] ?? '20 Oktober 2026',
-              'waktu': map['waktu'] ?? '08:00',
-              'status': (map['isCompleted'] ?? false) ? 'Selesai' : 'Terjadwal',
-              'deskripsi': map['catatan'] ??
-                  'Arsip pelaksanaan jadwal kegiatan lapangan.',
-            });
-          }
+    // 1. Sinkronkan jadwal asli dari JadwalService
+    try {
+      final jadwalList = await JadwalService.loadSchedules();
+      for (final map in jadwalList) {
+        if (isDummyScheduleId(map['id'])) continue;
+        final id = 'my_jadwal_${map['id']}';
+        if (!items.any((e) => e['id'] == id)) {
+          items.insert(0, {
+            'id': id,
+            'judul': map['judul'] ?? 'Kegiatan Terjadwal',
+            'tipe': 'Arsip Jadwal',
+            'kategori': _normalizeCategory(
+              (map['kategori'] ?? 'Penyuluhan').toString(),
+            ),
+            'lokasi': map['lokasi'] ?? '-',
+            'tanggal': map['tanggalIso'] ?? '-',
+            'waktu': map['waktu'] ?? '08:00',
+            'status': (map['isCompleted'] ?? false) ? 'Selesai' : 'Terjadwal',
+            'deskripsi':
+                map['catatan'] ?? 'Arsip pelaksanaan jadwal kegiatan lapangan.',
+          });
         }
-      } catch (_) {}
-    }
+      }
+    } catch (_) {}
 
-    // Sinkronkan draft laporan dari halaman Laporan user
+    // 2. Sinkronkan laporan asli dari SQLite / API Backend
+    try {
+      final localReports = await OfflineDatabase.instance.getAllReports();
+      for (final r in localReports) {
+        final id = 'my_report_${r['server_id'] ?? r['id'] ?? r['title']}';
+        if (!items.any((e) => e['id'] == id)) {
+          items.insert(0, {
+            'id': id,
+            'judul': (r['title'] ?? 'Laporan Kegiatan').toString(),
+            'tipe': 'Laporan',
+            'kategori': _normalizeCategory(
+              (r['category_name'] ?? 'Penyuluhan').toString(),
+            ),
+            'lokasi': (r['location'] ?? '-').toString(),
+            'tanggal': (r['date'] ?? '-').toString(),
+            'waktu': '09:00',
+            'status': (r['status'] ?? '').toString().toLowerCase() == 'draft'
+                ? 'Draft'
+                : 'Selesai',
+            'deskripsi': (r['description'] ?? '').toString(),
+          });
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final apiReports = await _laporanService.getReports();
+      for (final r in apiReports) {
+        final map = Map<String, dynamic>.from(r as Map);
+        final id = 'my_report_${map['id'] ?? map['title']}';
+        if (!items.any((e) => e['id'] == id)) {
+          items.insert(0, {
+            'id': id,
+            'judul': (map['title'] ?? 'Laporan Kegiatan').toString(),
+            'tipe': 'Laporan',
+            'kategori': _normalizeCategory(
+              (map['category_name'] ??
+                      map['category']?['name'] ??
+                      'Penyuluhan')
+                  .toString(),
+            ),
+            'lokasi': (map['location'] ?? '-').toString(),
+            'tanggal': (map['report_date'] ?? map['date'] ?? '-').toString(),
+            'waktu': '09:00',
+            'status': (map['status'] ?? '').toString().toLowerCase() == 'draft'
+                ? 'Draft'
+                : 'Selesai',
+            'deskripsi': (map['description'] ?? '').toString(),
+          });
+        }
+      }
+    } catch (_) {}
+
+    // 3. Sinkronkan draft laporan dari SharedPreferences
     final rawLaporan = prefs.getString(_laporanDraftKey);
     if (rawLaporan != null && rawLaporan.isNotEmpty) {
       try {
         final List<dynamic> laporanList = jsonDecode(rawLaporan);
         for (final l in laporanList) {
           final map = Map<String, dynamic>.from(l);
-          final id = 'my_laporan_${map['id']}';
+          final id = 'my_laporan_${map['id'] ?? map['judul']}';
           if (!items.any((e) => e['id'] == id)) {
             items.insert(0, {
               'id': id,
@@ -134,8 +197,8 @@ class _KategoriPageState extends State<KategoriPage> {
               'kategori': _normalizeCategory(
                 (map['jenis'] ?? 'Penyuluhan').toString(),
               ),
-              'lokasi': map['lokasi'] ?? 'Garut',
-              'tanggal': map['tanggal'] ?? '20 Oktober 2026',
+              'lokasi': map['lokasi'] ?? '-',
+              'tanggal': map['tanggal'] ?? '-',
               'waktu': '09:00',
               'status': map['status'] ?? 'Draft',
               'deskripsi':
@@ -146,11 +209,14 @@ class _KategoriPageState extends State<KategoriPage> {
       } catch (_) {}
     }
 
+    await prefs.setString(_userArchiveKey, jsonEncode(items));
+
     if (!mounted) return;
     setState(() {
       _myItems
         ..clear()
         ..addAll(items);
+      _isLoading = false;
     });
   }
 
@@ -176,9 +242,6 @@ class _KategoriPageState extends State<KategoriPage> {
     return 'Penyuluhan';
   }
 
-  // --------------------------------------------------------------------------
-  // IKON & WARNA KATEGORI (satu gaya visual: outline, forest green)
-  // --------------------------------------------------------------------------
   IconData _categoryIcon(String category) {
     switch (category) {
       case 'Penyuluhan':
@@ -196,15 +259,14 @@ class _KategoriPageState extends State<KategoriPage> {
     }
   }
 
-  /// Warna badge status arsip
   Color _statusColor(String status) {
     switch (status) {
       case 'Selesai':
-        return kPrimary;
+        return _primaryCol;
       case 'Terjadwal':
         return kSecondary;
-      default: // Draft
-        return const Color(0xFF9A6A12); // aksen cokelat keemasan (bukan ungu/biru)
+      default:
+        return const Color(0xFF9A6A12);
     }
   }
 
@@ -227,34 +289,38 @@ class _KategoriPageState extends State<KategoriPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Tambah Folder Kategori Baru',
                 style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.bold,
-                  color: kTextPrimary,
+                  color: _textPrimaryCol,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Folder baru akan muncul pada daftar folder kategori Anda.',
-                style: TextStyle(fontSize: 13.5, color: kTextSecondary),
+                style: TextStyle(fontSize: 13.5, color: _textSecondaryCol),
               ),
               const SizedBox(height: 16),
               TextFormField(
                 autofocus: true,
                 onChanged: (v) => folderName = v,
+                style: TextStyle(color: _textPrimaryCol),
                 decoration: InputDecoration(
                   labelText: 'Nama Folder',
                   hintText: 'Contoh: Perhutanan Sosial',
-                  labelStyle: const TextStyle(color: kTextSecondary),
-                  floatingLabelStyle: const TextStyle(
-                    color: kPrimary,
+                  labelStyle: TextStyle(color: _textSecondaryCol),
+                  hintStyle: TextStyle(
+                    color: _isDark ? Colors.white38 : Colors.grey,
+                  ),
+                  floatingLabelStyle: TextStyle(
+                    color: _primaryCol,
                     fontWeight: FontWeight.w600,
                   ),
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.create_new_folder_outlined,
-                    color: kSecondary,
+                    color: _primaryCol,
                   ),
                   filled: true,
                   fillColor: _softGreenCol,
@@ -268,11 +334,11 @@ class _KategoriPageState extends State<KategoriPage> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: kBorder),
+                    borderSide: BorderSide(color: _borderCol),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: kPrimary, width: 1.6),
+                    borderSide: BorderSide(color: _primaryCol, width: 1.6),
                   ),
                 ),
               ),
@@ -284,8 +350,8 @@ class _KategoriPageState extends State<KategoriPage> {
                       height: 52,
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: kTextPrimary,
-                          side: const BorderSide(color: kBorder),
+                          foregroundColor: _textPrimaryCol,
+                          side: BorderSide(color: _borderCol),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -485,10 +551,6 @@ class _KategoriPageState extends State<KategoriPage> {
     );
   }
 
-  // --------------------------------------------------------------------------
-  // ============================ BUILD UI ====================================
-  // --------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final totalLaporan = _myItems.where((e) => e['tipe'] == 'Laporan').length;
@@ -504,6 +566,7 @@ class _KategoriPageState extends State<KategoriPage> {
         scrolledUnderElevation: 0.5,
         toolbarHeight: 64,
         centerTitle: false,
+        iconTheme: IconThemeData(color: _textPrimaryCol),
         leading: _openedCategoryFolder != null
             ? IconButton(
                 onPressed: () => setState(() => _openedCategoryFolder = null),
@@ -524,80 +587,81 @@ class _KategoriPageState extends State<KategoriPage> {
           ),
         ),
       ),
-      // E. Floating Action Button - forest green, ikon folder putih
-floatingActionButton: DecoratedBox(
-  decoration: BoxDecoration(
-    borderRadius: BorderRadius.circular(18),
-    boxShadow: [
-      BoxShadow(
-        color: kPrimary.withOpacity(0.35),
-        blurRadius: 10,
-        offset: const Offset(0, 4),
+      floatingActionButton: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: kPrimary.withValues(alpha: 0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: _openAddFolderSheet,
+          backgroundColor: kPrimary,
+          foregroundColor: Colors.white,
+          tooltip: 'Buat Folder Baru',
+          elevation: 0,
+          highlightElevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: const Icon(Icons.create_new_folder_outlined),
+        ),
       ),
-    ],
-  ),
-  child: FloatingActionButton(
-    onPressed: _openAddFolderSheet,
-    backgroundColor: kPrimary,
-    foregroundColor: Colors.white,
-    tooltip: 'Buat Folder Baru',
-    elevation: 0,
-    highlightElevation: 0,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: const Icon(Icons.create_new_folder_outlined),
-  ),
-),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
-        children: [
-          // B. Header Ringkasan - gradasi soft green + ilustrasi daun
-          _buildSummaryHeader(totalLaporan, totalJadwal),
-          const SizedBox(height: 16),
-
-          // C. Search Bar
-          _buildSearchBar(),
-          const SizedBox(height: 24),
-
-          // D. Daftar Folder Kategori
-          if (_openedCategoryFolder == null) ...[
-            const Text(
-              'Daftar Folder Kategori',
+      body: RefreshIndicator(
+        color: kPrimary,
+        onRefresh: _loadUserFolderData,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
+          children: [
+            _buildSummaryHeader(totalLaporan, totalJadwal),
+            const SizedBox(height: 16),
+            _buildSearchBar(),
+            const SizedBox(height: 24),
+            if (_openedCategoryFolder == null) ...[
+              Text(
+                'Daftar Folder Kategori',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                  color: _textPrimaryCol,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ..._categories.map(_buildCategoryCard),
+              const SizedBox(height: 24),
+            ],
+            Text(
+              _openedCategoryFolder != null
+                  ? 'Isi Berkas di Folder $_openedCategoryFolder'
+                  : 'Seluruh Laporan & Arsip Kegiatan Saya',
               style: TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.bold,
-                color: kTextPrimary,
+                color: _textPrimaryCol,
               ),
             ),
             const SizedBox(height: 12),
-            ..._categories.map(_buildCategoryCard),
-            const SizedBox(height: 24),
+            _buildFilterChips(),
+            const SizedBox(height: 14),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(
+                  child: CircularProgressIndicator(color: kPrimary),
+                ),
+              )
+            else
+              ..._buildUserArchiveList(),
           ],
-
-          // F. Daftar Arsip
-          Text(
-            _openedCategoryFolder != null
-                ? 'Isi Berkas di Folder $_openedCategoryFolder'
-                : 'Seluruh Laporan & Arsip Kegiatan Saya',
-            style: const TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-              color: kTextPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          _buildFilterChips(),
-          const SizedBox(height: 14),
-
-          ..._buildUserArchiveList(),
-        ],
+        ),
       ),
     );
   }
 
-  /// B. Kartu ringkasan arsip dengan gradasi halus + ilustrasi daun kanan
   Widget _buildSummaryHeader(int totalLaporan, int totalJadwal) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 12, 20),
@@ -627,7 +691,7 @@ floatingActionButton: DecoratedBox(
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: _primaryCol,
+                        color: kPrimary,
                         borderRadius: BorderRadius.circular(13),
                       ),
                       child: const Icon(
@@ -668,7 +732,6 @@ floatingActionButton: DecoratedBox(
               ],
             ),
           ),
-          // Ilustrasi daun minimalis di sisi kanan
           const SizedBox(
             width: 60,
             height: 100,
@@ -708,7 +771,6 @@ floatingActionButton: DecoratedBox(
     );
   }
 
-  /// C. Search bar rounded besar & nyaman (54px)
   Widget _buildSearchBar() {
     return SizedBox(
       height: 54,
@@ -716,7 +778,7 @@ floatingActionButton: DecoratedBox(
         onChanged: (val) => setState(() => _searchQuery = val),
         style: TextStyle(fontSize: 15, color: _textPrimaryCol),
         decoration: InputDecoration(
-          hintText: 'Cari folder, judul laporan, atau nama...',
+          hintText: 'Cari folder, judul laporan, atau lokasi...',
           hintStyle: TextStyle(fontSize: 14, color: _textSecondaryCol),
           prefixIcon: Icon(
             Icons.search_rounded,
@@ -754,7 +816,6 @@ floatingActionButton: DecoratedBox(
     );
   }
 
-  /// D. Card kategori folder vertikal modern (rounded 18, shadow tipis)
   Widget _buildCategoryCard(String cat) {
     final catItems = _myItems.where((e) => e['kategori'] == cat).toList();
     final cLap = catItems.where((e) => e['tipe'] == 'Laporan').length;
@@ -770,7 +831,7 @@ floatingActionButton: DecoratedBox(
             ? null
             : [
                 BoxShadow(
-                  color: kPrimary.withOpacity(0.05),
+                  color: kPrimary.withValues(alpha: 0.05),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -786,7 +847,6 @@ floatingActionButton: DecoratedBox(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             child: Row(
               children: [
-                // Ikon kategori dalam wadah soft green (aksen)
                 Container(
                   width: 50,
                   height: 50,
@@ -854,7 +914,6 @@ floatingActionButton: DecoratedBox(
     );
   }
 
-  /// F. Filter Semua / Laporan / Arsip Jadwal (tinggi 46px, sentuh nyaman)
   Widget _buildFilterChips() {
     return SizedBox(
       height: 46,
@@ -953,7 +1012,7 @@ floatingActionButton: DecoratedBox(
               ),
               const SizedBox(height: 6),
               Text(
-                'Laporan dan arsip jadwal kegiatan yang\ntersimpan akan tampil pada folder ini.',
+                'Laporan dan arsip jadwal kegiatan asli yang\ntersimpan akan tampil pada folder ini.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
@@ -980,7 +1039,7 @@ floatingActionButton: DecoratedBox(
               ? null
               : [
                   BoxShadow(
-                    color: kPrimary.withOpacity(0.04),
+                    color: kPrimary.withValues(alpha: 0.04),
                     blurRadius: 10,
                     offset: const Offset(0, 3),
                   ),
@@ -1050,7 +1109,6 @@ floatingActionButton: DecoratedBox(
                       ],
                     ),
                   ),
-                  // Tombol hapus (area sentuh 44x44)
                   SizedBox(
                     width: 44,
                     height: 44,
@@ -1080,7 +1138,6 @@ floatingActionButton: DecoratedBox(
     }).toList();
   }
 
-  /// Metadata item arsip (kategori / tanggal / lokasi)
   Widget _archiveMeta(IconData icon, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1098,52 +1155,8 @@ floatingActionButton: DecoratedBox(
       ],
     );
   }
-
-  List<Map<String, dynamic>> _buildDefaultUserItems() {
-    return [
-      {
-        'id': 'usr_arc_1',
-        'judul': 'Laporan Penyuluhan Perhutanan Sosial KTH Makmur',
-        'tipe': 'Laporan',
-        'kategori': 'Penyuluhan',
-        'lokasi': 'Kecamatan Garut',
-        'tanggal': '20 Oktober 2026',
-        'waktu': '08:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Pendampingan penyusunan rencana kerja tahunan dan pembagian bibit produktif pada KTH Makmur.',
-      },
-      {
-        'id': 'usr_arc_2',
-        'judul': 'Arsip Kegiatan Monitoring Lapangan Blok Utara',
-        'tipe': 'Arsip Jadwal',
-        'kategori': 'Monitoring & Patroli',
-        'lokasi': 'Kawasan Hutan Garut',
-        'tanggal': '18 Oktober 2026',
-        'waktu': '13:00',
-        'status': 'Selesai',
-        'deskripsi':
-            'Pengecekan kondisi patok batas kawasan hutan dan pemantauan titik rawan kebakaran.',
-      },
-      {
-        'id': 'usr_arc_3',
-        'judul': 'Laporan Penanaman Bibit Pohon Bersama Warga',
-        'tipe': 'Laporan',
-        'kategori': 'Rehabilitasi Hutan',
-        'lokasi': 'Lereng Gunung Guntur',
-        'tanggal': '14 Oktober 2026',
-        'waktu': '07:30',
-        'status': 'Selesai',
-        'deskripsi':
-            'Kegiatan rehabilitasi lahan kritis bersama masyarakat desa sekitar kawasan hutan.',
-      },
-    ];
-  }
 }
 
-// ============================================================================
-// BADGE STATUS ARSIP (Draft / Terjadwal / Selesai)
-// ============================================================================
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status, required this.fg});
 
@@ -1160,14 +1173,14 @@ class _StatusBadge extends StatelessWidget {
       case 'Terjadwal':
         icon = Icons.schedule_rounded;
         break;
-      default: // Draft
+      default:
         icon = Icons.edit_note_rounded;
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: fg.withOpacity(0.12),
+        color: fg.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Row(
@@ -1190,10 +1203,6 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// ILUSTRASI DAUN MINIMALIS (kanan kartu ringkasan)
-// Tiga helai daun sederhana bergaya flat, warna hijau transparan lembut.
-// ============================================================================
 class _LeafIllustration extends StatelessWidget {
   const _LeafIllustration();
 
@@ -1209,29 +1218,24 @@ class _LeafIllustration extends StatelessWidget {
 class _LeafPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Helai daun besar
     final leafBig = Paint()
-      ..color = kSecondary.withOpacity(0.30)
+      ..color = kSecondary.withValues(alpha: 0.30)
       ..style = PaintingStyle.fill;
 
-    // Helai daun sedang
     final leafMid = Paint()
-      ..color = kPrimary.withOpacity(0.20)
+      ..color = kPrimary.withValues(alpha: 0.20)
       ..style = PaintingStyle.fill;
 
-    // Helai daun kecil (paling atas)
     final leafSmall = Paint()
-      ..color = kSecondary.withOpacity(0.16)
+      ..color = kSecondary.withValues(alpha: 0.16)
       ..style = PaintingStyle.fill;
 
-    // Tangkai
     final stem = Paint()
-      ..color = kPrimary.withOpacity(0.28)
+      ..color = kPrimary.withValues(alpha: 0.28)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
 
-    // Tangkai melengkung dari bawah ke atas
     final stemPath = Path();
     stemPath.moveTo(size.width * 0.40, size.height * 0.98);
     stemPath.quadraticBezierTo(
@@ -1242,7 +1246,6 @@ class _LeafPainter extends CustomPainter {
     );
     canvas.drawPath(stemPath, stem);
 
-    // Daun besar (kiri bawah tangkai)
     canvas.drawPath(
       _leafPath(
         tipX: size.width * 0.02,
@@ -1253,7 +1256,6 @@ class _LeafPainter extends CustomPainter {
       leafBig,
     );
 
-    // Daun sedang (kanan tengah tangkai)
     canvas.drawPath(
       _leafPath(
         tipX: size.width * 0.98,
@@ -1264,7 +1266,6 @@ class _LeafPainter extends CustomPainter {
       leafMid,
     );
 
-    // Daun kecil (paling atas)
     canvas.drawPath(
       _leafPath(
         tipX: size.width * 0.68,
@@ -1276,7 +1277,6 @@ class _LeafPainter extends CustomPainter {
     );
   }
 
-  /// Membentuk satu helai daun (dua kurva bezier bertemu di ujung)
   Path _leafPath({
     required double tipX,
     required double tipY,

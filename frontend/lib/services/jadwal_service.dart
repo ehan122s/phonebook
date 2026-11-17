@@ -18,12 +18,6 @@ class JadwalService {
   static String get baseUrl => ApiConstants.baseUrl;
 
   /// Formats time string ensuring HH:mm format for both frontend and backend.
-  /// Supports:
-  /// - "13:00" -> "13:00"
-  /// - "13:00:00" (MySQL/PostgreSQL TIME column) -> "13:00"
-  /// - "13.00" or "13.00.00" -> "13:00"
-  /// - "13:00 - 15:00" -> "13:00"
-  /// - ISO 8601 datetime strings -> converted to Asia/Jakarta HH:mm
   static String formatTimeString(String raw, {String fallback = '08:00'}) {
     final clean = raw.trim();
     if (clean.isEmpty || clean.toLowerCase() == 'null') return fallback;
@@ -56,13 +50,10 @@ class JadwalService {
     return fallback;
   }
 
-  /// Membuat kunci pencarian berdasarkan judul + tanggal agar pilihan waktu & reminder
-  /// pengguna tidak pernah hilang meskipun ID lokal berganti menjadi ID server.
   static String _buildTitleDateKey(String judul, String tanggalIso) {
     return '${judul.trim().toLowerCase()}|${tanggalIso.trim()}';
   }
 
-  /// Membaca peta preferensi jadwal & reminder yang pernah diatur pengguna
   static Future<Map<String, Map<String, dynamic>>> _loadUserPrefsMap() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(userPrefsKey);
@@ -78,7 +69,6 @@ class JadwalService {
     }
   }
 
-  /// Menyimpan pilihan waktu & reminderMinutes pengguna ke penyimpanan persisten khusus
   static Future<void> _saveUserPreferenceForItem(
     Map<String, dynamic> item,
   ) async {
@@ -97,14 +87,15 @@ class JadwalService {
       'reminderTime': item['reminderTime'],
       'kategori': item['kategori'],
       'enableWaNotification': item['enableWaNotification'] ?? true,
-      'waPhone': item['waPhone'] ?? '089602976525',
+      'waPhone': item['waPhone'] ?? '',
       'isCompleted': item['isCompleted'] ?? false,
       'reminderTriggered': item['reminderTriggered'] ?? false,
       'reminderTriggeredAt': item['reminderTriggeredAt'],
       'whatsappStatus': item['whatsappStatus'] ?? item['whatsapp_status'],
       'whatsappError': item['whatsappError'] ?? item['whatsapp_error'],
       'whatsappSentAt': item['whatsappSentAt'] ?? item['whatsapp_sent_at'],
-      'whatsappMessageId': item['whatsappMessageId'] ?? item['whatsapp_message_id'],
+      'whatsappMessageId':
+          item['whatsappMessageId'] ?? item['whatsapp_message_id'],
       'whatsappSent': item['whatsappSent'] ?? item['whatsapp_sent'],
     };
 
@@ -114,17 +105,12 @@ class JadwalService {
     await prefs.setString(userPrefsKey, jsonEncode(map));
   }
 
-  /// Mengekstrak interval reminder (dalam menit) secara akurat:
-  /// - Mengabaikan nilai `reminder_at` `00:00:00Z` (`07:00 WIB`) dari server Vercel lama
-  ///   yang sebelumnya menyebabkan bug `240 / 195 / 360 menit sebelum (07:00 WIB)`.
-  /// - Memvalidasi agar hanya nilai interval reminder yang valid yang digunakan.
   static int extractReminderMinutes(
     Map<String, dynamic> raw, {
     required String waktuHHmm,
     Map<String, dynamic>? savedPref,
     Map<String, dynamic>? existingLocal,
   }) {
-    // 1. Cek langsung dari raw['reminderMinutes'] / raw['reminder_minutes'] jika valid
     final directVal = raw['reminderMinutes'] ?? raw['reminder_minutes'];
     if (directVal != null) {
       final parsed = int.tryParse(directVal.toString());
@@ -133,7 +119,6 @@ class JadwalService {
       }
     }
 
-    // 2. Cek dari preferensi pengguna yang tersimpan khusus untuk jadwal ini
     if (savedPref != null && savedPref['reminderMinutes'] != null) {
       final prefMin =
           int.tryParse(savedPref['reminderMinutes'].toString());
@@ -142,7 +127,6 @@ class JadwalService {
       }
     }
 
-    // 3. Cek dari existingLocal jika nilainya valid (bukan 240/195/360 hasil bug 07:00 WIB)
     if (existingLocal != null && existingLocal['reminderMinutes'] != null) {
       final localMin =
           int.tryParse(existingLocal['reminderMinutes'].toString());
@@ -151,7 +135,6 @@ class JadwalService {
       }
     }
 
-    // 4. Cek selisih antara start_time (waktuHHmm) dan end_time (tempat kita menyimpan jam reminder di server Vercel)
     final rawEndTime = raw['end_time'] ?? raw['endTime'];
     if (rawEndTime != null &&
         rawEndTime.toString().trim().isNotEmpty &&
@@ -178,12 +161,9 @@ class JadwalService {
       }
     }
 
-    // Default fallback yang bersih (10 menit sebelum jadwal)
     return 10;
   }
 
-  /// Normalizes schedule item map so all pages (jadwal, history reminder, kategori, admin_folder)
-  /// read accurate time & reminder intervals without overwriting user input.
   static Map<String, dynamic> normalizeItem(
     Map<String, dynamic> raw, {
     Map<String, dynamic>? existingLocal,
@@ -219,7 +199,6 @@ class JadwalService {
       tanggalIso = JadwalDateUtils.toIsoDate(JadwalDateUtils.nowWib());
     }
 
-    // Ambil waktu dari raw, gunakan savedPref atau existingLocal sebagai fallback sebelum '08:00'
     final fallbackTime = (savedPref?['waktu'] ??
             existingLocal?['waktu'] ??
             existingLocal?['time'] ??
@@ -280,7 +259,7 @@ class JadwalService {
             savedPref?['waPhone'] ??
             existingLocal?['waPhone'] ??
             existingLocal?['wa_phone'] ??
-            '089602692362')
+            '')
         .toString();
 
     final reminderTriggered = raw['reminderTriggered'] == true ||
@@ -374,7 +353,7 @@ class JadwalService {
     };
   }
 
-  /// Load all schedules from local storage and optionally sync with backend API
+  /// Load all schedules from local storage and sync with backend API (without dummy fallbacks)
   static Future<List<Map<String, dynamic>>> loadSchedules() async {
     final prefs = await SharedPreferences.getInstance();
     final userPrefsMap = await _loadUserPrefsMap();
@@ -385,8 +364,10 @@ class JadwalService {
     if (rawLocal != null && rawLocal.isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(rawLocal);
-        items = decoded.map((e) {
-          final map = Map<String, dynamic>.from(e);
+        items = decoded
+            .map((e) => Map<String, dynamic>.from(e))
+            .where((map) => !isDummyScheduleId(map['id']))
+            .map((map) {
           final idKey = 'id_${map['id']}';
           final tdKey = _buildTitleDateKey(
             (map['judul'] ?? map['title'] ?? '').toString(),
@@ -423,6 +404,8 @@ class JadwalService {
             for (final row in apiList) {
               final rowMap = Map<String, dynamic>.from(row);
               final rowId = (rowMap['id'] ?? '').toString();
+              if (isDummyScheduleId(rowId)) continue;
+
               final rowTitle =
                   (rowMap['title'] ?? rowMap['judul'] ?? '').toString();
               final rowDateIso = JadwalDateUtils.toIsoDate(
@@ -460,17 +443,10 @@ class JadwalService {
             }
           }
         }
-      } catch (_) {
-        // Fall back to local items
-      }
+      } catch (_) {}
     }
 
-    if (items.isEmpty) {
-      items = buildDefaultJadwalList().map((e) => normalizeItem(e)).toList();
-      await saveLocalSchedules(items);
-    } else {
-      await saveLocalSchedules(items);
-    }
+    await saveLocalSchedules(items);
 
     // Sinkronkan penjadwalan reminder otomatis untuk seluruh jadwal
     await NotificationService.instance.rescheduleAllFromList(items);
@@ -483,9 +459,10 @@ class JadwalService {
     List<Map<String, dynamic>> items,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final serializable = items.map((e) {
+    final serializable = items
+        .where((e) => !isDummyScheduleId(e['id']))
+        .map((e) {
       final copy = Map<String, dynamic>.from(e);
-      // Remove raw DateTime object before json encoding
       copy.remove('date');
       return copy;
     }).toList();
@@ -498,7 +475,6 @@ class JadwalService {
   ) async {
     var item = normalizeItem(raw);
 
-    // Simpan preferensi pilihan waktu & reminder pengguna sebelum request API
     await _saveUserPreferenceForItem(item);
 
     final prefs = await SharedPreferences.getInstance();
@@ -511,8 +487,6 @@ class JadwalService {
 
     if (isValidServerToken && isOnline) {
       try {
-        // Kirim end_time berisi jam pengingat (HH:mm) agar server Vercel yang belum
-        // memiliki kolom reminder_minutes tetap menyimpan jam pengingat dengan akurat!
         final payload = {
           'title': item['judul'],
           'category': item['kategori'],
@@ -563,7 +537,6 @@ class JadwalService {
       } catch (_) {}
     }
 
-    // Pastikan item tetap mempertahankan waktu dan reminderMinutes pilihan pengguna
     item = normalizeItem(item, savedPref: item);
     await _saveUserPreferenceForItem(item);
 
@@ -575,6 +548,7 @@ class JadwalService {
         final List<dynamic> decoded = jsonDecode(rawLocal);
         current = decoded
             .map((e) => normalizeItem(Map<String, dynamic>.from(e)))
+            .where((e) => !isDummyScheduleId(e['id']))
             .toList();
       } catch (_) {}
     }
@@ -594,13 +568,11 @@ class JadwalService {
     current.insert(0, item);
     await saveLocalSchedules(current);
 
-    // 1. Catat ke daftar halaman Notifikasi (tanpa memicu alarm sistem prematur)
     await NotificationService.instance.addScheduleCreatedNotification(item);
-    // 2. Jadwalkan reminder otomatis sesuai waktu jadwal & interval pilihan pengguna
     await NotificationService.instance.scheduleReminderForItem(item);
-    // 3. Jadwalkan pengingat otomatis di server Fonnte agar tepat pada menit reminder
-    //    (misal 5 menit sebelum jam 10), pesan OTOMATIS TERKIRIM DARI SERVER KE WA tanpa perlu dipencet apa pun
-    final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
+
+    final dynamic rawWa =
+        item['enableWaNotification'] ?? item['enable_wa_notification'];
     final bool enableWa = rawWa == null ||
         rawWa == true ||
         rawWa == 1 ||
@@ -628,7 +600,6 @@ class JadwalService {
     final index = items.indexWhere((e) => e['id'].toString() == id.toString());
     final existingLocal = index >= 0 ? items[index] : null;
 
-    // Batalkan reminder lama terlebih dahulu
     await NotificationService.instance.cancelReminderForScheduleId(id);
 
     var item = normalizeItem(
@@ -712,11 +683,10 @@ class JadwalService {
 
     await saveLocalSchedules(items);
 
-    // Jadwalkan reminder baru
     await NotificationService.instance.scheduleReminderForItem(item);
 
-    // Kirim notifikasi WhatsApp otomatis saat jadwal diperbarui
-    final dynamic rawWa = item['enableWaNotification'] ?? item['enable_wa_notification'];
+    final dynamic rawWa =
+        item['enableWaNotification'] ?? item['enable_wa_notification'];
     final bool enableWa = rawWa == null ||
         rawWa == true ||
         rawWa == 1 ||
@@ -758,7 +728,6 @@ class JadwalService {
 
   /// Delete schedule and cancel its scheduled reminder
   static Future<void> deleteSchedule(dynamic id) async {
-    // Batalkan reminder yang terkait dengan jadwal ini
     await NotificationService.instance.cancelReminderForScheduleId(id);
 
     final items = await loadSchedules();

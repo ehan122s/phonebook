@@ -78,8 +78,9 @@ class _AdminPageState extends State<AdminPage> {
         lower == 'siti.nur@kehutanan.go.id' ||
         lower == 'budi.santoso@kehutanan.go.id' ||
         lower == 'andi.wijaya@kehutanan.go.id' ||
+        lower == 'ehan@gmail.com' ||
+        lower == 'petugas@kehutanan.go.id' ||
         lower == 'atmin@gmail.com' ||
-        lower == 'r4yy73@gmail.com' ||
         lower == 'r4yy73@gmailcom' ||
         lower == 'test@example.com' ||
         lowerId == 'usr-001' ||
@@ -187,21 +188,29 @@ class _AdminPageState extends State<AdminPage> {
       } catch (_) {}
     }
 
-    int jadwalCount = 6;
+    int jadwalCount = 0;
     final rawJadwal = prefs.getString(_jadwalStorageKey);
     if (rawJadwal != null && rawJadwal.isNotEmpty) {
       try {
         final List<dynamic> list = jsonDecode(rawJadwal);
-        if (list.isNotEmpty) jadwalCount = list.length;
+        final validJadwal = list.where((j) {
+          final jid = (j is Map ? (j['id'] ?? '') : '').toString().trim().toLowerCase();
+          return !{'jadwal_1', 'jadwal_2', 'jadwal_3', 'jadwal_4', 'jadwal_5', 'jadwal_6'}.contains(jid);
+        }).toList();
+        jadwalCount = validJadwal.length;
       } catch (_) {}
     }
 
-    int materiCount = 4;
+    int materiCount = 0;
     final rawMateri = prefs.getString(_materiStorageKey);
     if (rawMateri != null && rawMateri.isNotEmpty) {
       try {
         final List<dynamic> list = jsonDecode(rawMateri);
-        if (list.isNotEmpty) materiCount = list.length;
+        final validMateri = list.where((m) {
+          final mid = (m is Map ? (m['id'] ?? '') : '').toString().trim().toUpperCase();
+          return !{'MAT-001', 'MAT-002', 'MAT-003', 'MAT-004', 'MAT-005'}.contains(mid);
+        }).toList();
+        materiCount = validMateri.length;
       } catch (_) {}
     }
 
@@ -688,20 +697,25 @@ class _AdminPageState extends State<AdminPage> {
                                 ),
                               ),
                               onPressed: () {
-                                if (name.trim().isEmpty) return;
+                                if (name.trim().isEmpty || email.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Nama lengkap dan alamat email wajib diisi.'),
+                                    ),
+                                  );
+                                  return;
+                                }
 
                                 final item = <String, String>{
                                   'id': existing?['id'] ??
-                                      'USR-00${_users.length + 1}',
+                                      'USR-${DateTime.now().millisecondsSinceEpoch}',
                                   'nip': nip.trim().isEmpty
-                                      ? '19950101 202301 1 001'
+                                      ? '-'
                                       : nip.trim(),
                                   'name': name.trim(),
-                                  'email': email.trim().isEmpty
-                                      ? 'petugas@kehutanan.go.id'
-                                      : email.trim(),
+                                  'email': email.trim(),
                                   'whatsapp': whatsapp.trim().isEmpty
-                                      ? '0812-0000-0000'
+                                      ? '-'
                                       : whatsapp.trim(),
                                   'wilayah': wilayah.trim().isEmpty
                                       ? 'CDK Wilayah Garut'

@@ -1,14 +1,26 @@
 // ============================================================================
-// [KHUSUS USER - DASHBOARD USER]
+// [KHUSUS USER - DASHBOARD USER DENGAN LOKASI GPS REAL-TIME & DATA ASLI]
 // Simpan file ini di: lib/pages/dashboard/dashboard.dart
 // ============================================================================
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../constants/jadwal_constants.dart';
+import '../../services/jadwal_service.dart';
+import '../../services/laporan_service.dart';
+import '../../services/location_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/offline_database.dart';
+import '../../widgets/location_dashboard_widget.dart';
+import '../jadwal/jadwal.dart';
+import '../laporan/laporan.dart';
 import '../notifikasi/notifikasi_page.dart';
 import 'kategori.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   final Function(int)? onNavigate;
 
   const DashboardPage({
@@ -26,167 +38,360 @@ class DashboardPage extends StatelessWidget {
   static const Color kTextPrimary = Color(0xFF24352A);
   static const Color kTextSecondary = Color(0xFF758278);
 
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  final LaporanService _laporanService = LaporanService();
+
+  bool _isLoadingData = true;
+  String? _loadError;
+  String _userName = '';
+  List<Map<String, dynamic>> _reports = [];
+  List<Map<String, dynamic>> _schedules = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Inisialisasi tunggal LocationService (digunakan bersama oleh Header & Widget Lokasi)
+    LocationService.instance.ensureInitialized();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingData = true;
+        _loadError = null;
+      });
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName =
+          (prefs.getString('profil_nama') ?? prefs.getString('name') ?? '')
+              .trim();
+      final currentUserId = (prefs.getString('user_id') ?? '').trim();
+      final currentUserEmail =
+          (prefs.getString('email') ?? '').trim().toLowerCase();
+
+      // 1. Muat jadwal asli dari JadwalService (tanpa dummy)
+      final loadedSchedules = await JadwalService.loadSchedules();
+
+      // 2. Muat laporan asli dari SQLite lokal & API Backend
+      final List<Map<String, dynamic>> combinedReports = [];
+      final Set<String> seenReportKeys = {};
+
+      void addReportItem(Map<String, dynamic> raw) {
+        final title = (raw['title'] ?? raw['judul'] ?? '').toString().trim();
+        if (title.isEmpty) return;
+
+        final idStr =
+            (raw['server_id'] ?? raw['id'] ?? title).toString().trim();
+        final dateStr = (raw['report_date'] ??
+                raw['date'] ??
+                raw['tanggal'] ??
+                raw['created_at'] ??
+                '')
+            .toString()
+            .trim();
+        final dedupKey = '${idStr.toLowerCase()}|${title.toLowerCase()}';
+        if (seenReportKeys.contains(dedupKey)) return;
+
+        // Filter laporan agar sesuai dengan akun pengguna yang sedang login bila ada info user
+        final reportUserId = (raw['user_id'] ?? '').toString().trim();
+        final reportUserEmail = (raw['user'] is Map
+                ? (raw['user']['email'] ?? '')
+                : (raw['email'] ?? ''))
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (currentUserId.isNotEmpty &&
+            reportUserId.isNotEmpty &&
+            reportUserId != currentUserId) {
+          return;
+        }
+        if (currentUserEmail.isNotEmpty &&
+            reportUserEmail.isNotEmpty &&
+            reportUserEmail != currentUserEmail) {
+          return;
+        }
+
+        seenReportKeys.add(dedupKey);
+        combinedReports.add({
+          'id': idStr,
+          'judul': title,
+          'kategori': (raw['category_name'] ??
+                  (raw['category'] is Map ? raw['category']['name'] : null) ??
+                  raw['jenis'] ??
+                  'Penyuluhan')
+              .toString(),
+          'lokasi': (raw['location'] ?? raw['lokasi'] ?? '-').toString(),
+          'tanggal': _formatDisplayDate(dateStr),
+          'status': _normalizeStatus((raw['status'] ?? 'Terkirim').toString()),
+          'deskripsi':
+              (raw['description'] ?? raw['isi'] ?? '').toString().trim(),
+        });
+      }
+
+      try {
+        final localReports = await OfflineDatabase.instance.getAllReports();
+        for (final item in localReports) {
+          addReportItem(item);
+        }
+      } catch (_) {}
+
+      final rawDrafts = prefs.getString('phonebook_laporan_drafts_v1');
+      if (rawDrafts != null && rawDrafts.isNotEmpty) {
+        try {
+          final List<dynamic> draftList = jsonDecode(rawDrafts);
+          for (final d in draftList) {
+            if (d is Map) {
+              addReportItem(Map<String, dynamic>.from(d));
+            }
+          }
+        } catch (_) {}
+      }
+
+      try {
+        final apiReports = await _laporanService.getReports();
+        for (final item in apiReports) {
+          if (item is Map) {
+            addReportItem(Map<String, dynamic>.from(item));
+          }
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() {
+        _userName = savedName;
+        _reports = combinedReports;
+        _schedules = loadedSchedules;
+        _isLoadingData = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingData = false;
+        _loadError = 'Gagal memuat ringkasan data: $e';
+      });
+    }
+  }
+
+  String _normalizeStatus(String raw) {
+    final lower = raw.toLowerCase().trim();
+    if (lower == 'draft') return 'Draft';
+    if (lower == 'pending' || lower == 'menunggu') return 'Menunggu';
+    if (lower == 'submitted' || lower == 'terkirim' || lower == 'selesai') {
+      return 'Selesai';
+    }
+    return raw.isEmpty ? 'Tercatat' : raw;
+  }
+
+  String _formatDisplayDate(String raw) {
+    if (raw.isEmpty) return 'Baru saja';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) {
+      return JadwalDateUtils.formatTanggal(parsed.toLocal());
+    }
+    return raw;
+  }
+
   void _openUserFolders(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const KategoriPage(),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => const KategoriPage(),
+          ),
+        )
+        .then((_) => _loadDashboardData());
   }
 
   void _openNotificationPage(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const NotificationPage(),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => const NotificationPage(),
+          ),
+        )
+        .then((_) => _loadDashboardData());
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121A15) : kBackground;
-    final textColor = isDark ? kWhite : kTextPrimary;
+    final bgColor =
+        isDark ? const Color(0xFF121A15) : DashboardPage.kBackground;
+    final textColor =
+        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
 
     return Container(
       color: bgColor,
       child: SafeArea(
-        top: false, // Biarkan header menyatu dengan bagian atas layar
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ==========================================
-              // 3. WELCOME HEADER (DENGAN ILUSTRASI HUTAN)
-              // ==========================================
-              _buildWelcomeHeader(context),
+        top: false,
+        child: RefreshIndicator(
+          color: DashboardPage.kPrimary,
+          onRefresh: () async {
+            await Future.wait([
+              _loadDashboardData(),
+              LocationService.instance.refreshLocation(),
+            ]);
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ==========================================
+                // 1. WELCOME HEADER + KOMPONEN LOKASI PENGGUNA (KONSEP GOJEK)
+                // ==========================================
+                _buildWelcomeHeader(context),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 22),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 20),
 
-                    // ==========================================
-                    // 4. RINGKASAN (DALAM CONTAINER PUTIH)
-                    // ==========================================
-                    _buildRingkasanSection(isDark, textColor),
+                      // ==========================================
+                      // 2. WIDGET LOKASI DASHBOARD (SINKRON DENGAN HEADER)
+                      // ==========================================
+                      const LocationDashboardWidget(),
 
-                    const SizedBox(height: 26),
+                      const SizedBox(height: 20),
 
-                    // ==========================================
-                    // 5. MENU UTAMA (2 KARTU BERDAMPINGAN)
-                    // ==========================================
-                    _buildSectionHeader(
-                      icon: Icons.eco_rounded,
-                      title: 'Menu Utama',
-                      textColor: textColor,
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _MainMenuCard(
-                            icon: Icons.description_rounded,
-                            title: 'Laporan',
-                            subtitle: 'Buat laporan kegiatan',
-                            primaryColor: kPrimary,
-                            bgColor: kLightGreen,
-                            accentColor: kSecondary.withValues(alpha: 0.15),
-                            isPrimaryVariant: true,
-                            onTap: () => onNavigate?.call(1),
+                      // ==========================================
+                      // 3. RINGKASAN (DATA ASLI DARI DATABASE / PENGGUNA)
+                      // ==========================================
+                      _buildRingkasanSection(isDark, textColor),
+
+                      const SizedBox(height: 26),
+
+                      // ==========================================
+                      // 4. MENU UTAMA (2 KARTU BERDAMPINGAN)
+                      // ==========================================
+                      _buildSectionHeader(
+                        icon: Icons.eco_rounded,
+                        title: 'Menu Utama',
+                        textColor: textColor,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MainMenuCard(
+                              icon: Icons.description_rounded,
+                              title: 'Laporan',
+                              subtitle: 'Buat laporan kegiatan',
+                              primaryColor: DashboardPage.kPrimary,
+                              bgColor: isDark
+                                  ? const Color(0xFF1E2D24)
+                                  : DashboardPage.kLightGreen,
+                              accentColor: DashboardPage.kSecondary
+                                  .withValues(alpha: 0.15),
+                              isPrimaryVariant: true,
+                              onTap: () => widget.onNavigate?.call(1),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _MainMenuCard(
-                            icon: Icons.calendar_month_rounded,
-                            title: 'Jadwal',
-                            subtitle: 'Lihat jadwal kegiatan',
-                            primaryColor: kPrimary,
-                            bgColor: kSoftGreen,
-                            accentColor: kPrimary.withValues(alpha: 0.10),
-                            isPrimaryVariant: false,
-                            onTap: () => onNavigate?.call(2),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _MainMenuCard(
+                              icon: Icons.calendar_month_rounded,
+                              title: 'Jadwal',
+                              subtitle: 'Lihat jadwal kegiatan',
+                              primaryColor: DashboardPage.kPrimary,
+                              bgColor: isDark
+                                  ? const Color(0xFF1A2820)
+                                  : DashboardPage.kSoftGreen,
+                              accentColor: DashboardPage.kPrimary
+                                  .withValues(alpha: 0.10),
+                              isPrimaryVariant: false,
+                              onTap: () => widget.onNavigate?.call(2),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
 
-                    const SizedBox(height: 26),
+                      const SizedBox(height: 26),
 
-                    // ==========================================
-                    // 6. LAPORAN TERBARU
-                    // ==========================================
-                    _buildSectionHeader(
-                      icon: Icons.assignment_rounded,
-                      title: 'Laporan Terbaru',
-                      actionText: 'Lihat Semua',
-                      onActionTap: () => onNavigate?.call(1),
-                      textColor: textColor,
-                    ),
-                    const SizedBox(height: 14),
-                    _buildLaporanTerbaruCard(isDark),
+                      // ==========================================
+                      // 5. LAPORAN TERBARU (DATA ASLI / EMPTY STATE)
+                      // ==========================================
+                      _buildSectionHeader(
+                        icon: Icons.assignment_rounded,
+                        title: 'Laporan Terbaru',
+                        actionText: 'Lihat Semua',
+                        onActionTap: () => widget.onNavigate?.call(1),
+                        textColor: textColor,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 14),
+                      _buildLaporanTerbaruCard(isDark),
 
-                    const SizedBox(height: 26),
+                      const SizedBox(height: 26),
 
-                    // ==========================================
-                    // 7. JURNAL KEGIATAN (TIMELINE CARD)
-                    // ==========================================
-                    _buildSectionHeader(
-                      icon: Icons.history_rounded,
-                      title: 'Jurnal Kegiatan',
-                      actionText: 'Lihat Semua',
-                      onActionTap: () => onNavigate?.call(2),
-                      textColor: textColor,
-                    ),
-                    const SizedBox(height: 14),
-                    _buildJurnalKegiatanCard(isDark),
+                      // ==========================================
+                      // 6. JURNAL KEGIATAN (DATA JADWAL ASLI / EMPTY STATE)
+                      // ==========================================
+                      _buildSectionHeader(
+                        icon: Icons.history_rounded,
+                        title: 'Jurnal Kegiatan',
+                        actionText: 'Lihat Semua',
+                        onActionTap: () => widget.onNavigate?.call(2),
+                        textColor: textColor,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 14),
+                      _buildJurnalKegiatanCard(isDark),
 
-                    const SizedBox(height: 26),
+                      const SizedBox(height: 26),
 
-                    // ==========================================
-                    // 8. MENU ARSIP & HASIL LAPORAN (PENTING)
-                    // ==========================================
-                    _buildSectionHeader(
-                      icon: Icons.inventory_2_rounded,
-                      title: 'Arsip & Hasil Laporan',
-                      textColor: textColor,
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ArchiveActionCard(
-                            icon: Icons.folder_special_rounded,
-                            title: 'Arsip Laporan',
-                            description:
-                                'Lihat dan kelola seluruh laporan tersimpan',
-                            buttonText: 'Buka Arsip',
-                            isPrimary: true,
-                            onTap: () => _openUserFolders(context),
+                      // ==========================================
+                      // 7. MENU ARSIP & HASIL LAPORAN
+                      // ==========================================
+                      _buildSectionHeader(
+                        icon: Icons.inventory_2_rounded,
+                        title: 'Arsip & Hasil Laporan',
+                        textColor: textColor,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ArchiveActionCard(
+                              icon: Icons.folder_special_rounded,
+                              title: 'Arsip Laporan',
+                              description:
+                                  'Lihat dan kelola seluruh laporan tersimpan',
+                              buttonText: 'Buka Arsip',
+                              isPrimary: true,
+                              onTap: () => _openUserFolders(context),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _ArchiveActionCard(
-                            icon: Icons.fact_check_rounded,
-                            title: 'Hasil Laporan',
-                            description:
-                                'Lihat hasil dan riwayat laporan kegiatan',
-                            buttonText: 'Lihat Hasil',
-                            isPrimary: false,
-                            onTap: () => _openUserFolders(context),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _ArchiveActionCard(
+                              icon: Icons.fact_check_rounded,
+                              title: 'Hasil Laporan',
+                              description:
+                                  'Lihat hasil dan riwayat laporan kegiatan',
+                              buttonText: 'Lihat Hasil',
+                              isPrimary: false,
+                              onTap: () => _openUserFolders(context),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -199,18 +404,20 @@ class DashboardPage extends StatelessWidget {
 
   Widget _buildWelcomeHeader(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
+    final greetingName =
+        _userName.isNotEmpty ? 'Halo, $_userName 👋' : 'Selamat Datang 👋';
 
     return Container(
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 220),
+      constraints: const BoxConstraints(minHeight: 230),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             Color(0xFF1B462B),
-            kPrimary,
-            kSecondary,
+            DashboardPage.kPrimary,
+            DashboardPage.kSecondary,
           ],
         ),
         borderRadius: BorderRadius.only(
@@ -232,16 +439,13 @@ class DashboardPage extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Ilustrasi Pegunungan & Pepohonan Hutan (Sisi Kanan & Bawah)
             Positioned.fill(
               child: CustomPaint(
                 painter: _ForestHeaderPainter(),
               ),
             ),
-
-            // Konten Teks & Tombol Notifikasi
             Padding(
-              padding: EdgeInsets.fromLTRB(24, topPadding + 24, 24, 28),
+              padding: EdgeInsets.fromLTRB(22, topPadding + 20, 22, 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -249,38 +453,41 @@ class DashboardPage extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Selamat Datang 👋',
-                              style: TextStyle(
-                                color: kWhite,
-                                fontSize: 26,
+                              greetingName,
+                              style: const TextStyle(
+                                color: DashboardPage.kWhite,
+                                fontSize: 24,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.3,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            SizedBox(height: 10),
-                            Text(
-                              'Kelola kegiatan dan laporan\nlapangan dengan mudah.',
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Kelola kegiatan dan laporan lapangan dengan mudah.',
                               style: TextStyle(
                                 color: Color(0xFFE8F2E8),
-                                fontSize: 15,
-                                height: 1.45,
+                                fontSize: 14,
+                                height: 1.4,
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      // Ikon Lonceng Notifikasi dengan Badge Dinamis & Navigasi ke Halaman Notifikasi
+                      const SizedBox(width: 12),
+                      // Ikon Lonceng Notifikasi dengan Badge Jumlah Belum Dibaca
                       ListenableBuilder(
                         listenable: NotificationService.instance,
                         builder: (context, _) {
-                          final notifCount =
-                              NotificationService.instance.totalCount;
+                          final unreadCount =
+                              NotificationService.instance.unreadCount;
 
                           return Material(
                             color: Colors.transparent,
@@ -294,7 +501,8 @@ class DashboardPage extends StatelessWidget {
                                     width: 46,
                                     height: 46,
                                     decoration: BoxDecoration(
-                                      color: kWhite.withValues(alpha: 0.9),
+                                      color: DashboardPage.kWhite
+                                          .withValues(alpha: 0.92),
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
@@ -308,11 +516,11 @@ class DashboardPage extends StatelessWidget {
                                     ),
                                     child: const Icon(
                                       Icons.notifications_rounded,
-                                      color: kPrimary,
+                                      color: DashboardPage.kPrimary,
                                       size: 24,
                                     ),
                                   ),
-                                  if (notifCount > 0)
+                                  if (unreadCount > 0)
                                     Positioned(
                                       right: -2,
                                       top: -2,
@@ -330,17 +538,17 @@ class DashboardPage extends StatelessWidget {
                                           borderRadius:
                                               BorderRadius.circular(12),
                                           border: Border.all(
-                                            color: kWhite,
+                                            color: DashboardPage.kWhite,
                                             width: 1.8,
                                           ),
                                         ),
                                         child: Center(
                                           child: Text(
-                                            notifCount > 99
+                                            unreadCount > 99
                                                 ? '99+'
-                                                : '$notifCount',
+                                                : '$unreadCount',
                                             style: const TextStyle(
-                                              color: kWhite,
+                                              color: DashboardPage.kWhite,
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -356,6 +564,9 @@ class DashboardPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  // Komponen Lokasi Pengguna ala Gojek ("Kamu sedang berada di...")
+                  const LocationHeaderBanner(),
                 ],
               ),
             ),
@@ -366,16 +577,28 @@ class DashboardPage extends StatelessWidget {
   }
 
   Widget _buildRingkasanSection(bool isDark, Color textColor) {
-    final containerBg = isDark ? const Color(0xFF1A241E) : kWhite;
+    final containerBg =
+        isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+
+    final laporanCountText =
+        _isLoadingData ? '...' : '${_reports.length}';
+    final jadwalCountText =
+        _isLoadingData ? '...' : '${_schedules.length}';
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: containerBg,
         borderRadius: BorderRadius.circular(24),
+        border: isDark
+            ? Border.all(color: const Color(0xFF2E3D34))
+            : null,
         boxShadow: [
           BoxShadow(
-            color: kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
+            color:
+                DashboardPage.kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -388,9 +611,11 @@ class DashboardPage extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.bar_chart_rounded,
-                    color: kPrimary,
+                    color: isDark
+                        ? const Color(0xFF81C784)
+                        : DashboardPage.kPrimary,
                     size: 24,
                   ),
                   const SizedBox(width: 8),
@@ -405,10 +630,11 @@ class DashboardPage extends StatelessWidget {
                 ],
               ),
               InkWell(
-                onTap: () => onNavigate?.call(1),
+                onTap: () => _openUserFolders(context),
                 borderRadius: BorderRadius.circular(8),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                   child: Row(
                     children: [
                       Text(
@@ -416,14 +642,14 @@ class DashboardPage extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: kTextSecondary,
+                          color: subColor,
                         ),
                       ),
-                      SizedBox(width: 4),
+                      const SizedBox(width: 4),
                       Icon(
                         Icons.chevron_right_rounded,
                         size: 20,
-                        color: kTextSecondary,
+                        color: subColor,
                       ),
                     ],
                   ),
@@ -432,21 +658,23 @@ class DashboardPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: _StatCard(
                   icon: Icons.description_rounded,
                   title: 'Laporan',
-                  value: '4',
+                  value: laporanCountText,
+                  onTap: () => widget.onNavigate?.call(1),
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: _StatCard(
                   icon: Icons.calendar_today_rounded,
                   title: 'Jadwal',
-                  value: '3',
+                  value: jadwalCountText,
+                  onTap: () => widget.onNavigate?.call(2),
                 ),
               ),
             ],
@@ -460,15 +688,23 @@ class DashboardPage extends StatelessWidget {
     required IconData icon,
     required String title,
     required Color textColor,
+    required bool isDark,
     String? actionText,
     VoidCallback? onActionTap,
   }) {
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
           children: [
-            Icon(icon, color: kPrimary, size: 22),
+            Icon(
+              icon,
+              color:
+                  isDark ? const Color(0xFF81C784) : DashboardPage.kPrimary,
+              size: 22,
+            ),
             const SizedBox(width: 8),
             Text(
               title,
@@ -490,17 +726,17 @@ class DashboardPage extends StatelessWidget {
                 children: [
                   Text(
                     actionText,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: kTextSecondary,
+                      color: subColor,
                     ),
                   ),
                   const SizedBox(width: 2),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
                     size: 20,
-                    color: kTextSecondary,
+                    color: subColor,
                   ),
                 ],
               ),
@@ -511,201 +747,198 @@ class DashboardPage extends StatelessWidget {
   }
 
   Widget _buildLaporanTerbaruCard(bool isDark) {
-    final cardBg = isDark ? const Color(0xFF1A241E) : kWhite;
-    final titleColor = isDark ? kWhite : kTextPrimary;
+    final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
+    final titleColor =
+        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : Colors.transparent;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              color: kLightGreen,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.description_rounded,
-              color: kPrimary,
-              size: 26,
+    if (_isLoadingData) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: DashboardPage.kPrimary,
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Kegiatan Penyuluhan Kehutanan',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: titleColor,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kLightGreen,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Selesai',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: kPrimary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Wrap(
-                  spacing: 10,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 13,
-                          color: kTextSecondary,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          '20 Oktober 2026',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: kTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text('|', style: TextStyle(color: kTextSecondary)),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: 14,
-                          color: kSecondary,
-                        ),
-                        SizedBox(width: 3),
-                        Text(
-                          'Kawasan Hutan Garut',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: kTextSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Kategori: Penyuluhan',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: kTextSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    }
 
-  Widget _buildJurnalKegiatanCard(bool isDark) {
-    final cardBg = isDark ? const Color(0xFF1A241E) : kWhite;
-    final titleColor = isDark ? kWhite : kTextPrimary;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    if (_loadError != null && _reports.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+        ),
+        child: Column(
           children: [
-            // Indikator Timeline Vertikal
-            Column(
-              children: [
-                const SizedBox(height: 6),
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: const BoxDecoration(
-                    color: kPrimary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    color: kLightGreen,
-                  ),
-                ),
-              ],
+            Icon(
+              Icons.error_outline_rounded,
+              color: Colors.orange.shade400,
+              size: 32,
             ),
-            const SizedBox(width: 12),
-            // Ikon Aktivitas Kehutanan
-            Align(
-              alignment: Alignment.topCenter,
-              child: Container(
-                width: 46,
-                height: 46,
-                decoration: const BoxDecoration(
-                  color: kLightGreen,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.park_rounded,
-                  color: kPrimary,
-                  size: 24,
-                ),
+            const SizedBox(height: 8),
+            Text(
+              _loadError!,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: subColor),
+            ),
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: _loadDashboardData,
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Muat Ulang'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_reports.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: DashboardPage.kPrimary
+                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF26352B)
+                    : DashboardPage.kLightGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.description_outlined,
+                color: isDark
+                    ? const Color(0xFF81C784)
+                    : DashboardPage.kPrimary,
+                size: 26,
               ),
             ),
-            const SizedBox(width: 12),
-            // Detail Jurnal
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Belum Ada Laporan Kegiatan',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Laporan kegiatan yang Anda buat beserta foto geolokasi akan tampil di sini.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      color: subColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => widget.onNavigate?.call(1),
+              child: const Text(
+                'Buat',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final latest = _reports.first;
+    final judul = (latest['judul'] ?? 'Laporan Kegiatan').toString();
+    final status = (latest['status'] ?? 'Selesai').toString();
+    final tanggal = (latest['tanggal'] ?? '-').toString();
+    final lokasi = (latest['lokasi'] ?? '-').toString();
+    final kategori = (latest['kategori'] ?? 'Penyuluhan').toString();
+    final reportId = (latest['id'] ?? '').toString();
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => LaporanPage(
+                  initialReportId: reportId.isNotEmpty ? reportId : null,
+                  initialReportTitle: judul,
+                ),
+              ),
+            )
+            .then((_) => _loadDashboardData());
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: DashboardPage.kPrimary
+                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF26352B)
+                    : DashboardPage.kLightGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.description_rounded,
+                color: isDark
+                    ? const Color(0xFF81C784)
+                    : DashboardPage.kPrimary,
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,7 +948,7 @@ class DashboardPage extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Monitoring Hutan',
+                          judul,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -730,22 +963,26 @@ class DashboardPage extends StatelessWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE1F0F7),
+                          color: isDark
+                              ? const Color(0xFF26352B)
+                              : DashboardPage.kLightGreen,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Text(
-                          'Tercatat',
+                        child: Text(
+                          status,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E6B7B),
+                            color: isDark
+                                ? const Color(0xFF81C784)
+                                : DashboardPage.kPrimary,
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  const Wrap(
+                  const SizedBox(height: 8),
+                  Wrap(
                     spacing: 10,
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -756,33 +993,36 @@ class DashboardPage extends StatelessWidget {
                           Icon(
                             Icons.calendar_today_outlined,
                             size: 13,
-                            color: kTextSecondary,
+                            color: subColor,
                           ),
-                          SizedBox(width: 4),
+                          const SizedBox(width: 4),
                           Text(
-                            '21 Oktober 2026',
+                            tanggal,
                             style: TextStyle(
                               fontSize: 13,
-                              color: kTextSecondary,
+                              color: subColor,
                             ),
                           ),
                         ],
                       ),
-                      Text('|', style: TextStyle(color: kTextSecondary)),
+                      Text('|', style: TextStyle(color: subColor)),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.location_on_rounded,
                             size: 14,
-                            color: kSecondary,
+                            color: DashboardPage.kSecondary,
                           ),
-                          SizedBox(width: 3),
-                          Text(
-                            'Kawasan Hutan Garut',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: kTextSecondary,
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              lokasi,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: subColor,
+                              ),
                             ),
                           ),
                         ],
@@ -790,17 +1030,337 @@ class DashboardPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Melakukan monitoring kondisi hutan.',
+                  Text(
+                    'Kategori: $kategori',
                     style: TextStyle(
-                      fontSize: 14,
-                      color: kTextSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: subColor,
                     ),
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJurnalKegiatanCard(bool isDark) {
+    final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
+    final titleColor =
+        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+
+    if (_isLoadingData) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+        ),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: DashboardPage.kPrimary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_schedules.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: DashboardPage.kPrimary
+                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF26352B)
+                    : DashboardPage.kLightGreen,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.event_note_outlined,
+                color: isDark
+                    ? const Color(0xFF81C784)
+                    : DashboardPage.kPrimary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Belum Ada Jurnal / Jadwal Kegiatan',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Jadwal kegiatan lapangan yang Anda tambahkan akan tercatat di sini.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      color: subColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => widget.onNavigate?.call(2),
+              child: const Text(
+                'Jadwalkan',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final latestSchedule = _schedules.first;
+    final judul =
+        (latestSchedule['judul'] ?? latestSchedule['title'] ?? 'Kegiatan')
+            .toString();
+    final isCompleted = latestSchedule['isCompleted'] == true;
+    final statusLabel = isCompleted ? 'Selesai' : 'Terjadwal';
+    final tanggalIso = (latestSchedule['tanggalIso'] ?? '').toString();
+    final tanggalFormatted = tanggalIso.isNotEmpty
+        ? JadwalDateUtils.formatTanggal(
+            JadwalDateUtils.parseIsoDate(tanggalIso),
+          )
+        : '-';
+    final waktu =
+        (latestSchedule['waktu'] ?? latestSchedule['time'] ?? '08:00')
+            .toString();
+    final lokasi =
+        (latestSchedule['lokasi'] ?? latestSchedule['location'] ?? '-')
+            .toString();
+    final catatan =
+        (latestSchedule['catatan'] ?? latestSchedule['description'] ?? '')
+            .toString()
+            .trim();
+    final scheduleId = (latestSchedule['id'] ?? '').toString();
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () {
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => JadwalPage(
+                  initialScheduleId:
+                      scheduleId.isNotEmpty ? scheduleId : null,
+                  initialScheduleTitle: judul,
+                ),
+              ),
+            )
+            .then((_) => _loadDashboardData());
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderCol),
+          boxShadow: [
+            BoxShadow(
+              color: DashboardPage.kPrimary
+                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Column(
+                children: [
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF81C784)
+                          : DashboardPage.kPrimary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: isDark
+                          ? const Color(0xFF26352B)
+                          : DashboardPage.kLightGreen,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Align(
+                alignment: Alignment.topCenter,
+                child: Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF26352B)
+                        : DashboardPage.kLightGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.park_rounded,
+                    color: isDark
+                        ? const Color(0xFF81C784)
+                        : DashboardPage.kPrimary,
+                    size: 24,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            judul,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: titleColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? const Color(0xFF1A2D34)
+                                : const Color(0xFFE1F0F7),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? const Color(0xFF80DEEA)
+                                  : const Color(0xFF1E6B7B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: 13,
+                              color: subColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$tanggalFormatted • $waktu WIB',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: subColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text('|', style: TextStyle(color: subColor)),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 14,
+                              color: DashboardPage.kSecondary,
+                            ),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                lokasi,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: subColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    if (catatan.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        catatan,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          color: subColor,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -814,11 +1374,13 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
+  final VoidCallback? onTap;
 
   const _StatCard({
     required this.icon,
     required this.title,
     required this.value,
+    this.onTap,
   });
 
   @override
@@ -827,58 +1389,70 @@ class _StatCard extends StatelessWidget {
     final cardBg = isDark ? const Color(0xFF223026) : DashboardPage.kSoftGreen;
     final valueColor =
         isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: DashboardPage.kLightGreen,
-          width: 1,
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDark
+                ? const Color(0xFF2E3D34)
+                : DashboardPage.kLightGreen,
+            width: 1,
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: DashboardPage.kLightGreen,
-              borderRadius: BorderRadius.circular(14),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF1B3B22)
+                    : DashboardPage.kLightGreen,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color: isDark
+                    ? const Color(0xFF81C784)
+                    : DashboardPage.kPrimary,
+                size: 26,
+              ),
             ),
-            child: Icon(
-              icon,
-              color: DashboardPage.kPrimary,
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: DashboardPage.kTextSecondary,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: subColor,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: valueColor,
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: valueColor,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -910,6 +1484,10 @@ class _MainMenuCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleCol = isDark ? Colors.white : DashboardPage.kTextPrimary;
+    final subCol = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+
     return Material(
       color: bgColor,
       borderRadius: BorderRadius.circular(20),
@@ -930,7 +1508,6 @@ class _MainMenuCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             child: Stack(
               children: [
-                // Aksen Dekoratif Berbeda Secara Halus di Sudut Kanan
                 Positioned(
                   right: -20,
                   bottom: isPrimaryVariant ? -20 : null,
@@ -974,10 +1551,10 @@ class _MainMenuCard extends StatelessWidget {
                           children: [
                             Text(
                               title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
-                                color: DashboardPage.kTextPrimary,
+                                color: titleCol,
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -985,18 +1562,20 @@ class _MainMenuCard extends StatelessWidget {
                               subtitle,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 height: 1.2,
-                                color: DashboardPage.kTextSecondary,
+                                color: subCol,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(
+                      Icon(
                         Icons.chevron_right_rounded,
-                        color: DashboardPage.kPrimary,
+                        color: isDark
+                            ? const Color(0xFF81C784)
+                            : DashboardPage.kPrimary,
                         size: 22,
                       ),
                     ],
@@ -1037,6 +1616,8 @@ class _ArchiveActionCard extends StatelessWidget {
     final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
     final titleColor =
         isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final subColor =
+        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1065,16 +1646,20 @@ class _ArchiveActionCard extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: isPrimary
-                  ? DashboardPage.kLightGreen
-                  : DashboardPage.kSoftGreen,
+              color: isDark
+                  ? const Color(0xFF26352B)
+                  : (isPrimary
+                      ? DashboardPage.kLightGreen
+                      : DashboardPage.kSoftGreen),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
-              color: isPrimary
-                  ? DashboardPage.kPrimary
-                  : DashboardPage.kSecondary,
+              color: isDark
+                  ? const Color(0xFF81C784)
+                  : (isPrimary
+                      ? DashboardPage.kPrimary
+                      : DashboardPage.kSecondary),
               size: 24,
             ),
           ),
@@ -1090,10 +1675,10 @@ class _ArchiveActionCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             description,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               height: 1.35,
-              color: DashboardPage.kTextSecondary,
+              color: subColor,
             ),
           ),
           const SizedBox(height: 14),
@@ -1104,10 +1689,14 @@ class _ArchiveActionCard extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: isPrimary
                     ? DashboardPage.kPrimary
-                    : DashboardPage.kLightGreen,
+                    : (isDark
+                        ? const Color(0xFF26352B)
+                        : DashboardPage.kLightGreen),
                 foregroundColor: isPrimary
                     ? DashboardPage.kWhite
-                    : DashboardPage.kPrimary,
+                    : (isDark
+                        ? const Color(0xFF81C784)
+                        : DashboardPage.kPrimary),
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 shape: RoundedRectangleBorder(
@@ -1142,7 +1731,6 @@ class _ArchiveActionCard extends StatelessWidget {
 class _ForestHeaderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. Bukit Belakang (Hijau Muda Lembut Transparan)
     final backHillPaint = Paint()
       ..color = const Color(0xFF81C784).withValues(alpha: 0.25)
       ..style = PaintingStyle.fill;
@@ -1159,7 +1747,6 @@ class _ForestHeaderPainter extends CustomPainter {
       ..close();
     canvas.drawPath(backHillPath, backHillPaint);
 
-    // 2. Gunung / Bukit Tengah
     final midHillPaint = Paint()
       ..color = const Color(0xFF387A4D).withValues(alpha: 0.55)
       ..style = PaintingStyle.fill;
@@ -1176,7 +1763,6 @@ class _ForestHeaderPainter extends CustomPainter {
       ..close();
     canvas.drawPath(midHillPath, midHillPaint);
 
-    // 3. Bukit Depan Kanan Bawah
     final frontHillPaint = Paint()
       ..color = const Color(0xFF1B4B2A).withValues(alpha: 0.75)
       ..style = PaintingStyle.fill;
@@ -1193,7 +1779,6 @@ class _ForestHeaderPainter extends CustomPainter {
       ..close();
     canvas.drawPath(frontHillPath, frontHillPaint);
 
-    // 4. Siluet Pepohonan Cemara/Hutan di Sisi Kanan Bawah
     _drawPineTree(
       canvas,
       Offset(size.width * 0.58, size.height * 0.82),

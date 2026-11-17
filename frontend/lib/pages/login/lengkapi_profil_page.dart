@@ -88,9 +88,16 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
   @override
   Widget build(BuildContext context) {
     final avatarUrl = (widget.googleData['avatar'] ?? '').toString();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121814) : const Color(0xFFF6F8F5);
+    final cardBg = isDark ? const Color(0xFF1E2822) : Colors.white;
+    final borderCol =
+        isDark ? const Color(0xFF2E3D34) : Colors.grey.shade200;
+    final textColor = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F5),
+      backgroundColor: bgColor,
       appBar: AppBar(
         title: const Text(
           'Lengkapi Data Diri Pegawai',
@@ -119,12 +126,13 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: borderCol),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black
+                            .withValues(alpha: isDark ? 0.2 : 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -132,7 +140,6 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                   ),
                   child: Row(
                     children: [
-                      // Avatar
                       CircleAvatar(
                         radius: 28,
                         backgroundColor: primaryGreen.withValues(alpha: 0.12),
@@ -140,10 +147,12 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                             ? NetworkImage(avatarUrl)
                             : null,
                         child: avatarUrl.isEmpty
-                            ? const Icon(
+                            ? Icon(
                                 Icons.person_rounded,
                                 size: 32,
-                                color: primaryGreen,
+                                color: isDark
+                                    ? const Color(0xFF81C784)
+                                    : primaryGreen,
                               )
                             : null,
                       ),
@@ -159,10 +168,10 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                                 Expanded(
                                   child: Text(
                                     _emailCtrl.text,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13.5,
-                                      color: Color(0xFF1E2923),
+                                      color: textColor,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -176,13 +185,17 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
+                                color: isDark
+                                    ? const Color(0xFF152C44)
+                                    : Colors.blue.shade50,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 'Akun Google Terverifikasi',
                                 style: TextStyle(
-                                  color: Colors.blue.shade800,
+                                  color: isDark
+                                      ? const Color(0xFF90CAF9)
+                                      : Colors.blue.shade800,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -201,12 +214,13 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                 Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: borderCol),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
+                        color: Colors.black
+                            .withValues(alpha: isDark ? 0.2 : 0.04),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -217,32 +231,34 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Data Kepegawaian & Wilayah',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E2923),
+                            color: textColor,
                           ),
                         ),
                         const SizedBox(height: 6),
-                        const Text(
+                        Text(
                           'Akun Google Anda belum terdaftar di sistem. Lengkapi data di bawah ini untuk pembuatan akun baru.',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color: Colors.grey,
+                            color: subColor,
                             height: 1.4,
                           ),
                         ),
                         const SizedBox(height: 20),
 
                         // Nama Lengkap
-                        _buildLabel('Nama Lengkap & Gelar *'),
+                        _buildLabel('Nama Lengkap & Gelar *', isDark),
                         TextFormField(
                           controller: _namaCtrl,
+                          style: TextStyle(color: textColor),
                           decoration: _inputDecoration(
-                            hint: 'Contoh: Rizky Pratama, S.Hut.',
+                            hint: 'Masukkan nama lengkap beserta gelar',
                             icon: Icons.badge_outlined,
+                            isDark: isDark,
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
@@ -254,24 +270,28 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                         const SizedBox(height: 16),
 
                         // NIP
-                        _buildLabel('NIP (Nomor Induk Pegawai)'),
+                        _buildLabel('NIP (Nomor Induk Pegawai)', isDark),
                         TextFormField(
                           controller: _nipCtrl,
                           keyboardType: TextInputType.number,
+                          style: TextStyle(color: textColor),
                           decoration: _inputDecoration(
-                            hint: '19940812 202012 1 004 (Kosongkan jika non-PNS)',
+                            hint: 'Masukkan NIP (Kosongkan jika non-ASN)',
                             icon: Icons.pin_outlined,
+                            isDark: isDark,
                           ),
                         ),
                         const SizedBox(height: 16),
 
                         // Jabatan
-                        _buildLabel('Jabatan *'),
+                        _buildLabel('Jabatan *', isDark),
                         TextFormField(
                           controller: _jabatanCtrl,
+                          style: TextStyle(color: textColor),
                           decoration: _inputDecoration(
                             hint: 'Contoh: Penyuluh Kehutanan Ahli Pertama',
                             icon: Icons.work_outline_rounded,
+                            isDark: isDark,
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
@@ -283,12 +303,14 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                         const SizedBox(height: 16),
 
                         // Wilayah Kerja / Instansi
-                        _buildLabel('Wilayah Kerja / Instansi *'),
+                        _buildLabel('Wilayah Kerja / Instansi *', isDark),
                         TextFormField(
                           controller: _wilayahCtrl,
+                          style: TextStyle(color: textColor),
                           decoration: _inputDecoration(
                             hint: 'Contoh: CDK Wilayah Garut',
                             icon: Icons.location_city_outlined,
+                            isDark: isDark,
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
@@ -300,13 +322,15 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
                         const SizedBox(height: 16),
 
                         // Nomor WhatsApp
-                        _buildLabel('Nomor WhatsApp / HP Aktif *'),
+                        _buildLabel('Nomor WhatsApp / HP Aktif *', isDark),
                         TextFormField(
                           controller: _waCtrl,
                           keyboardType: TextInputType.phone,
+                          style: TextStyle(color: textColor),
                           decoration: _inputDecoration(
-                            hint: '081234567890 (Untuk notifikasi kegiatan)',
+                            hint: '08xxxxxxxxxx (Untuk notifikasi kegiatan)',
                             icon: Icons.phone_outlined,
+                            isDark: isDark,
                           ),
                           validator: (val) {
                             if (val == null || val.trim().isEmpty) {
@@ -364,15 +388,15 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
     );
   }
 
-  Widget _buildLabel(String text) {
+  Widget _buildLabel(String text, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.bold,
-          color: Color(0xFF2E3D32),
+          color: isDark ? Colors.white : const Color(0xFF2E3D32),
         ),
       ),
     );
@@ -381,25 +405,40 @@ class _LengkapiProfilPageState extends State<LengkapiProfilPage> {
   InputDecoration _inputDecoration({
     required String hint,
     required IconData icon,
+    required bool isDark,
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-      prefixIcon: Icon(icon, color: primaryGreen, size: 20),
+      hintStyle: TextStyle(
+        color: isDark ? Colors.white38 : Colors.grey.shade400,
+        fontSize: 13,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: isDark ? const Color(0xFF81C784) : primaryGreen,
+        size: 20,
+      ),
       filled: true,
-      fillColor: const Color(0xFFF9FBF9),
+      fillColor: isDark ? const Color(0xFF243329) : const Color(0xFFF9FBF9),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF2E3D34) : Colors.grey.shade300,
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: primaryGreen, width: 1.8),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF81C784) : primaryGreen,
+          width: 1.8,
+        ),
       ),
     );
   }

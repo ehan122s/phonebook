@@ -16,11 +16,15 @@ import 'history_reminder_page.dart';
 class JadwalPage extends StatefulWidget {
   final VoidCallback? onBack;
   final Function(int)? onNavigate;
+  final String? initialScheduleId;
+  final String? initialScheduleTitle;
 
   const JadwalPage({
     super.key,
     this.onBack,
     this.onNavigate,
+    this.initialScheduleId,
+    this.initialScheduleTitle,
   });
 
   @override
@@ -39,6 +43,7 @@ class _JadwalPageState extends State<JadwalPage> {
   Timer? _reminderTimer;
 
   bool isLoading = false;
+  bool _didOpenInitialSchedule = false;
   // Default: tampilkan SEMUA riwayat jadwal, bukan cuma 1 hari
   bool showAllHistory = true;
 
@@ -48,13 +53,28 @@ class _JadwalPageState extends State<JadwalPage> {
   static const softGreen = Color(0xFFF2F7F0);
 
   static const monthNames = [
-    'Januari', 'Februari', 'Maret', 'April',
-    'Mei', 'Juni', 'Juli', 'Agustus',
-    'September', 'Oktober', 'November', 'Desember',
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
   ];
 
   static const dayNames = [
-    'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min',
+    'Sen',
+    'Sel',
+    'Rab',
+    'Kam',
+    'Jum',
+    'Sab',
+    'Min',
   ];
 
   static const List<Map<String, dynamic>> categoryOptions = [
@@ -94,10 +114,6 @@ class _JadwalPageState extends State<JadwalPage> {
     super.dispose();
   }
 
-  /// Perbaikan Tombol Kembali:
-  /// - Jika dibuka via Navigator.push (canPop == true), kembali ke halaman sebelumnya.
-  /// - Jika memiliki callback onBack dari HomePage/AdminPage, panggil onBack!().
-  /// - Jika memiliki callback onNavigate dari HomePage, arahkan ke Beranda (index 0).
   void _handleBackButton() {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -108,7 +124,6 @@ class _JadwalPageState extends State<JadwalPage> {
       return;
     }
     if (widget.onNavigate != null) {
-      // Index 0 adalah Beranda / Dashboard pada HomePage
       widget.onNavigate!(0);
       return;
     }
@@ -146,6 +161,7 @@ class _JadwalPageState extends State<JadwalPage> {
             ..addAll(list);
           isLoading = false;
         });
+        _checkAndOpenInitialSchedule();
         await NotificationService.instance.checkDueRemindersNow();
       }
     } catch (_) {
@@ -155,7 +171,48 @@ class _JadwalPageState extends State<JadwalPage> {
     }
   }
 
-  /// Mengecek apakah ada jadwal yang sudah memasuki waktu pengingat (Asia/Jakarta)
+  void _checkAndOpenInitialSchedule() {
+    if (_didOpenInitialSchedule) return;
+    final targetId = widget.initialScheduleId?.trim();
+    final targetTitle = widget.initialScheduleTitle?.trim().toLowerCase();
+    if ((targetId == null || targetId.isEmpty) &&
+        (targetTitle == null || targetTitle.isEmpty)) {
+      return;
+    }
+
+    Map<String, dynamic>? matched;
+    if (targetId != null && targetId.isNotEmpty) {
+      for (final item in schedules) {
+        if ((item['id'] ?? '').toString().trim() == targetId) {
+          matched = item;
+          break;
+        }
+      }
+    }
+    if (matched == null && targetTitle != null && targetTitle.isNotEmpty) {
+      for (final item in schedules) {
+        final t = (item['judul'] ?? item['title'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (t == targetTitle || t.contains(targetTitle)) {
+          matched = item;
+          break;
+        }
+      }
+    }
+
+    if (matched != null) {
+      _didOpenInitialSchedule = true;
+      final itemToOpen = matched;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          showScheduleDetail(itemToOpen);
+        }
+      });
+    }
+  }
+
   Future<void> _checkUpcomingReminders() async {
     if (!mounted) return;
     await NotificationService.instance.checkDueRemindersNow();
@@ -183,7 +240,6 @@ class _JadwalPageState extends State<JadwalPage> {
 
     return schedules.where((item) {
       final itemDate = _getItemDate(item);
-      // Jika showAllHistory == true, tampilkan semua tanggal
       final matchesDate =
           showAllHistory ? true : dateKey(itemDate) == dateKey(selectedDate);
 
@@ -201,7 +257,6 @@ class _JadwalPageState extends State<JadwalPage> {
       return matchesDate && matchesSearch;
     }).toList()
       ..sort((a, b) {
-        // Urutkan berdasarkan tanggal terbaru dulu, lalu jam
         final dateCompare = _getItemDate(b).compareTo(_getItemDate(a));
         if (dateCompare != 0) return dateCompare;
         final timeA = (a['time'] ?? a['waktu'] ?? '00:00').toString();
@@ -226,7 +281,6 @@ class _JadwalPageState extends State<JadwalPage> {
         displayedMonth.month,
         day,
       );
-      // Saat user klik tanggal spesifik di kalender, filter ke tanggal itu
       showAllHistory = false;
     });
   }
@@ -275,9 +329,9 @@ class _JadwalPageState extends State<JadwalPage> {
     final initialWaPhone = isEditing
         ? (existingItem['waPhone'] ??
                 existingItem['wa_phone'] ??
-                (userPhone.isNotEmpty ? userPhone : '089602692362'))
+                userPhone)
             .toString()
-        : (userPhone.isNotEmpty ? userPhone : '089602692362');
+        : userPhone;
 
     final waPhoneController = TextEditingController(text: initialWaPhone);
 
@@ -440,6 +494,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                   hint: 'Contoh: Penyuluhan Kelompok Tani Hutan',
                                   icon: Icons.assignment_outlined,
                                   fillColor: fieldBg,
+                                  isDark: isDark,
                                 ),
                                 validator: (value) =>
                                     value == null || value.trim().isEmpty
@@ -466,7 +521,11 @@ class _JadwalPageState extends State<JadwalPage> {
                                     avatar: Icon(
                                       icon,
                                       size: 17,
-                                      color: isSelected ? Colors.white : green,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : (isDark
+                                              ? const Color(0xFF81C784)
+                                              : green),
                                     ),
                                     label: Text(label),
                                     selected: isSelected,
@@ -543,10 +602,12 @@ class _JadwalPageState extends State<JadwalPage> {
                                             ),
                                             child: Row(
                                               children: [
-                                                const Icon(
+                                                Icon(
                                                   Icons.calendar_today_rounded,
                                                   size: 18,
-                                                  color: green,
+                                                  color: isDark
+                                                      ? const Color(0xFF81C784)
+                                                      : green,
                                                 ),
                                                 const SizedBox(width: 8),
                                                 Expanded(
@@ -632,6 +693,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                             hint: '13:00',
                                             icon: Icons.access_time_rounded,
                                             fillColor: fieldBg,
+                                            isDark: isDark,
                                           ),
                                         ),
                                       ],
@@ -651,6 +713,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                   hint: 'Contoh: Kawasan Hutan Garut / Pataruman',
                                   icon: Icons.location_on_outlined,
                                   fillColor: fieldBg,
+                                  isDark: isDark,
                                 ),
                                 validator: (value) =>
                                     value == null || value.trim().isEmpty
@@ -675,9 +738,11 @@ class _JadwalPageState extends State<JadwalPage> {
                                   children: [
                                     Row(
                                       children: [
-                                        const Icon(
+                                        Icon(
                                           Icons.notifications_active_outlined,
-                                          color: green,
+                                          color: isDark
+                                              ? const Color(0xFF81C784)
+                                              : green,
                                           size: 20,
                                         ),
                                         const SizedBox(width: 8),
@@ -705,8 +770,15 @@ class _JadwalPageState extends State<JadwalPage> {
                                     const SizedBox(height: 8),
                                     DropdownButtonFormField<int>(
                                       value: selectedReminderMinutes,
+                                      dropdownColor: sheetBg,
+                                      style: TextStyle(color: textColor),
                                       decoration: InputDecoration(
                                         labelText: 'Ingatkan Sebelum Jadwal',
+                                        labelStyle: TextStyle(
+                                          color: isDark
+                                              ? Colors.white70
+                                              : Colors.grey.shade700,
+                                        ),
                                         filled: true,
                                         fillColor: sheetBg,
                                         contentPadding:
@@ -722,7 +794,10 @@ class _JadwalPageState extends State<JadwalPage> {
                                       items: reminderOptions.map((opt) {
                                         return DropdownMenuItem<int>(
                                           value: opt['minutes'] as int,
-                                          child: Text(opt['label'] as String),
+                                          child: Text(
+                                            opt['label'] as String,
+                                            style: TextStyle(color: textColor),
+                                          ),
                                         );
                                       }).toList(),
                                       onChanged: (val) {
@@ -745,15 +820,17 @@ class _JadwalPageState extends State<JadwalPage> {
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             Icons.alarm_on_rounded,
                                             size: 16,
-                                            color: green,
+                                            color: isDark
+                                                ? const Color(0xFF81C784)
+                                                : green,
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
-                                              'Pengingat WhatsApp otomatis akan terkirim pukul $previewReminderClock WIB ($selectedReminderMinutes menit sebelum $currentPreviewTime WIB) tanpa perlu dipencet.',
+                                              'Pengingat WhatsApp otomatis akan terkirim pukul $previewReminderClock WIB ($selectedReminderMinutes menit sebelum $currentPreviewTime WIB).',
                                               style: TextStyle(
                                                 fontSize: 12,
                                                 fontWeight: FontWeight.w600,
@@ -773,9 +850,16 @@ class _JadwalPageState extends State<JadwalPage> {
                                         decoration: InputDecoration(
                                           labelText: 'Nomor WhatsApp Penerima',
                                           hintText: '08xxxxxxxxxx',
-                                          prefixIcon: const Icon(
+                                          labelStyle: TextStyle(
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.grey.shade700,
+                                          ),
+                                          prefixIcon: Icon(
                                             Icons.chat_bubble_outline_rounded,
-                                            color: green,
+                                            color: isDark
+                                                ? const Color(0xFF81C784)
+                                                : green,
                                           ),
                                           filled: true,
                                           fillColor: sheetBg,
@@ -811,6 +895,7 @@ class _JadwalPageState extends State<JadwalPage> {
                                       'Tulis rincian perlengkapan atau agenda...',
                                   icon: Icons.notes_rounded,
                                   fillColor: fieldBg,
+                                  isDark: isDark,
                                 ),
                               ),
 
@@ -824,8 +909,14 @@ class _JadwalPageState extends State<JadwalPage> {
                                       onPressed: () =>
                                           Navigator.pop(sheetContext, false),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: green,
-                                        side: const BorderSide(color: green),
+                                        foregroundColor: isDark
+                                            ? const Color(0xFF81C784)
+                                            : green,
+                                        side: BorderSide(
+                                          color: isDark
+                                              ? const Color(0xFF81C784)
+                                              : green,
+                                        ),
                                         padding: const EdgeInsets.symmetric(
                                           vertical: 14,
                                         ),
@@ -985,10 +1076,16 @@ class _JadwalPageState extends State<JadwalPage> {
     required String hint,
     required IconData icon,
     required Color fillColor,
+    bool isDark = false,
   }) {
     return InputDecoration(
       hintText: hint,
-      prefixIcon: Icon(icon, color: green, size: 20),
+      hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+      prefixIcon: Icon(
+        icon,
+        color: isDark ? const Color(0xFF81C784) : green,
+        size: 20,
+      ),
       filled: true,
       fillColor: fillColor,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -1002,7 +1099,10 @@ class _JadwalPageState extends State<JadwalPage> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: green, width: 1.6),
+        borderSide: BorderSide(
+          color: isDark ? const Color(0xFF81C784) : green,
+          width: 1.6,
+        ),
       ),
     );
   }
@@ -1027,16 +1127,26 @@ class _JadwalPageState extends State<JadwalPage> {
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (bottomSheetContext) => StatefulBuilder(
         builder: (sheetInnerContext, setModalState) {
-          final isDark = Theme.of(sheetInnerContext).brightness == Brightness.dark;
-          final waStatus = (item['whatsappStatus'] ?? item['whatsapp_status'] ?? 'pending').toString().toLowerCase();
-          final waError = (item['whatsappError'] ?? item['whatsapp_error'])?.toString();
-          final waSentAt = (item['whatsappSentAt'] ?? item['whatsapp_sent_at'])?.toString();
-          final isWaEnabled = item['enableWaNotification'] == true || item['enable_wa_notification'] == true;
+          final isDark =
+              Theme.of(sheetInnerContext).brightness == Brightness.dark;
+          final textColor = isDark ? Colors.white : const Color(0xFF24352A);
+          final waStatus = (item['whatsappStatus'] ??
+                  item['whatsapp_status'] ??
+                  'pending')
+              .toString()
+              .toLowerCase();
+          final waError =
+              (item['whatsappError'] ?? item['whatsapp_error'])?.toString();
+          final waSentAt =
+              (item['whatsappSentAt'] ?? item['whatsapp_sent_at'])?.toString();
+          final isWaEnabled = item['enableWaNotification'] == true ||
+              item['enable_wa_notification'] == true;
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(22, 8, 22, 32),
@@ -1054,8 +1164,12 @@ class _JadwalPageState extends State<JadwalPage> {
                         ),
                         decoration: BoxDecoration(
                           color: isCompleted
-                              ? (isDark ? const Color(0xFF1B3824) : Colors.green.shade50)
-                              : (isDark ? const Color(0xFF1A2A3A) : Colors.blue.shade50),
+                              ? (isDark
+                                  ? const Color(0xFF1B3824)
+                                  : Colors.green.shade50)
+                              : (isDark
+                                  ? const Color(0xFF1A2A3A)
+                                  : Colors.blue.shade50),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -1064,8 +1178,12 @@ class _JadwalPageState extends State<JadwalPage> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: isCompleted
-                                ? (isDark ? const Color(0xFF81C784) : Colors.green.shade700)
-                                : (isDark ? const Color(0xFF90CAF9) : Colors.blue.shade700),
+                                ? (isDark
+                                    ? const Color(0xFF81C784)
+                                    : Colors.green.shade700)
+                                : (isDark
+                                    ? const Color(0xFF90CAF9)
+                                    : Colors.blue.shade700),
                           ),
                         ),
                       ),
@@ -1094,11 +1212,15 @@ class _JadwalPageState extends State<JadwalPage> {
                           Navigator.pop(bottomSheetContext);
                           addSchedule(existingItem: item);
                         },
-                        icon: const Icon(Icons.edit_outlined, size: 18, color: green),
-                        label: const Text(
+                        icon: Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: isDark ? const Color(0xFF81C784) : green,
+                        ),
+                        label: Text(
                           'Edit',
                           style: TextStyle(
-                            color: green,
+                            color: isDark ? const Color(0xFF81C784) : green,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -1108,9 +1230,10 @@ class _JadwalPageState extends State<JadwalPage> {
                   const SizedBox(height: 12),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -1134,7 +1257,8 @@ class _JadwalPageState extends State<JadwalPage> {
                   if (isWaEnabled)
                     _DetailRow(
                       icon: Icons.chat_outlined,
-                      text: 'WhatsApp: ${(item['waPhone'] ?? item['wa_phone'] ?? '').toString().isNotEmpty ? (item['waPhone'] ?? item['wa_phone']) : 'Nomor Profil Pengguna'}',
+                      text:
+                          'WhatsApp: ${(item['waPhone'] ?? item['wa_phone'] ?? '').toString().isNotEmpty ? (item['waPhone'] ?? item['wa_phone']) : 'Nomor Profil Pengguna'}',
                     ),
                   if (description.isNotEmpty)
                     _DetailRow(
@@ -1142,7 +1266,6 @@ class _JadwalPageState extends State<JadwalPage> {
                       text: description,
                     ),
                   const SizedBox(height: 14),
-                  // Indikator Status Pengiriman WhatsApp Otomatis
                   _buildWaStatusBadge(
                     isDark: isDark,
                     isWaEnabled: isWaEnabled,
@@ -1165,7 +1288,8 @@ class _JadwalPageState extends State<JadwalPage> {
                         ? null
                         : () async {
                             setModalState(() => isSendingWa = true);
-                            final res = await WhatsappReminderService.instance.sendOrLaunchReminder(
+                            final res = await WhatsappReminderService.instance
+                                .sendOrLaunchReminder(
                               item,
                               context: context,
                             );
@@ -1175,8 +1299,10 @@ class _JadwalPageState extends State<JadwalPage> {
                               item['whatsappStatus'] = 'sent';
                               item['whatsapp_sent'] = true;
                               item['whatsappSent'] = true;
-                              item['whatsapp_sent_at'] = DateTime.now().toIso8601String();
-                              item['whatsappSentAt'] = DateTime.now().toIso8601String();
+                              item['whatsapp_sent_at'] =
+                                  DateTime.now().toIso8601String();
+                              item['whatsappSentAt'] =
+                                  DateTime.now().toIso8601String();
                               item['whatsapp_error'] = null;
                               item['whatsappError'] = null;
                             } else if (res['reason'] != null) {
@@ -1192,7 +1318,10 @@ class _JadwalPageState extends State<JadwalPage> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.send_rounded, size: 18),
                     label: Text(
@@ -1216,9 +1345,17 @@ class _JadwalPageState extends State<JadwalPage> {
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder: (ctx) => AlertDialog(
-                                title: const Text('Hapus Jadwal'),
-                                content: const Text(
+                                backgroundColor: Theme.of(context).cardColor,
+                                title: Text(
+                                  'Hapus Jadwal',
+                                  style: TextStyle(color: textColor),
+                                ),
+                                content: Text(
                                   'Apakah Anda yakin ingin menghapus jadwal ini? Pengingat terkait juga akan dibatalkan.',
+                                  style: TextStyle(
+                                    color:
+                                        isDark ? Colors.white70 : Colors.black87,
+                                  ),
                                 ),
                                 actions: [
                                   TextButton(
@@ -1252,7 +1389,10 @@ class _JadwalPageState extends State<JadwalPage> {
                               }
                             }
                           },
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           label: const Text(
                             'Hapus',
                             style: TextStyle(color: Colors.red),
@@ -1287,7 +1427,8 @@ class _JadwalPageState extends State<JadwalPage> {
                                 ? Icons.undo_rounded
                                 : Icons.check_circle_outline,
                           ),
-                          label: Text(isCompleted ? 'Belum Selesai' : 'Selesai'),
+                          label:
+                              Text(isCompleted ? 'Belum Selesai' : 'Selesai'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: green,
                             foregroundColor: Colors.white,
@@ -1342,7 +1483,8 @@ class _JadwalPageState extends State<JadwalPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isDark ? Colors.grey.shade200 : Colors.grey.shade800,
+                      color:
+                          isDark ? Colors.grey.shade200 : Colors.grey.shade800,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1350,7 +1492,8 @@ class _JadwalPageState extends State<JadwalPage> {
                     'Pengingat WhatsApp otomatis dinonaktifkan untuk kegiatan ini.',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      color:
+                          isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                     ),
                   ),
                 ],
@@ -1362,12 +1505,15 @@ class _JadwalPageState extends State<JadwalPage> {
     }
 
     if (waStatus == 'sent') {
-      String sentLabel = 'Pengingat WhatsApp telah otomatis terkirim via Fonnte';
+      String sentLabel =
+          'Pengingat WhatsApp telah otomatis terkirim via Fonnte';
       if (waSentAt != null && waSentAt.isNotEmpty) {
         try {
           final parsed = DateTime.parse(waSentAt);
-          final wib = parsed.isUtc ? parsed.add(const Duration(hours: 7)) : parsed;
-          sentLabel = 'Terkirim pada ${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')} WIB';
+          final wib =
+              parsed.isUtc ? parsed.add(const Duration(hours: 7)) : parsed;
+          sentLabel =
+              'Terkirim pada ${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')} WIB';
         } catch (_) {}
       }
 
@@ -1399,7 +1545,9 @@ class _JadwalPageState extends State<JadwalPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isDark ? const Color(0xFFA5D6A7) : const Color(0xFF1B5E20),
+                      color: isDark
+                          ? const Color(0xFFA5D6A7)
+                          : const Color(0xFF1B5E20),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1407,7 +1555,9 @@ class _JadwalPageState extends State<JadwalPage> {
                     sentLabel,
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                      color: isDark
+                          ? const Color(0xFF81C784)
+                          : const Color(0xFF2E7D32),
                     ),
                   ),
                 ],
@@ -1447,7 +1597,9 @@ class _JadwalPageState extends State<JadwalPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
-                      color: isDark ? const Color(0xFFFFCDD2) : const Color(0xFFB71C1C),
+                      color: isDark
+                          ? const Color(0xFFFFCDD2)
+                          : const Color(0xFFB71C1C),
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -1457,7 +1609,9 @@ class _JadwalPageState extends State<JadwalPage> {
                         : 'Pengiriman pesan ke nomor WhatsApp penerima gagal.',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark ? const Color(0xFFEF9A9A) : const Color(0xFFC62828),
+                      color: isDark
+                          ? const Color(0xFFEF9A9A)
+                          : const Color(0xFFC62828),
                     ),
                   ),
                 ],
@@ -1468,7 +1622,6 @@ class _JadwalPageState extends State<JadwalPage> {
       );
     }
 
-    // Status: Pending / Menunggu Pengiriman Otomatis
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 4),
       padding: const EdgeInsets.all(12),
@@ -1497,15 +1650,19 @@ class _JadwalPageState extends State<JadwalPage> {
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
-                    color: isDark ? const Color(0xFFFFE082) : const Color(0xFFE65100),
+                    color: isDark
+                        ? const Color(0xFFFFE082)
+                        : const Color(0xFFE65100),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Sistem otomatis mengirim pengingat ke WhatsApp pada pukul $reminderClock WIB tanpa perlu menekan tombol apa pun.',
+                  'Sistem otomatis mengirim pengingat ke WhatsApp pada pukul $reminderClock WIB.',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? const Color(0xFFFFD54F) : const Color(0xFFF57F17),
+                    color: isDark
+                        ? const Color(0xFFFFD54F)
+                        : const Color(0xFFF57F17),
                   ),
                 ),
               ],
@@ -1586,10 +1743,10 @@ class _JadwalPageState extends State<JadwalPage> {
                     ListenableBuilder(
                       listenable: NotificationService.instance,
                       builder: (context, _) {
-                        final count = NotificationService.instance.totalCount;
+                        final count = NotificationService.instance.unreadCount;
                         return IconButton(
                           onPressed: _openNotificationPage,
-                          tooltip: 'Notifikasi ($count)',
+                          tooltip: 'Notifikasi ($count belum dibaca)',
                           icon: Badge(
                             isLabelVisible: count > 0,
                             label: Text('$count'),
@@ -1645,7 +1802,7 @@ class _JadwalPageState extends State<JadwalPage> {
 
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 100),
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 120),
                   children: [
                     // Kalender
                     Container(
@@ -1757,7 +1914,13 @@ class _JadwalPageState extends State<JadwalPage> {
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                             border: isToday && !selected
-                                                ? Border.all(color: green)
+                                                ? Border.all(
+                                                    color: isDark
+                                                        ? const Color(
+                                                            0xFF81C784,
+                                                          )
+                                                        : green,
+                                                  )
                                                 : null,
                                           ),
                                           child: Column(
@@ -1895,7 +2058,11 @@ class _JadwalPageState extends State<JadwalPage> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: showAllHistory ? green : lightGreen,
+                                  color: showAllHistory
+                                      ? green
+                                      : (isDark
+                                          ? const Color(0xFF26352B)
+                                          : lightGreen),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
@@ -1905,7 +2072,9 @@ class _JadwalPageState extends State<JadwalPage> {
                                     fontWeight: FontWeight.bold,
                                     color: showAllHistory
                                         ? Colors.white
-                                        : green,
+                                        : (isDark
+                                            ? const Color(0xFF81C784)
+                                            : green),
                                   ),
                                 ),
                               ),
@@ -1922,7 +2091,11 @@ class _JadwalPageState extends State<JadwalPage> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: !showAllHistory ? green : lightGreen,
+                                  color: !showAllHistory
+                                      ? green
+                                      : (isDark
+                                          ? const Color(0xFF26352B)
+                                          : lightGreen),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Text(
@@ -1932,7 +2105,9 @@ class _JadwalPageState extends State<JadwalPage> {
                                     fontWeight: FontWeight.bold,
                                     color: !showAllHistory
                                         ? Colors.white
-                                        : green,
+                                        : (isDark
+                                            ? const Color(0xFF81C784)
+                                            : green),
                                   ),
                                 ),
                               ),
@@ -1971,10 +2146,10 @@ class _JadwalPageState extends State<JadwalPage> {
                             const SizedBox(height: 10),
                             Text(
                               showAllHistory
-                                  ? 'Belum ada riwayat jadwal tersimpan'
+                                  ? 'Belum ada jadwal kegiatan tersimpan.\nTekan tombol "Tambah Jadwal" di atas untuk membuat jadwal baru.'
                                   : 'Belum ada jadwal pada tanggal ${formatDate(selectedDate)}',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: subColor),
+                              style: TextStyle(color: subColor, height: 1.45),
                             ),
                           ],
                         ),
@@ -2063,15 +2238,19 @@ class _JadwalPageState extends State<JadwalPage> {
                                       vertical: 3,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: softGreen,
+                                      color: isDark
+                                          ? const Color(0xFF26352B)
+                                          : softGreen,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
                                       category,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: green,
+                                        color: isDark
+                                            ? const Color(0xFF81C784)
+                                            : green,
                                       ),
                                     ),
                                   ),
@@ -2137,7 +2316,10 @@ class _JadwalPageState extends State<JadwalPage> {
                                       );
                                     },
                                   ),
-                                  const Icon(Icons.chevron_right),
+                                  Icon(
+                                    Icons.chevron_right,
+                                    color: subColor,
+                                  ),
                                 ],
                               ),
                             ),
@@ -2166,17 +2348,25 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: const Color(0xFF245C3A)),
+          Icon(
+            icon,
+            size: 20,
+            color: isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(fontSize: 14),
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white : const Color(0xFF24352A),
+              ),
             ),
           ),
         ],
