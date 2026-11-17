@@ -2088,7 +2088,27 @@ class _MateriPageState extends State<MateriPage> {
                           ),
                         ),
                         if (isUploader) ...[
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: isDark
+                                  ? const Color(0xFF245C3A).withValues(alpha: 0.2)
+                                  : const Color(0xFFE8F5E9),
+                              foregroundColor: isDark
+                                  ? const Color(0xFF81C784)
+                                  : const Color(0xFF2E7D32),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Edit Materi Ini',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showEditMaterialModal(material);
+                            },
+                          ),
+                          const SizedBox(width: 8),
                           IconButton(
                             style: IconButton.styleFrom(
                               backgroundColor: isDark
@@ -2261,6 +2281,312 @@ class _MateriPageState extends State<MateriPage> {
     );
   }
 
+  void _showEditMaterialModal(Map<String, dynamic> material) {
+    final titleCtrl = TextEditingController(text: (material['title'] ?? '').toString());
+    final descCtrl = TextEditingController(text: (material['description'] ?? '').toString());
+    final fileNameCtrl = TextEditingController(text: (material['file_name'] ?? '').toString());
+    String selectedCat = (material['category'] ?? 'Penyuluhan').toString();
+    String selectedType = (material['type'] ?? 'PDF').toString().toUpperCase();
+    PlatformFile? replacementFile;
+    bool isSaving = false;
+    final formKey = GlobalKey<FormState>();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final labelColor = isDark ? Colors.white : const Color(0xFF1E2923);
+            final subLabelColor = isDark ? Colors.white70 : Colors.grey.shade600;
+            const primaryGreen = Color(0xFF245C3A);
+
+            Future<void> pickReplacementFile() async {
+              try {
+                final file = await _pickLocalFileSafe();
+                if (file != null) {
+                  replacementFile = file;
+                  fileNameCtrl.text = file.name;
+                  final ext = file.name.contains('.')
+                      ? file.name.split('.').last.toLowerCase()
+                      : (file.extension ?? '').toLowerCase();
+                  if (ext == 'pdf') {
+                    selectedType = 'PDF';
+                  } else if (ext == 'ppt' || ext == 'pptx') {
+                    selectedType = 'PPT';
+                  } else if (ext == 'doc' || ext == 'docx') {
+                    selectedType = 'DOC';
+                  } else if (ext == 'xls' || ext == 'xlsx') {
+                    selectedType = 'XLS';
+                  } else if (ext == 'mp4' || ext == 'mov' || ext == 'avi') {
+                    selectedType = 'VIDEO';
+                  }
+                  setModalState(() {});
+                }
+              } catch (e) {
+                debugPrint('Gagal memilih file pengganti: $e');
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 22,
+                right: 22,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1B3224) : const Color(0xFFE8F5E9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.edit_note_rounded,
+                              color: isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32),
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Edit Materi Edukasi',
+                                  style: TextStyle(
+                                    fontSize: 17.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: labelColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Perubahan akan langsung diperbarui ke database Supabase.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: subLabelColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close_rounded, color: labelColor),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: titleCtrl,
+                        style: TextStyle(color: labelColor),
+                        decoration: InputDecoration(
+                          labelText: 'Judul Materi *',
+                          hintText: 'Misal: Modul Pembibitan Pohon Kopi',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          prefixIcon: const Icon(Icons.title_rounded),
+                        ),
+                        validator: (val) => val == null || val.trim().isEmpty ? 'Judul materi wajib diisi' : null,
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<String>(
+                        value: _categories.contains(selectedCat) && selectedCat != 'Semua' ? selectedCat : 'Penyuluhan',
+                        style: TextStyle(color: labelColor, fontSize: 14),
+                        dropdownColor: Theme.of(context).cardColor,
+                        decoration: InputDecoration(
+                          labelText: 'Kategori Materi',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          prefixIcon: const Icon(Icons.category_outlined),
+                        ),
+                        items: _categories.where((c) => c != 'Semua').map((cat) {
+                          return DropdownMenuItem(value: cat, child: Text(cat));
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setModalState(() => selectedCat = val);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: descCtrl,
+                        maxLines: 3,
+                        style: TextStyle(color: labelColor),
+                        decoration: InputDecoration(
+                          labelText: 'Deskripsi / Ringkasan Materi',
+                          hintText: 'Tuliskan poin penting modul atau bimbingan teknis...',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          prefixIcon: const Icon(Icons.description_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(_getTypeIcon(selectedType), color: _getTypeColor(selectedType), size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    fileNameCtrl.text.isNotEmpty ? fileNameCtrl.text : 'Berkas belum dipilih',
+                                    style: TextStyle(fontWeight: FontWeight.w600, color: labelColor, fontSize: 13),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: pickReplacementFile,
+                                icon: const Icon(Icons.folder_open_rounded, size: 18),
+                                label: Text(replacementFile == null ? 'Ganti File Berkas (Opsional)' : 'Pilih File Lain'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: primaryGreen,
+                                  side: const BorderSide(color: primaryGreen),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: isSaving ? null : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            final messenger = ScaffoldMessenger.of(context);
+                            setModalState(() => isSaving = true);
+                            final prefs = await SharedPreferences.getInstance();
+                            final token = prefs.getString('token');
+                            final idStr = (material['id'] ?? '').toString();
+
+                            // 1. Update state lokal
+                            final updatedMaterial = Map<String, dynamic>.from(material);
+                            updatedMaterial['title'] = titleCtrl.text.trim();
+                            updatedMaterial['category'] = selectedCat;
+                            updatedMaterial['category_name'] = selectedCat;
+                            updatedMaterial['description'] = descCtrl.text.trim();
+                            updatedMaterial['type'] = selectedType;
+                            if (replacementFile != null) {
+                              updatedMaterial['file_name'] = replacementFile!.name;
+                            }
+
+                            final idx = _materials.indexWhere((m) => m['id']?.toString() == idStr);
+                            if (idx != -1) {
+                              setState(() {
+                                _materials[idx] = updatedMaterial;
+                              });
+                              await prefs.setString(_storageKey, jsonEncode(_materials));
+                            }
+
+                            // 2. Kirim update ke backend Laravel & PostgreSQL Supabase
+                            try {
+                              if (!idStr.startsWith('MAT-')) {
+                                final uri = Uri.parse('${ApiConstants.baseUrl}/api/materials/$idStr/public');
+
+                                if (replacementFile != null && replacementFile!.bytes != null) {
+                                  final req = http.MultipartRequest('POST', uri);
+                                  req.headers['Accept'] = 'application/json';
+                                  if (token != null && token.isNotEmpty) {
+                                    req.headers['Authorization'] = 'Bearer $token';
+                                  }
+                                  req.fields['title'] = titleCtrl.text.trim();
+                                  req.fields['category_name'] = selectedCat;
+                                  req.fields['description'] = descCtrl.text.trim();
+                                  req.fields['file_type'] = selectedType;
+                                  req.files.add(http.MultipartFile.fromBytes(
+                                    'file',
+                                    replacementFile!.bytes!,
+                                    filename: replacementFile!.name,
+                                  ));
+                                  final streamed = await req.send().timeout(const Duration(seconds: 15));
+                                  await http.Response.fromStream(streamed);
+                                } else {
+                                  final headers = {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                  };
+                                  if (token != null && token.isNotEmpty) {
+                                    headers['Authorization'] = 'Bearer $token';
+                                  }
+                                  await http.post(
+                                    uri,
+                                    headers: headers,
+                                    body: jsonEncode({
+                                      'title': titleCtrl.text.trim(),
+                                      'category_name': selectedCat,
+                                      'description': descCtrl.text.trim(),
+                                      'file_type': selectedType,
+                                    }),
+                                  ).timeout(const Duration(seconds: 8));
+                                }
+                              }
+                            } catch (e) {
+                              debugPrint('Sync edit material error: $e');
+                            }
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                            if (mounted) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text('Materi "${titleCtrl.text.trim()}" berhasil diperbarui.'),
+                                  backgroundColor: const Color(0xFF2E7D32),
+                                ),
+                              );
+                              await _fetchLiveMaterialsFromServer(prefs);
+                            }
+                          },
+                          icon: isSaving
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.check_circle_outline_rounded),
+                          label: Text(isSaving ? 'Menyimpan...' : 'Simpan Perubahan'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF245C3A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _confirmDeleteMaterial(Map<String, dynamic> material) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
@@ -2272,7 +2598,7 @@ class _MateriPageState extends State<MateriPage> {
           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
         ),
         content: Text(
-          'Materi "${material['title']}" akan dihapus dari daftar publik.',
+          'Materi "${material['title']}" akan dihapus dari server.',
           style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
         ),
         actions: [
@@ -2295,13 +2621,26 @@ class _MateriPageState extends State<MateriPage> {
 
               final idStr = (material['id'] ?? '').toString();
               if (!idStr.startsWith('MAT-')) {
+                final token = prefs.getString('token');
+                final headers = <String, String>{'Accept': 'application/json'};
+                if (token != null && token.isNotEmpty) {
+                  headers['Authorization'] = 'Bearer $token';
+                }
                 try {
-                  await http.delete(
+                  final res = await http.delete(
                     Uri.parse(
                       '${ApiConstants.baseUrl}/api/materials/$idStr/public',
                     ),
-                    headers: {'Accept': 'application/json'},
+                    headers: headers,
                   );
+                  if (res.statusCode != 200) {
+                    await http.delete(
+                      Uri.parse(
+                        '${ApiConstants.baseUrl}/api/materials/$idStr',
+                      ),
+                      headers: headers,
+                    );
+                  }
                 } catch (_) {}
               }
 
@@ -2309,6 +2648,7 @@ class _MateriPageState extends State<MateriPage> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Materi berhasil dihapus.')),
                 );
+                await _fetchLiveMaterialsFromServer(prefs);
               }
             },
             child: const Text('Hapus'),

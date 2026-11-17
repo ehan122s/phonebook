@@ -307,52 +307,149 @@ class ReportTemplateManager {
 
   /// Normalisasi map template agar tipe datanya selalu konsisten dan bebas dari korupsi biner.
   static Map<String, dynamic> normalizeTemplate(Map<String, dynamic> raw) {
-    final title = (raw['title'] ?? 'Laporan Kegiatan').toString().trim();
+    final title = (raw['title'] ?? raw['name'] ?? 'Laporan Kegiatan').toString().trim();
     final category = (raw['category'] ?? 'Penyuluhan').toString().trim();
 
-    final rawFields = raw['fields'];
-    List<String> fields = rawFields is List
-        ? rawFields
+    final rawFieldsConfig = raw['fields_config'];
+    final List<Map<String, dynamic>> fieldsConfig = [];
+
+    if (rawFieldsConfig is List && rawFieldsConfig.isNotEmpty) {
+      for (final item in rawFieldsConfig) {
+        if (item is Map) {
+          final label = (item['label'] ?? item['name'] ?? '').toString().trim();
+          if (label.isNotEmpty && _isValidHumanFieldName(label)) {
+            final opts = (item['options'] is List)
+                ? (item['options'] as List)
+                    .map((o) => o.toString().trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList()
+                : <String>[];
+            fieldsConfig.add({
+              'id': (item['id'] ?? 'f_${label.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}').toString(),
+              'label': label,
+              'type': (item['type'] ?? 'text').toString(),
+              'placeholder': (item['placeholder'] ?? 'Isi $label...').toString(),
+              'description': (item['description'] ?? '').toString(),
+              'required': item['required'] != false,
+              'options': opts,
+            });
+          }
+        } else if (item is String) {
+          final s = item.trim();
+          if (_isValidHumanFieldName(s)) {
+            final isLong = s.toLowerCase().contains('hasil') ||
+                s.toLowerCase().contains('uraian') ||
+                s.toLowerCase().contains('kondisi') ||
+                s.toLowerCase().contains('temuan') ||
+                s.toLowerCase().contains('tindak') ||
+                s.toLowerCase().contains('rekomendasi');
+            final isNum = s.toLowerCase().contains('jumlah') ||
+                s.toLowerCase().contains('luas') ||
+                s.toLowerCase().contains('hektar');
+            fieldsConfig.add({
+              'id': 'f_${s.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
+              'label': s,
+              'type': isLong ? 'textarea' : (isNum ? 'number' : 'text'),
+              'placeholder': 'Isi $s...',
+              'description': '',
+              'required': true,
+              'options': <String>[],
+            });
+          }
+        }
+      }
+    }
+
+    if (fieldsConfig.isEmpty) {
+      final rawFields = raw['fields'] ?? raw['placeholders'];
+      List<String> stringFields = rawFields is List
+          ? rawFields
               .map((e) => e.toString().trim())
               .where(_isValidHumanFieldName)
               .toList()
-        : <String>[];
-
-    if (fields.isEmpty) {
-      fields = defaultFieldsForCategory('$title $category');
+          : <String>[];
+      if (stringFields.isEmpty) {
+        stringFields = defaultFieldsForCategory('$title $category');
+      }
+      for (final s in stringFields) {
+        final isLong = s.toLowerCase().contains('hasil') ||
+            s.toLowerCase().contains('uraian') ||
+            s.toLowerCase().contains('kondisi') ||
+            s.toLowerCase().contains('temuan') ||
+            s.toLowerCase().contains('tindak') ||
+            s.toLowerCase().contains('rekomendasi');
+        final isNum = s.toLowerCase().contains('jumlah') ||
+            s.toLowerCase().contains('luas') ||
+            s.toLowerCase().contains('hektar');
+        fieldsConfig.add({
+          'id': 'f_${s.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
+          'label': s,
+          'type': isLong ? 'textarea' : (isNum ? 'number' : 'text'),
+          'placeholder': 'Isi $s...',
+          'description': '',
+          'required': true,
+          'options': <String>[],
+        });
+      }
     }
 
-    String templateBody = (raw['templateBody'] ?? '').toString().trim();
+    final List<String> fields = fieldsConfig.map((f) => f['label'] as String).toList();
+
+    String templateBody = (raw['templateBody'] ?? raw['template_body'] ?? '').toString().trim();
     if (templateBody.isEmpty || isCorruptedBinaryText(templateBody)) {
       templateBody = buildCleanDefaultTemplateBody(title, fields);
     }
 
     return {
-      'id': (raw['id'] ?? 'tpl_${DateTime.now().millisecondsSinceEpoch}')
-          .toString(),
+      'id': (raw['id'] ?? 'tpl_${DateTime.now().millisecondsSinceEpoch}').toString(),
       'title': title.isEmpty ? 'Laporan Kegiatan' : title,
+      'name': title.isEmpty ? 'Laporan Kegiatan' : title,
       'category': category.isEmpty ? 'Penyuluhan' : category,
-      'iconKey': (raw['iconKey'] ?? 'description').toString(),
-      'description':
-          (raw['description'] ??
-                  'Template laporan kegiatan lapangan penyuluh kehutanan.')
-              .toString(),
-      'defaultTitle': (raw['defaultTitle'] ?? '').toString(),
-      'requirePhoto': raw['requirePhoto'] != false,
-      'requireLocation': raw['requireLocation'] != false,
-      'sampleFileName': (raw['sampleFileName'] ?? '').toString(),
+      'iconKey': (raw['iconKey'] ?? raw['icon_key'] ?? 'description').toString(),
+      'description': (raw['description'] ?? 'Template laporan kegiatan lapangan penyuluh kehutanan.').toString(),
+      'defaultTitle': (raw['defaultTitle'] ?? raw['default_title'] ?? '').toString(),
+      'requirePhoto': raw['requirePhoto'] ?? raw['require_photo'] ?? true,
+      'requireLocation': raw['requireLocation'] ?? raw['require_location'] ?? true,
+      'sampleFileName': (raw['sampleFileName'] ?? raw['file_name'] ?? '').toString(),
       'fields': fields,
+      'fields_config': fieldsConfig,
       'templateBody': templateBody,
       'updatedBy': (raw['updatedBy'] ?? 'Administrator').toString(),
     };
   }
 
-  /// Memuat seluruh template dari SharedPreferences dan otomatis memperbaiki template
-  /// yang sebelumnya sempat tersimpan dalam kondisi rusak (`PK!...`).
+  /// Memuat seluruh template dari server PostgreSQL Supabase (dengan cache SharedPreferences).
   static Future<List<Map<String, dynamic>>> loadTemplates() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(storageKey);
 
+    // 1. Coba ambil data live dari PostgreSQL Supabase melalui Laravel API
+    try {
+      final response = await http
+          .get(
+            Uri.parse(ApiConstants.reportTemplatesUrl),
+            headers: {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['success'] == true && decoded['data'] is List) {
+          final List<dynamic> list = decoded['data'];
+          if (list.isNotEmpty) {
+            final normalized = list
+                .map((item) => normalizeTemplate(Map<String, dynamic>.from(item)))
+                .toList();
+            await prefs.setString(storageKey, jsonEncode(normalized));
+            return normalized;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('ReportTemplateManager live fetch error: $e');
+    }
+
+    // 2. Fallback dari cache SharedPreferences jika offline / lambat
+    final raw = prefs.getString(storageKey);
     if (raw != null && raw.isNotEmpty) {
       try {
         final bool hadCorruption = isCorruptedBinaryText(raw);
@@ -366,11 +463,13 @@ class ReportTemplateManager {
           final hasTrk = list.any(
             (t) =>
                 t['title'].toString().toLowerCase().contains('trk') ||
-                t['id'] == 'tpl_trk',
+                t['id'] == 'tpl_trk' ||
+                t['id'] == '2',
           );
           if (!hasTrk) {
             final trkDefault = defaultTemplates().firstWhere(
-              (t) => t['id'] == 'tpl_trk',
+              (t) => t['id'] == 'tpl_trk' || t['id'] == '2',
+              orElse: () => defaultTemplates()[1],
             );
             list.insert(1, trkDefault);
             await saveTemplates(list);
@@ -387,13 +486,89 @@ class ReportTemplateManager {
     return defaults;
   }
 
-  /// Menyimpan daftar template ke SharedPreferences.
+  /// Menyimpan daftar template ke SharedPreferences & menyinkronkannya ke PostgreSQL Supabase.
   static Future<void> saveTemplates(
     List<Map<String, dynamic>> templates,
   ) async {
     final prefs = await SharedPreferences.getInstance();
     final normalized = templates.map(normalizeTemplate).toList();
     await prefs.setString(storageKey, jsonEncode(normalized));
+  }
+
+  /// Menyimpan 1 template tertentu dan menyinkronkan langsung ke PostgreSQL Supabase via API.
+  static Future<Map<String, dynamic>> saveTemplate(
+    Map<String, dynamic> template,
+  ) async {
+    final clean = normalizeTemplate(template);
+    final all = await loadTemplates();
+    final idx = all.indexWhere(
+      (t) =>
+          t['id']?.toString() == clean['id']?.toString() ||
+          t['title']?.toString().toLowerCase() == clean['title']?.toString().toLowerCase(),
+    );
+
+    if (idx != -1) {
+      all[idx] = clean;
+    } else {
+      all.add(clean);
+    }
+    await saveTemplates(all);
+
+    // Sinkronkan ke database PostgreSQL Supabase
+    try {
+      final idStr = clean['id']?.toString() ?? '';
+      final isServerNumericId = int.tryParse(idStr) != null;
+      final uri = isServerNumericId
+          ? Uri.parse(ApiConstants.reportTemplateDetailUrl(idStr))
+          : Uri.parse(ApiConstants.reportTemplatesUrl);
+
+      final payload = jsonEncode({
+        'name': clean['title'],
+        'title': clean['title'],
+        'category': clean['category'],
+        'description': clean['description'],
+        'fields_config': clean['fields_config'],
+        'placeholders': clean['fields'],
+        'template_body': clean['templateBody'],
+        'icon_key': clean['iconKey'],
+        'default_title': clean['defaultTitle'],
+        'require_photo': clean['requirePhoto'],
+        'require_location': clean['requireLocation'],
+      });
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
+      http.Response res;
+      if (isServerNumericId) {
+        res = await http
+            .put(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 6));
+      } else {
+        res = await http
+            .post(uri, headers: headers, body: payload)
+            .timeout(const Duration(seconds: 6));
+      }
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final resJson = jsonDecode(res.body);
+        if (resJson['data'] != null && resJson['data'] is Map) {
+          final serverTpl = normalizeTemplate(Map<String, dynamic>.from(resJson['data']));
+          final updateIdx = all.indexWhere((t) => t['title'] == serverTpl['title']);
+          if (updateIdx != -1) {
+            all[updateIdx] = serverTpl;
+            await saveTemplates(all);
+            return serverTpl;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Sync template to Supabase backend warning: $e');
+    }
+
+    return clean;
   }
 
   /// Mencari template berdasarkan nama jenis laporan.
@@ -948,90 +1123,175 @@ class ReportDocumentExporter {
     return '$day $month $year, Pukul $hour:$minute:$second WIB';
   }
 
-  /// Mengambil data biner foto lampiran dari file lokal, base64, atau URL server.
-  static Future<Uint8List?> resolvePhotoBytes(Map<String, dynamic> laporan) async {
+  /// Helper untuk menormalisasi URL foto dari database atau API,
+  /// mencegah loopback 'localhost' / '127.0.0.1' yang membuat perangkat mobile hang/stuck.
+  static String normalizePhotoUrl(String rawUrl) {
+    var url = rawUrl.trim();
+    if (url.isEmpty) return '';
+
+    // Ganti localhost / 127.0.0.1 dengan baseUrl server produksi resmi
+    if (url.contains('localhost') || url.contains('127.0.0.1')) {
+      final uri = Uri.tryParse(url);
+      if (uri != null) {
+        final path = uri.path;
+        final query = uri.hasQuery ? '?${uri.query}' : '';
+        return '${ApiConstants.baseUrl}$path$query';
+      }
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      if (url.startsWith('/')) {
+        return '${ApiConstants.baseUrl}$url';
+      } else {
+        return '${ApiConstants.baseUrl}/storage/$url';
+      }
+    }
+    return url;
+  }
+
+  /// Mengekstrak data biner satu kandidat foto (Base64, file lokal, atau network URL).
+  static Future<Uint8List?> _resolveSinglePhoto(dynamic photoItem) async {
     try {
-      // 1. Cek file lokal perangkat (laporan offline atau baru dibuat)
-      final localPath = laporan['localPhotoPath']?.toString().trim();
-      if (localPath != null && localPath.isNotEmpty && !kIsWeb) {
-        final file = File(localPath);
-        if (await file.exists()) {
-          final bytes = await file.readAsBytes();
-          if (bytes.isNotEmpty) return bytes;
-        }
-      }
+      if (photoItem == null) return null;
+      if (photoItem is Uint8List) return photoItem;
 
-      // 2. Cek apakah ada base64 langsung di laporan atau photos list
-      if (laporan['photo_base64'] != null) {
-        final b64 = laporan['photo_base64'].toString().trim();
-        if (b64.isNotEmpty) {
-          final cleanB64 = b64.contains(',') ? b64.split(',').last : b64;
-          return base64Decode(cleanB64);
-        }
-      }
+      String? b64;
+      String? targetPathOrUrl;
 
-      if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
-        for (final item in (laporan['photos'] as List)) {
-          if (item is Map && item['photo_base64'] != null) {
-            final b64 = item['photo_base64'].toString().trim();
-            if (b64.isNotEmpty) {
-              final cleanB64 = b64.contains(',') ? b64.split(',').last : b64;
-              return base64Decode(cleanB64);
+      if (photoItem is Map) {
+        if (photoItem['photo_base64'] != null) {
+          b64 = photoItem['photo_base64'].toString().trim();
+        } else if (photoItem['base64'] != null) {
+          b64 = photoItem['base64'].toString().trim();
+        }
+
+        if (photoItem['localPhotoPath'] != null) {
+          final lp = photoItem['localPhotoPath'].toString().trim();
+          if (lp.isNotEmpty && !kIsWeb) {
+            final f = File(lp);
+            if (await f.exists()) {
+              final b = await f.readAsBytes();
+              if (b.isNotEmpty) return b;
             }
           }
         }
-      }
 
-      // 3. Cari URL foto dari field 'foto', 'photo_url', atau list 'photos'
-      String? photoUrl;
-      if (laporan['foto'] != null && laporan['foto'].toString().trim().isNotEmpty) {
-        photoUrl = laporan['foto'].toString().trim();
-      } else if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
-        final first = (laporan['photos'] as List).first;
-        if (first is Map) {
-          photoUrl = (first['url'] ?? first['photo'] ?? first['photo_url'])?.toString().trim();
-        }
-      }
-
-      if (photoUrl == null || photoUrl.isEmpty) return null;
-
-      // Data URI base64
-      if (photoUrl.startsWith('data:image')) {
-        final comma = photoUrl.indexOf(',');
-        if (comma != -1) {
-          return base64Decode(photoUrl.substring(comma + 1));
-        }
-      }
-
-      // Cek apakah file lokal ada di disk
-      if (!kIsWeb) {
-        final file = File(photoUrl);
-        if (await file.exists()) {
-          final bytes = await file.readAsBytes();
-          if (bytes.isNotEmpty) return bytes;
-        }
-      }
-
-      // Format URL lengkap
-      String fullUrl = photoUrl;
-      if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-        if (fullUrl.startsWith('/')) {
-          fullUrl = '${ApiConstants.baseUrl}$fullUrl';
+        targetPathOrUrl = (photoItem['url'] ??
+                photoItem['photo'] ??
+                photoItem['photo_url'] ??
+                photoItem['file_path'])
+            ?.toString()
+            .trim();
+      } else if (photoItem is String) {
+        final str = photoItem.trim();
+        if (str.startsWith('data:image')) {
+          b64 = str;
+        } else if (str.length > 200 && !str.startsWith('http') && !str.startsWith('/')) {
+          b64 = str;
         } else {
-          fullUrl = '${ApiConstants.baseUrl}/storage/$fullUrl';
+          targetPathOrUrl = str;
         }
       }
 
-      final response = await http
-          .get(Uri.parse(fullUrl))
-          .timeout(const Duration(seconds: 12));
-      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-        return response.bodyBytes;
+      // 1. Ekstrak data Base64 instan (0 ms, tidak memerlukan koneksi internet)
+      if (b64 != null && b64.isNotEmpty) {
+        final cleanB64 = b64.contains(',') ? b64.split(',').last.trim() : b64;
+        try {
+          final decoded = base64Decode(cleanB64);
+          if (decoded.isNotEmpty) return decoded;
+        } catch (_) {}
+      }
+
+      if (targetPathOrUrl == null || targetPathOrUrl.isEmpty) return null;
+
+      // 2. Data URI
+      if (targetPathOrUrl.startsWith('data:image')) {
+        final comma = targetPathOrUrl.indexOf(',');
+        if (comma != -1) {
+          try {
+            return base64Decode(targetPathOrUrl.substring(comma + 1));
+          } catch (_) {}
+        }
+      }
+
+      // 3. File lokal disk (Android / Desktop)
+      if (!kIsWeb) {
+        try {
+          final file = File(targetPathOrUrl);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) return bytes;
+          }
+        } catch (_) {}
+      }
+
+      // 4. Unduh dari Server dengan timeout ketat (5s) agar proses download tidak stuck
+      final finalUrl = normalizePhotoUrl(targetPathOrUrl);
+      if (finalUrl.isNotEmpty) {
+        final response = await http
+            .get(Uri.parse(finalUrl))
+            .timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          return response.bodyBytes;
+        }
       }
     } catch (e) {
-      debugPrint('resolvePhotoBytes error: $e');
+      debugPrint('_resolveSinglePhoto warning: $e');
     }
     return null;
+  }
+
+  /// Mengambil SELURUH data biner foto lampiran kegiatan yang tercatat pada laporan.
+  /// Diproses secara paralel menggunakan [Future.wait] dengan timeout ketat 5 detik.
+  static Future<List<Uint8List>> resolveAllPhotoBytes(
+    Map<String, dynamic> laporan,
+  ) async {
+    final List<dynamic> candidates = [];
+
+    // 1. Laporan offline / file lokal
+    if (laporan['localPhotoPath'] != null) {
+      candidates.add(laporan['localPhotoPath']);
+    }
+    if (laporan['photo_base64'] != null) {
+      candidates.add(laporan['photo_base64']);
+    }
+
+    // 2. Relasi 'photos' dari server backend
+    if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
+      for (final item in (laporan['photos'] as List)) {
+        if (item != null) candidates.add(item);
+      }
+    }
+
+    // 3. Field legacy 'foto'
+    if (laporan['foto'] != null && laporan['foto'].toString().trim().isNotEmpty) {
+      candidates.add(laporan['foto']);
+    }
+
+    if (candidates.isEmpty) return [];
+
+    // Unduh seluruh foto secara paralel
+    final results = await Future.wait(candidates.map(_resolveSinglePhoto));
+
+    final List<Uint8List> validBytes = [];
+    for (final b in results) {
+      if (b != null && b.isNotEmpty) {
+        final isDup = validBytes.any((exist) =>
+            exist.length == b.length &&
+            exist.take(16).toList().toString() == b.take(16).toList().toString());
+        if (!isDup) {
+          validBytes.add(b);
+        }
+      }
+    }
+
+    return validBytes;
+  }
+
+  /// Mengambil data biner foto pertama (untuk backwards-compatibility).
+  static Future<Uint8List?> resolvePhotoBytes(Map<String, dynamic> laporan) async {
+    final all = await resolveAllPhotoBytes(laporan);
+    return all.isNotEmpty ? all.first : null;
   }
 
   static ReportProcessedPhoto? _processImage(Uint8List rawBytes) {
@@ -1073,6 +1333,7 @@ class ReportDocumentExporter {
     Map<String, dynamic> laporan, {
     String format = 'pdf',
     bool openInNewTabOnWeb = false,
+    void Function(String status)? onProgress,
   }) async {
     final isPdf = format.toLowerCase() == 'pdf';
     final rawTitle = (laporan['judul'] ?? 'Laporan_Kegiatan').toString();
@@ -1083,19 +1344,43 @@ class ReportDocumentExporter {
     final ext = isPdf ? 'pdf' : 'doc';
     final fileName = '${safeTitle.isEmpty ? 'Laporan' : safeTitle}.$ext';
 
-    // Prepare independent report content and photo data concurrently.
-    final reportFuture = _ensureFormattedReportContent(laporan);
-    final photoFuture = resolvePhotoBytes(laporan);
-    final enrichedLaporan = await reportFuture;
-    final rawPhotoBytes = await photoFuture;
-    final processedPhoto = rawPhotoBytes == null
-        ? null
-        : await compute(_processImage, rawPhotoBytes);
+    onProgress?.call('Menyiapkan naskah laporan...');
+    final enrichedLaporan = await _ensureFormattedReportContent(laporan);
+
+    onProgress?.call('Memeriksa lampiran foto dokumentasi...');
+    final rawPhotoBytesList = await resolveAllPhotoBytes(laporan);
+
+    final List<ReportProcessedPhoto> processedPhotos = [];
+    if (rawPhotoBytesList.isNotEmpty) {
+      onProgress?.call('Mengoptimalkan ${rawPhotoBytesList.length} foto lampiran...');
+      for (final rawBytes in rawPhotoBytesList) {
+        try {
+          final processed = await compute(_processImage, rawBytes);
+          if (processed != null) {
+            processedPhotos.add(processed);
+          }
+        } catch (_) {}
+      }
+    }
+
     final String waktuUnduh = _formatCurrentDateTime();
 
+    onProgress?.call('Menyusun format dokumen ${isPdf ? 'PDF' : 'Word'}...');
     final Uint8List fileBytes = isPdf
-        ? generatePdfBytes(enrichedLaporan, photo: processedPhoto, waktuUnduh: waktuUnduh)
-        : generateWordDocBytes(enrichedLaporan, photo: processedPhoto, waktuUnduh: waktuUnduh);
+        ? generatePdfBytes(
+            enrichedLaporan,
+            photo: processedPhotos.isNotEmpty ? processedPhotos.first : null,
+            photos: processedPhotos,
+            waktuUnduh: waktuUnduh,
+          )
+        : generateWordDocBytes(
+            enrichedLaporan,
+            photo: processedPhotos.isNotEmpty ? processedPhotos.first : null,
+            photos: processedPhotos,
+            waktuUnduh: waktuUnduh,
+          );
+
+    onProgress?.call('Menyimpan berkas ke perangkat...');
 
     // 1. Penanganan khusus Flutter Web (Chrome / Edge / Firefox)
     if (kIsWeb) {
@@ -1307,8 +1592,19 @@ class ReportDocumentExporter {
   static Uint8List generatePdfBytes(
     Map<String, dynamic> laporan, {
     ReportProcessedPhoto? photo,
+    List<ReportProcessedPhoto> photos = const [],
     String? waktuUnduh,
   }) {
+    final List<ReportProcessedPhoto> allPhotos = [
+      ?photo,
+      ...photos,
+    ];
+    final uniquePhotos = <ReportProcessedPhoto>[];
+    for (final p in allPhotos) {
+      if (!uniquePhotos.contains(p)) uniquePhotos.add(p);
+    }
+    final photoToUse = uniquePhotos.isNotEmpty ? uniquePhotos.first : null;
+
     final judul = _cleanPdfText(
       (laporan['judul'] ?? 'Laporan Kegiatan Lapangan').toString(),
     );
@@ -1339,7 +1635,7 @@ class ReportDocumentExporter {
           )
         : rawIsiCandidate;
 
-    final bool hasAttachedPhoto = photo != null;
+    final bool hasAttachedPhoto = photoToUse != null;
     final int totalPages = hasAttachedPhoto ? 2 : 1;
 
     final content = StringBuffer();
@@ -1558,7 +1854,7 @@ class ReportDocumentExporter {
       // Hitung posisi dan ukuran gambar agar aspect ratio foto selalu presisi
       const double maxPhotoW = 475;
       const double maxPhotoH = 370;
-      final double aspect = photo.width / photo.height;
+      final double aspect = photoToUse.width / photoToUse.height;
       double drawW;
       double drawH;
       if (aspect > (maxPhotoW / maxPhotoH)) {
@@ -1700,11 +1996,11 @@ class ReportDocumentExporter {
       offsets.add(pdfBuffer.length);
       writeAscii(
         '9 0 obj\n<< /Type /XObject /Subtype /Image '
-        '/Width ${photo.width} /Height ${photo.height} '
+        '/Width ${photoToUse.width} /Height ${photoToUse.height} '
         '/ColorSpace /DeviceRGB /BitsPerComponent 8 '
-        '/Filter /DCTDecode /Length ${photo.jpegBytes.length} >>\nstream\n',
+        '/Filter /DCTDecode /Length ${photoToUse.jpegBytes.length} >>\nstream\n',
       );
-      pdfBuffer.add(photo.jpegBytes);
+      pdfBuffer.add(photoToUse.jpegBytes);
       writeAscii('\nendstream\nendobj\n');
     }
 
@@ -1728,8 +2024,18 @@ class ReportDocumentExporter {
   static Uint8List generateWordDocBytes(
     Map<String, dynamic> laporan, {
     ReportProcessedPhoto? photo,
+    List<ReportProcessedPhoto> photos = const [],
     String? waktuUnduh,
   }) {
+    final List<ReportProcessedPhoto> allPhotos = [
+      ?photo,
+      ...photos,
+    ];
+    final uniquePhotos = <ReportProcessedPhoto>[];
+    for (final p in allPhotos) {
+      if (!uniquePhotos.contains(p)) uniquePhotos.add(p);
+    }
+
     final judul = (laporan['judul'] ?? 'Laporan Kegiatan').toString();
     final jenis = (laporan['jenis'] ?? 'Laporan Penyuluhan').toString();
     final pelapor =
@@ -1754,19 +2060,27 @@ class ReportDocumentExporter {
     final isi = cleanWordIsi.replaceAll('\n', '<br/>');
 
     String photoHtmlSection = '';
-    if (photo != null) {
-      final b64 = base64Encode(photo.jpegBytes);
-      photoHtmlSection = '''
-  <div class="section-title">LAMPIRAN FOTO DOKUMENTASI KEGIATAN:</div>
+    if (uniquePhotos.isNotEmpty) {
+      final buffer = StringBuffer();
+      buffer.writeln('  <div class="section-title">LAMPIRAN FOTO DOKUMENTASI KEGIATAN:</div>');
+      for (int i = 0; i < uniquePhotos.length; i++) {
+        final currentPhoto = uniquePhotos[i];
+        final b64 = base64Encode(currentPhoto.jpegBytes);
+        final label = uniquePhotos.length > 1
+            ? 'Dokumentasi Foto ${i + 1} Resmi'
+            : 'Dokumentasi Resmi';
+        buffer.writeln('''
   <div class="photo-box" style="text-align: center; border: 1px solid #DCE6DC; padding: 14px; background: #FFFFFF; margin-bottom: 20px; border-radius: 6px;">
     <img src="data:image/jpeg;base64,$b64" style="max-width: 520px; max-height: 400px; border-radius: 6px; border: 1px solid #B0C4B5;" /><br/>
     <p style="font-size: 9.5pt; color: #4A5568; margin-top: 8px; line-height: 1.4;">
-      <b>Dokumentasi Resmi:</b> $judul<br/>
+      <b>$label:</b> $judul<br/>
       <b>Lokasi:</b> $lokasi &nbsp;|&nbsp; <b>Titik Koordinat:</b> ${lat.isNotEmpty ? '$lat, $lng' : '-'}<br/>
       ${waktuUnduh != null && waktuUnduh.isNotEmpty ? '<b>Waktu Diunduh & Dicetak:</b> $waktuUnduh' : ''}
     </p>
   </div>
-''';
+''');
+      }
+      photoHtmlSection = buffer.toString();
     }
 
     final htmlDoc = '''

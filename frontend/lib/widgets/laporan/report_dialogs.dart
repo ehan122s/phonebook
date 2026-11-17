@@ -335,8 +335,16 @@ Future<void> showReportForm(
   final template = await ReportTemplateManager.findByTitle(jenisLaporan);
   if (!context.mounted) return;
 
-  final List<String> templateFields =
-      (template['fields'] as List?)?.map((e) => e.toString()).toList() ?? [];
+  final List<Map<String, dynamic>> configuredFields = (template['fields_config'] is List)
+      ? (template['fields_config'] as List)
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList()
+      : <Map<String, dynamic>>[];
+
+  final List<String> templateFields = configuredFields.isNotEmpty
+      ? configuredFields.map((e) => (e['label'] ?? '').toString()).where((s) => s.isNotEmpty).toList()
+      : ((template['fields'] as List?)?.map((e) => e.toString()).toList() ?? []);
   final String defaultTitle = (template['defaultTitle'] ?? '').toString();
   final String templateDescription =
       (template['description'] ??
@@ -1209,47 +1217,147 @@ Future<void> showReportForm(
                                               templateFields[index];
                                           final ctrl =
                                               fieldControllers[fieldLabel]!;
-                                          final isLongField =
-                                              fieldLabel.toLowerCase().contains(
-                                                'hasil',
-                                              ) ||
-                                              fieldLabel.toLowerCase().contains(
-                                                'uraian',
-                                              ) ||
-                                              fieldLabel.toLowerCase().contains(
-                                                'kondisi',
-                                              ) ||
-                                              fieldLabel.toLowerCase().contains(
-                                                'temuan',
-                                              ) ||
-                                              fieldLabel.toLowerCase().contains(
-                                                'tindakan',
-                                              ) ||
-                                              fieldLabel.toLowerCase().contains(
-                                                'ringkasan',
-                                              );
+                                          final cfg = configuredFields.firstWhere(
+                                            (c) => c['label'] == fieldLabel,
+                                            orElse: () => {
+                                              'type': 'text',
+                                              'placeholder': 'Tuliskan ${fieldLabel.toLowerCase()}...',
+                                              'required': true,
+                                              'description': '',
+                                              'options': <String>[],
+                                            },
+                                          );
+                                          final fType = cfg['type']?.toString() ?? 'text';
+                                          final placeholder = (cfg['placeholder']?.toString().isNotEmpty ?? false)
+                                              ? cfg['placeholder'].toString()
+                                              : 'Tuliskan ${fieldLabel.toLowerCase()}...';
+                                          final isReq = cfg['required'] != false;
+                                          final desc = (cfg['description'] ?? '').toString();
+                                          final options = (cfg['options'] is List)
+                                              ? (cfg['options'] as List).map((o) => o.toString()).toList()
+                                              : <String>[];
+
+                                          final displayLabel = '${index + 1}. $fieldLabel${isReq ? ' *' : ''}';
+
+                                          Widget fieldWidget;
+                                          if (fType == 'dropdown' && options.isNotEmpty) {
+                                            fieldWidget = Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  displayLabel,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: isDark ? Colors.white : const Color(0xFF24352A),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 7),
+                                                DropdownButtonFormField<String>(
+                                                  value: ctrl.text.isNotEmpty && options.contains(ctrl.text) ? ctrl.text : null,
+                                                  dropdownColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    color: isDark ? Colors.white : Colors.black87,
+                                                  ),
+                                                  decoration: InputDecoration(
+                                                    hintText: placeholder.isNotEmpty ? placeholder : 'Pilih opsi...',
+                                                    helperText: desc.isNotEmpty ? desc : null,
+                                                    helperMaxLines: 2,
+                                                    filled: true,
+                                                    fillColor: isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7),
+                                                    prefixIcon: Icon(
+                                                      Icons.arrow_drop_down_circle_outlined,
+                                                      color: isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A),
+                                                      size: 20,
+                                                    ),
+                                                    border: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(13),
+                                                      borderSide: BorderSide(color: borderCol),
+                                                    ),
+                                                    enabledBorder: OutlineInputBorder(
+                                                      borderRadius: BorderRadius.circular(13),
+                                                      borderSide: BorderSide(color: borderCol),
+                                                    ),
+                                                  ),
+                                                  items: options.map((opt) {
+                                                    return DropdownMenuItem<String>(
+                                                      value: opt,
+                                                      child: Text(opt),
+                                                    );
+                                                  }).toList(),
+                                                  onChanged: (val) {
+                                                    if (val != null) {
+                                                      ctrl.text = val;
+                                                      syncTemplateFieldsToIsi();
+                                                    }
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          } else if (fType == 'date') {
+                                            fieldWidget = InkWell(
+                                              onTap: () async {
+                                                final picked = await showDatePicker(
+                                                  context: sheetContext,
+                                                  initialDate: DateTime.now(),
+                                                  firstDate: DateTime(2020),
+                                                  lastDate: DateTime(2035),
+                                                );
+                                                if (picked != null) {
+                                                  ctrl.text = '${picked.day.toString().padLeft(2, "0")}-${picked.month.toString().padLeft(2, "0")}-${picked.year}';
+                                                  syncTemplateFieldsToIsi();
+                                                }
+                                              },
+                                              child: IgnorePointer(
+                                                child: _SpaciousLabeledField(
+                                                  controller: ctrl,
+                                                  label: displayLabel,
+                                                  hint: placeholder.isNotEmpty ? placeholder : 'Pilih tanggal...',
+                                                  icon: Icons.calendar_today_rounded,
+                                                  helperText: desc.isNotEmpty ? desc : null,
+                                                  maxLines: 1,
+                                                ),
+                                              ),
+                                            );
+                                          } else if (fType == 'number') {
+                                            fieldWidget = _SpaciousLabeledField(
+                                              controller: ctrl,
+                                              label: displayLabel,
+                                              hint: placeholder,
+                                              icon: Icons.pin_outlined,
+                                              keyboardType: TextInputType.number,
+                                              helperText: desc.isNotEmpty ? desc : null,
+                                              maxLines: 1,
+                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                            );
+                                          } else if (fType == 'textarea') {
+                                            fieldWidget = _SpaciousLabeledField(
+                                              controller: ctrl,
+                                              label: displayLabel,
+                                              hint: placeholder,
+                                              icon: Icons.notes_rounded,
+                                              helperText: desc.isNotEmpty ? desc : null,
+                                              maxLines: 4,
+                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                            );
+                                          } else {
+                                            fieldWidget = _SpaciousLabeledField(
+                                              controller: ctrl,
+                                              label: displayLabel,
+                                              hint: placeholder,
+                                              icon: Icons.edit_note_rounded,
+                                              helperText: desc.isNotEmpty ? desc : null,
+                                              maxLines: 1,
+                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                            );
+                                          }
 
                                           return Padding(
                                             padding: EdgeInsets.only(
-                                              bottom:
-                                                  index ==
-                                                      templateFields.length - 1
-                                                  ? 8
-                                                  : 14,
+                                              bottom: index == templateFields.length - 1 ? 8 : 14,
                                             ),
-                                            child: _SpaciousLabeledField(
-                                              controller: ctrl,
-                                              label:
-                                                  '${index + 1}. $fieldLabel',
-                                              hint:
-                                                  'Tuliskan ${fieldLabel.toLowerCase()}...',
-                                              icon: isLongField
-                                                  ? Icons.notes_rounded
-                                                  : Icons.edit_note_rounded,
-                                              maxLines: isLongField ? 3 : 1,
-                                              onChanged: (_) =>
-                                                  syncTemplateFieldsToIsi(),
-                                            ),
+                                            child: fieldWidget,
                                           );
                                         }),
                                         Theme(
@@ -2050,8 +2158,283 @@ Future<void> showReportForm(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Editor Template Laporan Admin (3 Tab Rapi + Upload & Konversi File Contoh)
+// 3. Editor Template Laporan Admin (3 Tab Rapi + Drag-and-Drop Fields + Supabase Sync)
 // ---------------------------------------------------------------------------
+
+Future<void> _showFieldConfigModal(
+  BuildContext context, {
+  Map<String, dynamic>? initialConfig,
+  required void Function(Map<String, dynamic> config) onSave,
+}) async {
+  final isEdit = initialConfig != null;
+  final labelCtrl = TextEditingController(text: initialConfig?['label']?.toString() ?? '');
+  final placeholderCtrl = TextEditingController(text: initialConfig?['placeholder']?.toString() ?? '');
+  final descCtrl = TextEditingController(text: initialConfig?['description']?.toString() ?? '');
+  final newOptionCtrl = TextEditingController();
+
+  String selectedType = initialConfig?['type']?.toString() ?? 'text';
+  bool isRequired = initialConfig?['required'] != false;
+  final List<String> options = (initialConfig?['options'] is List)
+      ? (initialConfig!['options'] as List).map((e) => e.toString()).toList()
+      : <String>[];
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).cardColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (modalCtx, setModalState) {
+          final isDark = Theme.of(modalCtx).brightness == Brightness.dark;
+          final primaryGreen = isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+          final textPrimary = isDark ? Colors.white : const Color(0xFF24352A);
+          final textSecondary = isDark ? Colors.white70 : const Color(0xFF6E7A72);
+          final softBg = isDark ? const Color(0xFF18221B) : const Color(0xFFF2F7F0);
+          final borderCol = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE2EAE3);
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              22,
+              18,
+              22,
+              MediaQuery.of(modalCtx).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(child: _DragHandle()),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: primaryGreen.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          isEdit ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                          color: primaryGreen,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          isEdit ? 'Ubah Kolom Isian' : 'Tambah Kolom Isian Baru',
+                          style: TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w800,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(modalCtx),
+                        icon: Icon(Icons.close_rounded, color: textSecondary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: labelCtrl,
+                    style: TextStyle(color: textPrimary, fontSize: 13.5),
+                    decoration: InputDecoration(
+                      labelText: 'Nama / Label Kolom *',
+                      hintText: 'Misal: Luas Area Tanam (Ha)',
+                      filled: true,
+                      fillColor: softBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedType,
+                    dropdownColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+                    style: TextStyle(color: textPrimary, fontSize: 13.5),
+                    decoration: InputDecoration(
+                      labelText: 'Tipe Input',
+                      filled: true,
+                      fillColor: softBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'text', child: Text('Teks Singkat (1 baris)')),
+                      DropdownMenuItem(value: 'textarea', child: Text('Area Teks / Paragraf (Multi-baris)')),
+                      DropdownMenuItem(value: 'number', child: Text('Angka / Numerik (Jumlah / Luas)')),
+                      DropdownMenuItem(value: 'date', child: Text('Tanggal (Pilihan Kalender)')),
+                      DropdownMenuItem(value: 'dropdown', child: Text('Pilihan Dropdown (Daftar Opsi)')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setModalState(() => selectedType = val);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: placeholderCtrl,
+                    style: TextStyle(color: textPrimary, fontSize: 13.5),
+                    decoration: InputDecoration(
+                      labelText: 'Placeholder / Contoh Isian',
+                      hintText: 'Misal: Contoh: 2.5 Ha / Blok Pasir Angin',
+                      filled: true,
+                      fillColor: softBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descCtrl,
+                    style: TextStyle(color: textPrimary, fontSize: 13.5),
+                    decoration: InputDecoration(
+                      labelText: 'Deskripsi / Petunjuk untuk Pegawai',
+                      hintText: 'Misal: Tuliskan nama blok lokasi penanaman bibit',
+                      filled: true,
+                      fillColor: softBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    activeTrackColor: const Color(0xFF245C3A),
+                    title: Text(
+                      'Wajib Diisi (Required)',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: textPrimary),
+                    ),
+                    subtitle: Text(
+                      'Pegawai harus mengisi kolom ini sebelum dapat mengirim laporan',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    value: isRequired,
+                    onChanged: (val) => setModalState(() => isRequired = val),
+                  ),
+                  if (selectedType == 'dropdown') ...[
+                    const Divider(),
+                    Text(
+                      'Daftar Pilihan Opsi Dropdown:',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: newOptionCtrl,
+                            style: TextStyle(color: textPrimary, fontSize: 13),
+                            decoration: InputDecoration(
+                              hintText: 'Ketik nama opsi pilihan...',
+                              filled: true,
+                              fillColor: softBg,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderCol)),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderCol)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF245C3A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          onPressed: () {
+                            final opt = newOptionCtrl.text.trim();
+                            if (opt.isNotEmpty && !options.contains(opt)) {
+                              setModalState(() {
+                                options.add(opt);
+                                newOptionCtrl.clear();
+                              });
+                            }
+                          },
+                          child: const Text('Tambah'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: options.map((opt) {
+                        return Chip(
+                          label: Text(opt, style: TextStyle(fontSize: 12, color: textPrimary)),
+                          backgroundColor: softBg,
+                          deleteIcon: const Icon(Icons.close_rounded, size: 16),
+                          onDeleted: () {
+                            setModalState(() => options.remove(opt));
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(modalCtx),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Batal'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF245C3A),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () {
+                            final label = labelCtrl.text.trim();
+                            if (label.isEmpty) {
+                              ScaffoldMessenger.of(modalCtx).showSnackBar(
+                                const SnackBar(content: Text('Nama kolom wajib diisi.')),
+                              );
+                              return;
+                            }
+                            final config = {
+                              'id': initialConfig?['id'] ?? 'f_${DateTime.now().microsecondsSinceEpoch}',
+                              'label': label,
+                              'type': selectedType,
+                              'placeholder': placeholderCtrl.text.trim(),
+                              'description': descCtrl.text.trim(),
+                              'required': isRequired,
+                              'options': options,
+                            };
+                            Navigator.pop(modalCtx);
+                            onSave(config);
+                          },
+                          child: const Text('Simpan Kolom'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
 
 Future<void> showAdminTemplateEditor(
   BuildContext context, {
@@ -2075,7 +2458,6 @@ Future<void> showAdminTemplateEditor(
   final bodyCtrl = TextEditingController(
     text: existingTemplate?['templateBody']?.toString() ?? '',
   );
-  final newFieldCtrl = TextEditingController();
 
   String selectedIconKey = existingTemplate?['iconKey']?.toString() ?? 'groups';
   String sampleFileName = existingTemplate?['sampleFileName']?.toString() ?? '';
@@ -2085,16 +2467,53 @@ Future<void> showAdminTemplateEditor(
 
   int activeStepTab = 0;
 
-  final List<String> fields =
-      (existingTemplate?['fields'] as List?)
-          ?.map((e) => e.toString())
-          .toList() ??
-      <String>[
-        'Kelompok Tani Hutan (KTH) / Sasaran',
-        'Materi / Pokok Kegiatan',
-        'Jumlah Peserta (Orang)',
-        'Hasil & Tindak Lanjut',
-      ];
+  final List<Map<String, dynamic>> fieldsConfig = [];
+  if (existingTemplate?['fields_config'] is List) {
+    for (final item in (existingTemplate!['fields_config'] as List)) {
+      if (item is Map) {
+        fieldsConfig.add({
+          'id': (item['id'] ?? 'f_${DateTime.now().microsecondsSinceEpoch}').toString(),
+          'label': (item['label'] ?? item['name'] ?? '').toString(),
+          'type': (item['type'] ?? 'text').toString(),
+          'placeholder': (item['placeholder'] ?? '').toString(),
+          'description': (item['description'] ?? '').toString(),
+          'required': item['required'] != false,
+          'options': (item['options'] is List)
+              ? (item['options'] as List).map((o) => o.toString()).toList()
+              : <String>[],
+        });
+      }
+    }
+  }
+
+  if (fieldsConfig.isEmpty) {
+    final rawFields = (existingTemplate?['fields'] as List?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        <String>[
+          'Kelompok Tani Hutan (KTH) / Sasaran',
+          'Materi / Pokok Kegiatan',
+          'Jumlah Peserta (Orang)',
+          'Hasil & Tindak Lanjut',
+        ];
+    for (final f in rawFields) {
+      final isLong = f.toLowerCase().contains('hasil') ||
+          f.toLowerCase().contains('uraian') ||
+          f.toLowerCase().contains('kondisi') ||
+          f.toLowerCase().contains('tindak');
+      final isNum = f.toLowerCase().contains('jumlah') ||
+          f.toLowerCase().contains('luas');
+      fieldsConfig.add({
+        'id': 'f_${f.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
+        'label': f,
+        'type': isLong ? 'textarea' : (isNum ? 'number' : 'text'),
+        'placeholder': 'Isi $f...',
+        'description': '',
+        'required': true,
+        'options': <String>[],
+      });
+    }
+  }
 
   void regenerateTemplateBodyFromFields() {
     final titleText = titleCtrl.text.trim().isEmpty
@@ -2103,8 +2522,9 @@ Future<void> showAdminTemplateEditor(
     final buffer = StringBuffer();
     buffer.writeln(titleText);
     buffer.writeln('Cabang Dinas Kehutanan Wilayah V\n');
-    for (int i = 0; i < fields.length; i++) {
-      buffer.writeln('${i + 1}. ${fields[i]} : {{${fields[i]}}}');
+    for (int i = 0; i < fieldsConfig.length; i++) {
+      final f = fieldsConfig[i]['label'] ?? '';
+      buffer.writeln('${i + 1}. $f : {{$f}}');
     }
     bodyCtrl.text = buffer.toString().trim();
   }
@@ -2186,9 +2606,17 @@ Future<void> showAdminTemplateEditor(
                           .toList() ??
                       [];
                   if (extFields.isNotEmpty) {
-                    fields
+                    fieldsConfig
                       ..clear()
-                      ..addAll(extFields);
+                      ..addAll(extFields.map((f) => {
+                            'id': 'f_${f.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
+                            'label': f,
+                            'type': 'text',
+                            'placeholder': 'Isi $f...',
+                            'description': '',
+                            'required': true,
+                            'options': <String>[],
+                          }));
                   }
                   bodyCtrl.text = (extracted['templateBody'] ?? '').toString();
                 });
@@ -2197,7 +2625,7 @@ Future<void> showAdminTemplateEditor(
                   ScaffoldMessenger.of(sheetCtx).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'File contoh "${picked.name}" berhasil dikonversi menjadi template (${fields.length} bagian isian).',
+                        'File contoh "${picked.name}" berhasil dikonversi menjadi template (${fieldsConfig.length} bagian isian).',
                       ),
                       backgroundColor: const Color(0xFF245C3A),
                     ),
@@ -2329,7 +2757,7 @@ Future<void> showAdminTemplateEditor(
                                 ),
                                 Expanded(
                                   child: _StepTabButton(
-                                    label: '2. Form User (${fields.length})',
+                                    label: '2. Form User (${fieldsConfig.length})',
                                     icon: Icons.fact_check_outlined,
                                     isSelected: activeStepTab == 1,
                                     onTap: () =>
@@ -2663,166 +3091,235 @@ Future<void> showAdminTemplateEditor(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      'Atur Kolom Isian untuk Pegawai',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        color: textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Pegawai otomatis mengisi Judul, Tanggal, Lokasi/GPS, dan Foto. Tambahkan atau sesuaikan bagian khusus kegiatan di bawah ini:',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        color: textSecondary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
                                     Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Expanded(
-                                          child: TextField(
-                                            controller: newFieldCtrl,
-                                            style: TextStyle(
-                                              color: textPrimary,
-                                              fontSize: 13.5,
-                                            ),
-                                            decoration: InputDecoration(
-                                              hintText: 'Ketik nama bagian baru (misal: Luas Area Tanam)...',
-                                              hintStyle: TextStyle(
-                                                fontSize: 12.5,
-                                                color: textSecondary,
-                                              ),
-                                              filled: true,
-                                              fillColor: softBg,
-                                              contentPadding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 14,
-                                                    vertical: 12,
-                                                  ),
-                                              border: OutlineInputBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                borderSide: BorderSide(
-                                                  color: borderCol,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Atur Kolom Isian untuk Pegawai',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: textPrimary,
                                                 ),
                                               ),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                borderSide: BorderSide(
-                                                  color: borderCol,
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                'Drag & drop untuk mengubah urutan. Klik icon edit untuk mengubah tipe, placeholder, atau opsi pilihan.',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: textSecondary,
                                                 ),
                                               ),
-                                            ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 10),
+                                        const SizedBox(width: 8),
                                         ElevatedButton.icon(
                                           onPressed: () {
-                                            final val = newFieldCtrl.text
-                                                .trim();
-                                            if (val.isEmpty) return;
-                                            setModalState(() {
-                                              if (!fields.contains(val)) {
-                                                fields.add(val);
-                                              }
-                                              newFieldCtrl.clear();
-                                            });
+                                            _showFieldConfigModal(
+                                              sheetCtx,
+                                              onSave: (newCol) {
+                                                setModalState(() {
+                                                  fieldsConfig.add(newCol);
+                                                  regenerateTemplateBodyFromFields();
+                                                });
+                                              },
+                                            );
                                           },
-                                          icon: const Icon(
-                                            Icons.add_rounded,
-                                            size: 18,
-                                          ),
+                                          icon: const Icon(Icons.add_rounded, size: 18),
                                           label: const Text('Tambah'),
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(
-                                              0xFF245C3A,
-                                            ),
+                                            backgroundColor: const Color(0xFF245C3A),
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 16,
-                                              vertical: 13,
-                                            ),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
+                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                           ),
                                         ),
                                       ],
                                     ),
                                     const SizedBox(height: 14),
-                                    ...List.generate(fields.length, (idx) {
-                                      final f = fields[idx];
-                                      return Container(
-                                        margin: const EdgeInsets.only(
-                                          bottom: 8,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: softBg,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
+                                    ReorderableListView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: fieldsConfig.length,
+                                      onReorder: (oldIdx, newIdx) {
+                                        setModalState(() {
+                                          if (newIdx > oldIdx) newIdx -= 1;
+                                          final item = fieldsConfig.removeAt(oldIdx);
+                                          fieldsConfig.insert(newIdx, item);
+                                          regenerateTemplateBodyFromFields();
+                                        });
+                                      },
+                                      itemBuilder: (context, idx) {
+                                        final f = fieldsConfig[idx];
+                                        final fId = f['id'] ?? 'col_$idx';
+                                        final fLabel = f['label']?.toString() ?? 'Kolom';
+                                        final fType = f['type']?.toString() ?? 'text';
+                                        final fReq = f['required'] != false;
+                                        final fDesc = (f['description'] ?? '').toString();
+                                        final fOpts = (f['options'] is List) ? (f['options'] as List) : [];
+
+                                        final typeLabel = switch (fType) {
+                                          'textarea' => 'Paragraf',
+                                          'number' => 'Angka',
+                                          'date' => 'Tanggal',
+                                          'dropdown' => 'Pilihan (${fOpts.length})',
+                                          _ => 'Teks',
+                                        };
+
+                                        return Container(
+                                          key: ValueKey(fId),
+                                          margin: const EdgeInsets.only(bottom: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: softBg,
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(color: borderCol),
                                           ),
-                                          border: Border.all(color: borderCol),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              width: 26,
-                                              height: 26,
-                                              alignment: Alignment.center,
-                                              decoration: BoxDecoration(
-                                                color: primaryGreen.withValues(
-                                                  alpha: 0.15,
+                                          child: Row(
+                                            children: [
+                                              ReorderableDragStartListener(
+                                                index: idx,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.only(right: 6),
+                                                  child: Icon(
+                                                    Icons.drag_indicator_rounded,
+                                                    color: textSecondary,
+                                                    size: 20,
+                                                  ),
                                                 ),
-                                                shape: BoxShape.circle,
                                               ),
-                                              child: Text(
-                                                '${idx + 1}',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
+                                              Container(
+                                                width: 24,
+                                                height: 24,
+                                                alignment: Alignment.center,
+                                                decoration: BoxDecoration(
+                                                  color: primaryGreen.withValues(alpha: 0.15),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: Text(
+                                                  '${idx + 1}',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: primaryGreen,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      fLabel,
+                                                      style: TextStyle(
+                                                        fontSize: 13,
+                                                        fontWeight: FontWeight.w700,
+                                                        color: textPrimary,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    Row(
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: primaryGreen.withValues(alpha: 0.12),
+                                                            borderRadius: BorderRadius.circular(5),
+                                                          ),
+                                                          child: Text(
+                                                            typeLabel,
+                                                            style: TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: primaryGreen,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 5),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          decoration: BoxDecoration(
+                                                            color: fReq
+                                                                ? Colors.red.withValues(alpha: 0.12)
+                                                                : textSecondary.withValues(alpha: 0.12),
+                                                            borderRadius: BorderRadius.circular(5),
+                                                          ),
+                                                          child: Text(
+                                                            fReq ? 'Wajib' : 'Opsional',
+                                                            style: TextStyle(
+                                                              fontSize: 10,
+                                                              fontWeight: FontWeight.w600,
+                                                              color: fReq ? Colors.red : textSecondary,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        if (fDesc.isNotEmpty) ...[
+                                                          const SizedBox(width: 6),
+                                                          Expanded(
+                                                            child: Text(
+                                                              fDesc,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(fontSize: 10.5, color: textSecondary),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              IconButton(
+                                                tooltip: 'Ubah Pengaturan Kolom',
+                                                visualDensity: VisualDensity.compact,
+                                                onPressed: () {
+                                                  _showFieldConfigModal(
+                                                    sheetCtx,
+                                                    initialConfig: f,
+                                                    onSave: (updated) {
+                                                      setModalState(() {
+                                                        fieldsConfig[idx] = updated;
+                                                        regenerateTemplateBodyFromFields();
+                                                      });
+                                                    },
+                                                  );
+                                                },
+                                                icon: Icon(
+                                                  Icons.edit_outlined,
+                                                  size: 18,
                                                   color: primaryGreen,
                                                 ),
                                               ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Text(
-                                                f,
-                                                style: TextStyle(
-                                                  fontSize: 13.5,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: textPrimary,
+                                              IconButton(
+                                                tooltip: 'Hapus Kolom',
+                                                visualDensity: VisualDensity.compact,
+                                                onPressed: () {
+                                                  setModalState(() {
+                                                    fieldsConfig.removeAt(idx);
+                                                    regenerateTemplateBodyFromFields();
+                                                  });
+                                                },
+                                                icon: const Icon(
+                                                  Icons.delete_outline_rounded,
+                                                  size: 18,
+                                                  color: Colors.red,
                                                 ),
                                               ),
-                                            ),
-                                            IconButton(
-                                              tooltip: 'Hapus Bagian Ini',
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              onPressed: () {
-                                                setModalState(() {
-                                                  fields.removeAt(idx);
-                                                });
-                                              },
-                                              icon: const Icon(
-                                                Icons.delete_outline_rounded,
-                                                size: 18,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
                                     const SizedBox(height: 10),
                                     Divider(color: borderCol),
                                     SwitchListTile.adaptive(
@@ -2913,7 +3410,8 @@ Future<void> showAdminTemplateEditor(
                                   Wrap(
                                     spacing: 6,
                                     runSpacing: 6,
-                                    children: fields.map((f) {
+                                    children: fieldsConfig.map((item) {
+                                      final f = (item['label'] ?? '').toString();
                                       return ActionChip(
                                         label: Text(
                                           '+ {{$f}}',
@@ -3052,7 +3550,11 @@ Future<void> showAdminTemplateEditor(
                                   'requirePhoto': requirePhoto,
                                   'requireLocation': requireLocation,
                                   'sampleFileName': sampleFileName,
-                                  'fields': fields,
+                                  'fields': fieldsConfig
+                                      .map((f) => f['label']?.toString() ?? '')
+                                      .where((s) => s.isNotEmpty)
+                                      .toList(),
+                                  'fields_config': fieldsConfig,
                                   'templateBody': bodyCtrl.text.trim(),
                                   'updatedBy': 'Administrator',
                                 });
@@ -3102,6 +3604,7 @@ Future<void> showReportDownloadSheet(
   bool isExportingPdf = false;
   bool isExportingWord = false;
   bool isExportingPhoto = false;
+  String? progressStatus;
   ReportExportResult? lastResult;
 
   final bool hasPhoto =
@@ -3145,18 +3648,43 @@ Future<void> showReportDownloadSheet(
               } else {
                 isExportingWord = true;
               }
+              progressStatus = 'Menyiapkan berkas ${format.toUpperCase()}...';
             });
 
-            final res = await ReportDocumentExporter.exportReport(
-              laporan,
-              format: format,
-              openInNewTabOnWeb: openInNewTab,
-            );
+            ReportExportResult res;
+            try {
+              res = await ReportDocumentExporter.exportReport(
+                laporan,
+                format: format,
+                openInNewTabOnWeb: openInNewTab,
+                onProgress: (status) {
+                  if (sheetCtx.mounted) {
+                    setSheetState(() {
+                      progressStatus = status;
+                    });
+                  }
+                },
+              ).timeout(
+                const Duration(seconds: 18),
+                onTimeout: () => const ReportExportResult(
+                  success: false,
+                  fileName: '',
+                  message: 'Proses unduh dokumen melebihi batas waktu (timeout). Silakan periksa koneksi dan coba lagi.',
+                ),
+              );
+            } catch (e) {
+              res = ReportExportResult(
+                success: false,
+                fileName: '',
+                message: 'Gagal mengunduh dokumen: $e',
+              );
+            }
 
             if (!sheetCtx.mounted) return;
             setSheetState(() {
               isExportingPdf = false;
               isExportingWord = false;
+              progressStatus = null;
               lastResult = res;
             });
 
@@ -3374,6 +3902,40 @@ Future<void> showReportDownloadSheet(
                                   ),
                                   label: const Text('Buka / Print'),
                                 ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (progressStatus != null) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: primaryGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: primaryGreen.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: primaryGreen,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  progressStatus!,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: primaryGreen,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -4585,6 +5147,8 @@ class _SpaciousLabeledField extends StatelessWidget {
     this.maxLines = 1,
     this.onChanged,
     this.suffixWidget,
+    this.keyboardType,
+    this.helperText,
   });
 
   final TextEditingController controller;
@@ -4594,6 +5158,8 @@ class _SpaciousLabeledField extends StatelessWidget {
   final int maxLines;
   final ValueChanged<String>? onChanged;
   final Widget? suffixWidget;
+  final TextInputType? keyboardType;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
@@ -4633,6 +5199,7 @@ class _SpaciousLabeledField extends StatelessWidget {
         TextField(
           controller: controller,
           maxLines: maxLines,
+          keyboardType: keyboardType,
           onChanged: onChanged,
           style: TextStyle(
             fontSize: 14,
@@ -4640,6 +5207,8 @@ class _SpaciousLabeledField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             hintText: hint,
+            helperText: helperText,
+            helperMaxLines: 2,
             hintStyle: TextStyle(
               fontSize: 13,
               color: isDark ? Colors.white38 : Colors.grey.shade500,

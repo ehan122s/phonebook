@@ -19,7 +19,8 @@ class ReportPhoto extends Model
     ];
 
     protected $hidden = [
-        'photo_base64',
+        // Jangan sembunyikan photo_base64 agar klien Flutter dapat langsung merender/mengunduh dokumen
+        // tanpa bergantung pada HTTP roundtrip sekunder yang rawan lambat atau terblokir.
     ];
 
     protected $appends = [
@@ -36,7 +37,16 @@ class ReportPhoto extends Model
         if (!empty($this->photo) && (filter_var($this->photo, FILTER_VALIDATE_URL) || str_starts_with($this->photo, 'data:image'))) {
             return $this->photo;
         }
-        return url('/api/report-photos/' . $this->id . '/file');
+
+        $base = 'https://phonebook-five-umber.vercel.app';
+        if (!app()->runningInConsole() && request()) {
+            $host = request()->getSchemeAndHttpHost();
+            if ($host && !str_contains($host, 'localhost') && !str_contains($host, '127.0.0.1')) {
+                $base = $host;
+            }
+        }
+
+        return rtrim($base, '/') . '/api/report-photos/' . $this->id . '/file';
     }
 
     public function report()

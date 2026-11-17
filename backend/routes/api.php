@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BugReportController;
 use App\Http\Controllers\Api\DiscordInteractionController;
+use App\Http\Controllers\Api\ReportTemplateController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -20,6 +21,19 @@ Route::get('/test', function () {
         'message' => 'API Phonebook berhasil terhubung',
     ]);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Report Templates (Supabase PostgreSQL Form Configuration & Fields)
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/report-templates', [ReportTemplateController::class, 'index']);
+Route::get('/report-templates/{id}', [ReportTemplateController::class, 'show']);
+Route::post('/report-templates', [ReportTemplateController::class, 'store']);
+Route::put('/report-templates/{id}', [ReportTemplateController::class, 'update']);
+Route::post('/report-templates/{id}', [ReportTemplateController::class, 'update']);
+Route::delete('/report-templates/{id}', [ReportTemplateController::class, 'destroy']);
 
 /*
 |--------------------------------------------------------------------------
@@ -67,6 +81,8 @@ Route::get('/materials', [MaterialController::class, 'index']);
 Route::get('/materials/{id}', [MaterialController::class, 'show']);
 Route::get('/materials/{id}/download', [MaterialController::class, 'download']);
 Route::post('/materials/public', [MaterialController::class, 'store']);
+Route::post('/materials/{id}/public', [MaterialController::class, 'update']);
+Route::put('/materials/{id}/public', [MaterialController::class, 'update']);
 Route::delete('/materials/{id}/public', [MaterialController::class, 'destroy']);
 
 Route::middleware('auth:sanctum')->group(function () {

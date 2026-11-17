@@ -56,6 +56,14 @@ class Material extends Model
             return $this->file_path;
         }
 
-        return url('/api/materials/' . $this->id . '/download');
+        $base = 'https://phonebook-five-umber.vercel.app';
+        if (!app()->runningInConsole() && request()) {
+            $host = request()->getSchemeAndHttpHost();
+            if ($host && !str_contains($host, 'localhost') && !str_contains($host, '127.0.0.1')) {
+                $base = $host;
+            }
+        }
+
+        return rtrim($base, '/') . '/api/materials/' . $this->id . '/download';
     }
 }

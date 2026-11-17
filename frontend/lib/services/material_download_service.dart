@@ -129,10 +129,23 @@ class MaterialDownloadService {
       final List<Uri> candidateUris = [];
 
       // A. Endpoint download resmi Laravel
+      final downloadUrl = (material['download_url'] ?? '').toString().trim();
+      if (downloadUrl.isNotEmpty && downloadUrl.startsWith('http')) {
+        var cleanUrl = downloadUrl;
+        if (cleanUrl.contains('localhost') || cleanUrl.contains('127.0.0.1')) {
+          final u = Uri.tryParse(cleanUrl);
+          if (u != null) {
+            cleanUrl = '${ApiConstants.baseUrl}${u.path}${u.hasQuery ? '?${u.query}' : ''}';
+          }
+        }
+        candidateUris.add(Uri.parse(cleanUrl));
+      }
+
       if (materialId.isNotEmpty && !materialId.startsWith('MAT-')) {
-        candidateUris.add(
-          Uri.parse('${ApiConstants.baseUrl}/api/materials/$materialId/download'),
-        );
+        final directUri = Uri.parse('${ApiConstants.baseUrl}/api/materials/$materialId/download');
+        if (!candidateUris.contains(directUri)) {
+          candidateUris.add(directUri);
+        }
       }
 
       // B. Storage disk path
@@ -146,7 +159,17 @@ class MaterialDownloadService {
 
       // C. Direct HTTP URL
       if (rawFilePath.startsWith('http')) {
-        candidateUris.add(Uri.parse(rawFilePath));
+        var cleanUrl = rawFilePath;
+        if (cleanUrl.contains('localhost') || cleanUrl.contains('127.0.0.1')) {
+          final u = Uri.tryParse(cleanUrl);
+          if (u != null) {
+            cleanUrl = '${ApiConstants.baseUrl}${u.path}${u.hasQuery ? '?${u.query}' : ''}';
+          }
+        }
+        final parsed = Uri.parse(cleanUrl);
+        if (!candidateUris.contains(parsed)) {
+          candidateUris.add(parsed);
+        }
       }
 
       final driveUrl = (material['drive_url'] ?? '').toString();
