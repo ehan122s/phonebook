@@ -955,7 +955,7 @@ class ReportDocumentExporter {
       final localPath = laporan['localPhotoPath']?.toString().trim();
       if (localPath != null && localPath.isNotEmpty && !kIsWeb) {
         final file = File(localPath);
-        if (file.existsSync()) {
+        if (await file.exists()) {
           final bytes = await file.readAsBytes();
           if (bytes.isNotEmpty) return bytes;
         }
@@ -1004,9 +1004,12 @@ class ReportDocumentExporter {
       }
 
       // Cek apakah file lokal ada di disk
-      if (!kIsWeb && File(photoUrl).existsSync()) {
-        final bytes = await File(photoUrl).readAsBytes();
-        if (bytes.isNotEmpty) return bytes;
+      if (!kIsWeb) {
+        final file = File(photoUrl);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          if (bytes.isNotEmpty) return bytes;
+        }
       }
 
       // Format URL lengkap
@@ -1039,17 +1042,17 @@ class ReportDocumentExporter {
       // Koreksi orientasi EXIF otomatis
       final oriented = img.bakeOrientation(decoded);
 
-      // Batasi resolusi maksimum 1280px agar dokumen tetap ringan
+      // Batasi resolusi maksimum 1024px agar pemrosesan dan ukuran dokumen lebih ringan.
       img.Image toEncode = oriented;
-      if (oriented.width > 1280 || oriented.height > 1280) {
+      if (oriented.width > 1024 || oriented.height > 1024) {
         if (oriented.width >= oriented.height) {
-          toEncode = img.copyResize(oriented, width: 1280);
+          toEncode = img.copyResize(oriented, width: 1024);
         } else {
-          toEncode = img.copyResize(oriented, height: 1280);
+          toEncode = img.copyResize(oriented, height: 1024);
         }
       }
 
-      final jpeg = Uint8List.fromList(img.encodeJpg(toEncode, quality: 85));
+      final jpeg = Uint8List.fromList(img.encodeJpg(toEncode, quality: 80));
       return ReportProcessedPhoto(
         jpegBytes: jpeg,
         width: toEncode.width,
@@ -1080,13 +1083,14 @@ class ReportDocumentExporter {
     final ext = isPdf ? 'pdf' : 'doc';
     final fileName = '${safeTitle.isEmpty ? 'Laporan' : safeTitle}.$ext';
 
-    // Pastikan isi laporan selalu terformat rapi dengan template meskipun
-    // laporan lama belum memiliki teks panjang.
-    final enrichedLaporan = await _ensureFormattedReportContent(laporan);
-
-    // Ambil dan olah foto lampiran jika tersedia
-    final rawPhotoBytes = await resolvePhotoBytes(enrichedLaporan);
-    final processedPhoto = rawPhotoBytes != null ? _processImage(rawPhotoBytes) : null;
+    // Prepare independent report content and photo data concurrently.
+    final reportFuture = _ensureFormattedReportContent(laporan);
+    final photoFuture = resolvePhotoBytes(laporan);
+    final enrichedLaporan = await reportFuture;
+    final rawPhotoBytes = await photoFuture;
+    final processedPhoto = rawPhotoBytes == null
+        ? null
+        : await compute(_processImage, rawPhotoBytes);
     final String waktuUnduh = _formatCurrentDateTime();
 
     final Uint8List fileBytes = isPdf
@@ -1187,7 +1191,7 @@ class ReportDocumentExporter {
       );
     }
 
-    final processedPhoto = _processImage(rawPhotoBytes);
+    final processedPhoto = await compute(_processImage, rawPhotoBytes);
     final bytesToSave = processedPhoto?.jpegBytes ?? rawPhotoBytes;
 
     if (kIsWeb) {
@@ -1281,13 +1285,11 @@ class ReportDocumentExporter {
     final judul = (copy['judul'] ?? 'Kegiatan Lapangan').toString();
     final lokasi = (copy['lokasi'] ?? 'Kawasan Hutan Garut').toString();
 
-    final template = await ReportTemplateManager.findByTitle(jenis);
-
-    if (rawIsi.isEmpty ||
-        !rawIsi.contains('\n') ||
-        ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
+    final isCorrupted = ReportTemplateManager.isCorruptedBinaryText(rawIsi);
+    if (rawIsi.isEmpty || !rawIsi.contains('\n') || isCorrupted) {
+      final template = await ReportTemplateManager.findByTitle(jenis);
       copy['isi'] = ReportTemplateManager.sanitizeReportIsi(
-        rawIsi: ReportTemplateManager.isCorruptedBinaryText(rawIsi) ? '' : rawIsi,
+        rawIsi: isCorrupted ? '' : rawIsi,
         jenis: jenis,
         judul: judul,
         lokasi: lokasi,
@@ -1410,8 +1412,8 @@ class ReportDocumentExporter {
     drawText('Lokasi Kegiatan', 62, 594, bold: true, fontSize: 10);
     drawText(':  $lokasi', 205, 594, fontSize: 10);
 
-    drawText('Titik Koordinat & Status', 62, 578, bold: true, fontSize: 10);
-    drawText(':  $koordinat  ($status)', 205, 578, fontSize: 10);
+    drawText('Titik Koordinat', 62, 578, bold: true, fontSize: 10);
+    drawText(':  $koordinat  (Status: $status)', 150, 578, fontSize: 10);
 
     if (hasAttachedPhoto) {
       drawText('Foto Dokumentasi', 62, 562, bold: true, fontSize: 10);
@@ -1591,7 +1593,7 @@ class ReportDocumentExporter {
         fontSize: 10,
       );
       drawPage2Text(
-        'Lokasi: $lokasi   |   Titik Koordinat: $koordinat',
+        'Lokasi: $lokasi | Titik Koordinat: $koordinat',
         50,
         captionY - 14,
         fontSize: 9,

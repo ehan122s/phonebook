@@ -3552,6 +3552,15 @@ void showReportDetail(
       final alamatGeolokasi = (laporan['alamatGeolokasi'] ?? '')
           .toString()
           .trim();
+      final latitude = (laporan['latitude'] ?? '').toString().trim();
+      final longitude = (laporan['longitude'] ?? '').toString().trim();
+      final coordinates = latitude.isNotEmpty && longitude.isNotEmpty
+          ? '$latitude, $longitude'
+          : latitude.isNotEmpty
+          ? 'Lat: $latitude'
+          : longitude.isNotEmpty
+          ? 'Lng: $longitude'
+          : 'Belum tersedia';
 
       return Center(
         heightFactor: 1.0,
@@ -3653,19 +3662,9 @@ void showReportDetail(
                   ),
                   const SizedBox(height: 14),
                   _DetailRow(
-                    icon: Icons.my_location_outlined,
-                    title: 'Latitude',
-                    value: (laporan['latitude']?.toString().isNotEmpty ?? false)
-                        ? laporan['latitude'].toString()
-                        : 'Belum tersedia',
-                  ),
-                  _DetailRow(
                     icon: Icons.explore_outlined,
-                    title: 'Longitude',
-                    value:
-                        (laporan['longitude']?.toString().isNotEmpty ?? false)
-                        ? laporan['longitude'].toString()
-                        : 'Belum tersedia',
+                    title: 'Koordinat',
+                    value: coordinates,
                   ),
                   const SizedBox(height: 16),
                   Text(
