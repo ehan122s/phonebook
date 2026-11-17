@@ -39,8 +39,9 @@ void showTopFrontNotification(
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor:
-            isError ? Colors.red.shade700 : const Color(0xFF245C3A),
+        backgroundColor: isError
+            ? Colors.red.shade700
+            : const Color(0xFF245C3A),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -103,248 +104,23 @@ class _TopFrontNotificationBannerState
       duration: const Duration(milliseconds: 360),
       reverseDuration: const Duration(milliseconds: 260),
     );
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, -1.1),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInCubic,
-      ),
-    );
-    _fadeAnim = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-    _scaleAnim = Tween<double>(begin: 0.94, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-
-    _controller.forward();
-    Future.delayed(widget.duration, _dismiss);
-  }
-
-  Future<void> _dismiss() async {
-    if (_closing || !mounted) return;
-    _closing = true;
-    try {
-      await _controller.reverse();
-    } catch (_) {}
-    widget.onDismissed();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final topPad = MediaQuery.of(context).padding.top + 14;
-    final bgColor =
-        widget.isError ? const Color(0xFFC62828) : const Color(0xFF1E5631);
-
-    return Positioned(
-      top: topPad,
-      left: 16,
-      right: 16,
-      child: Material(
-        color: Colors.transparent,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: SlideTransition(
-              position: _slideAnim,
-              child: FadeTransition(
-                opacity: _fadeAnim,
-                child: ScaleTransition(
-                  scale: _scaleAnim,
-                  child: Dismissible(
-                    key: const ValueKey('top_front_notif'),
-                    direction: DismissDirection.up,
-                    onDismissed: (_) => widget.onDismissed(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 13,
-                      ),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.28),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              widget.isError
-                                  ? Icons.error_outline_rounded
-                                  : Icons.check_circle_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              widget.message,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w700,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          InkWell(
-                            onTap: _dismiss,
-                            borderRadius: BorderRadius.circular(20),
-                            child: const Padding(
-                              padding: EdgeInsets.all(4),
-                              child: Icon(
-                                Icons.close_rounded,
-                                color: Colors.white70,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+    _slideAnim = Tween<Offset>(begin: const Offset(0, -1.1), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Curves.easeOutBack,
+            reverseCurve: Curves.easeInCubic,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 0. Notifikasi Overlay di Bagian Depan (Tampil di Atas Modal Bottom Sheet)
-// ---------------------------------------------------------------------------
-
-OverlayEntry? _activeTopNotificationEntry;
-
-void showTopFrontNotification(
-  BuildContext context, {
-  required String message,
-  bool isError = false,
-  Duration duration = const Duration(seconds: 3),
-}) {
-  try {
-    _activeTopNotificationEntry?.remove();
-    _activeTopNotificationEntry = null;
-  } catch (_) {}
-
-  final overlay =
-      Overlay.maybeOf(context, rootOverlay: true) ?? Overlay.maybeOf(context);
-  if (overlay == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            isError ? Colors.red.shade700 : const Color(0xFF245C3A),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-    return;
-  }
-
-  late OverlayEntry entry;
-  entry = OverlayEntry(
-    builder: (ctx) => _TopFrontNotificationBanner(
-      message: message,
-      isError: isError,
-      duration: duration,
-      onDismissed: () {
-        if (_activeTopNotificationEntry == entry) {
-          try {
-            entry.remove();
-          } catch (_) {}
-          _activeTopNotificationEntry = null;
-        }
-      },
-    ),
-  );
-
-  _activeTopNotificationEntry = entry;
-  overlay.insert(entry);
-}
-
-class _TopFrontNotificationBanner extends StatefulWidget {
-  final String message;
-  final bool isError;
-  final Duration duration;
-  final VoidCallback onDismissed;
-
-  const _TopFrontNotificationBanner({
-    required this.message,
-    required this.isError,
-    required this.duration,
-    required this.onDismissed,
-  });
-
-  @override
-  State<_TopFrontNotificationBanner> createState() =>
-      _TopFrontNotificationBannerState();
-}
-
-class _TopFrontNotificationBannerState
-    extends State<_TopFrontNotificationBanner>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<Offset> _slideAnim;
-  late final Animation<double> _fadeAnim;
-  late final Animation<double> _scaleAnim;
-  bool _closing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 360),
-      reverseDuration: const Duration(milliseconds: 260),
-    );
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, -1.1),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutBack,
-        reverseCurve: Curves.easeInCubic,
-      ),
-    );
+        );
     _fadeAnim = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
     );
-    _scaleAnim = Tween<double>(begin: 0.94, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _scaleAnim = Tween<double>(
+      begin: 0.94,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     _controller.forward();
     Future.delayed(widget.duration, _dismiss);
@@ -368,8 +144,9 @@ class _TopFrontNotificationBannerState
   @override
   Widget build(BuildContext context) {
     final topPad = MediaQuery.of(context).padding.top + 14;
-    final bgColor =
-        widget.isError ? const Color(0xFFC62828) : const Color(0xFF1E5631);
+    final bgColor = widget.isError
+        ? const Color(0xFFC62828)
+        : const Color(0xFF1E5631);
 
     return Positioned(
       top: topPad,
@@ -471,7 +248,7 @@ class _TopFrontNotificationBannerState
 Future<void> showReportTypeDialog(
   BuildContext context, {
   required void Function(String jenisLaporan, {Map<String, dynamic>? existing})
-      onSelectType,
+  onSelectType,
 }) async {
   final templates = await ReportTemplateManager.loadTemplates();
   if (!context.mounted) return;
@@ -517,8 +294,8 @@ Future<void> showReportTypeDialog(
                     ),
                     const SizedBox(height: 18),
                     ...templates.map((tpl) {
-                      final title =
-                          (tpl['title'] ?? 'Laporan Kegiatan').toString();
+                      final title = (tpl['title'] ?? 'Laporan Kegiatan')
+                          .toString();
                       final desc = (tpl['description'] ?? '').toString();
                       final icon = ReportTemplateManager.iconFromKey(
                         tpl['iconKey']?.toString(),
@@ -561,21 +338,23 @@ Future<void> showReportForm(
   final List<String> templateFields =
       (template['fields'] as List?)?.map((e) => e.toString()).toList() ?? [];
   final String defaultTitle = (template['defaultTitle'] ?? '').toString();
-  final String templateDescription = (template['description'] ??
-          'Lengkapi bagian-bagian laporan sesuai kegiatan di lapangan.')
-      .toString();
+  final String templateDescription =
+      (template['description'] ??
+              'Lengkapi bagian-bagian laporan sesuai kegiatan di lapangan.')
+          .toString();
   final bool requirePhoto = template['requirePhoto'] != false;
 
   final now = DateTime.now();
   final initialDateIso =
       (existing?['tanggalApi']?.toString().isNotEmpty ?? false)
-          ? existing!['tanggalApi'].toString()
-          : '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      ? existing!['tanggalApi'].toString()
+      : '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
   DateTime selectedDate = DateTime.tryParse(initialDateIso) ?? now;
 
   final judulCtrl = TextEditingController(
-    text: existing?['judul']?.toString() ??
+    text:
+        existing?['judul']?.toString() ??
         (defaultTitle.isNotEmpty ? defaultTitle : ''),
   );
   final lokasiCtrl = TextEditingController(
@@ -587,19 +366,16 @@ Future<void> showReportForm(
   final lngCtrl = TextEditingController(
     text: existing?['longitude']?.toString() ?? '',
   );
-  String reverseGeocodedAddress =
-      (existing?['alamatGeolokasi'] ?? '').toString();
+  String reverseGeocodedAddress = (existing?['alamatGeolokasi'] ?? '')
+      .toString();
 
   final Map<String, TextEditingController> fieldControllers = {
     for (final field in templateFields) field: TextEditingController(),
   };
 
   final rawExistingIsi = existing?['isi']?.toString() ?? '';
-  final existingIsi = ReportTemplateManager.isCorruptedBinaryText(rawExistingIsi)
-      ? ''
-      : rawExistingIsi;
-  final rawExistingIsi = existing?['isi']?.toString() ?? '';
-  final existingIsi = ReportTemplateManager.isCorruptedBinaryText(rawExistingIsi)
+  final existingIsi =
+      ReportTemplateManager.isCorruptedBinaryText(rawExistingIsi)
       ? ''
       : rawExistingIsi;
   final isiCtrl = TextEditingController(
@@ -613,8 +389,7 @@ Future<void> showReportForm(
 
   void syncTemplateFieldsToIsi() {
     final values = <String, String>{
-      for (final entry in fieldControllers.entries)
-        entry.key: entry.value.text,
+      for (final entry in fieldControllers.entries) entry.key: entry.value.text,
     };
     isiCtrl.text = ReportTemplateManager.buildFormattedBody(
       template: template,
@@ -630,7 +405,8 @@ Future<void> showReportForm(
         .toString()
         .trim();
     if (rawFoto.isNotEmpty) {
-      existingPhotoUrl = rawFoto.startsWith('http') ||
+      existingPhotoUrl =
+          rawFoto.startsWith('http') ||
               rawFoto.startsWith('data:') ||
               rawFoto.startsWith('/')
           ? rawFoto
@@ -645,8 +421,9 @@ Future<void> showReportForm(
                 .toString()
                 .trim();
         if (b64.isNotEmpty) {
-          existingPhotoUrl =
-              b64.startsWith('data:') ? b64 : 'data:image/jpeg;base64,$b64';
+          existingPhotoUrl = b64.startsWith('data:')
+              ? b64
+              : 'data:image/jpeg;base64,$b64';
         } else if (first['id'] != null) {
           existingPhotoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
         } else if (raw.isNotEmpty) {
@@ -662,29 +439,11 @@ Future<void> showReportForm(
   }
 
   bool isGettingLocation = false;
-<<<<<<< Updated upstream
   bool isProcessingPhoto = false;
-  String? locationWarningMessage;
-=======
   bool isSubmittingForm = false;
->>>>>>> Stashed changes
+  String? locationWarningMessage;
   bool showCoordinateInputs =
       latCtrl.text.isNotEmpty || lngCtrl.text.isNotEmpty;
-  final ScrollController formScrollCtrl = ScrollController();
-  String? inlineStatusMessage;
-  bool inlineStatusIsError = false;
-
-  void scrollFormToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (formScrollCtrl.hasClients) {
-        formScrollCtrl.animateTo(
-          formScrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
-  }
   final ScrollController formScrollCtrl = ScrollController();
   String? inlineStatusMessage;
   bool inlineStatusIsError = false;
@@ -747,13 +506,50 @@ Future<void> showReportForm(
               showCoordinateInputs = true;
             });
 
-<<<<<<< Updated upstream
-            final loc = await LocationService.instance.refreshLocation();
-            if (!sheetContext.mounted) return null;
+            try {
+              final loc = await LocationService.instance.refreshLocation();
+              if (!sheetContext.mounted) return null;
 
-            if (loc != null) {
+              if (loc == null) {
+                final err =
+                    LocationService.instance.errorMessage ??
+                    'Layanan lokasi GPS atau izin lokasi belum tersedia di perangkat Anda.';
+                setModalState(() {
+                  isGettingLocation = false;
+                  locationWarningMessage = err;
+                });
+
+                if (showSnackBar) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(
+                      content: Text(err),
+                      backgroundColor: Colors.orange.shade800,
+                      action:
+                          (LocationService.instance.status ==
+                                  LocationStatus.permissionDeniedForever ||
+                              LocationService.instance.status ==
+                                  LocationStatus.serviceDisabled)
+                          ? SnackBarAction(
+                              label: 'Pengaturan',
+                              textColor: Colors.white,
+                              onPressed: () {
+                                if (LocationService.instance.status ==
+                                    LocationStatus.serviceDisabled) {
+                                  LocationService.instance
+                                      .openLocationSettings();
+                                } else {
+                                  LocationService.instance.openAppSettings();
+                                }
+                              },
+                            )
+                          : null,
+                    ),
+                  );
+                }
+                return null;
+              }
+
               setModalState(() {
-                isGettingLocation = false;
                 latCtrl.text = loc.latitude.toStringAsFixed(6);
                 lngCtrl.text = loc.longitude.toStringAsFixed(6);
                 reverseGeocodedAddress = loc.fullAddress;
@@ -770,215 +566,29 @@ Future<void> showReportForm(
                     ),
                     backgroundColor: const Color(0xFF245C3A),
                   ),
-=======
-            Future<void> handleFallbackLocation() async {
-              try {
-                final res = await http
-                    .get(Uri.parse('http://ip-api.com/json'))
-                    .timeout(const Duration(seconds: 4));
-                if (res.statusCode == 200) {
-                  final data = jsonDecode(res.body);
-                  if (data['status'] == 'success') {
-                    final lat = (data['lat'] as num).toDouble();
-                    final lon = (data['lon'] as num).toDouble();
-                    final city =
-                        '${data['city'] ?? ''}, ${data['regionName'] ?? ''}'
-                            .trim();
-                    latCtrl.text = lat.toStringAsFixed(6);
-                    lngCtrl.text = lon.toStringAsFixed(6);
-                    if (lokasiCtrl.text.trim().isEmpty && city.isNotEmpty) {
-                      lokasiCtrl.text = city;
-                    }
-                    if (sheetContext.mounted) {
-                      showTopFrontNotification(
-                        sheetContext,
-                        message: 'Lokasi berhasil didapatkan ($city)',
-                      showTopFrontNotification(
-                        sheetContext,
-                        message: 'Lokasi berhasil didapatkan ($city)',
-                      );
-                    }
-                    return;
-                  }
-                }
-              } catch (_) {}
-
-              latCtrl.text = '-7.227900';
-              lngCtrl.text = '107.908700';
-              if (lokasiCtrl.text.trim().isEmpty) {
-                lokasiCtrl.text = 'Kawasan Hutan Garut';
-              }
-              if (sheetContext.mounted) {
-                showTopFrontNotification(
-                  sheetContext,
-                  message: 'Koordinat default wilayah Garut berhasil disetel.',
->>>>>>> Stashed changes
                 );
               }
               return loc;
-            } else {
-              final err = LocationService.instance.errorMessage ??
-                  'Layanan lokasi GPS atau izin lokasi belum tersedia di perangkat Anda.';
-              setModalState(() {
-                isGettingLocation = false;
-                locationWarningMessage = err;
-              });
-
-<<<<<<< Updated upstream
-              if (showSnackBar) {
-                ScaffoldMessenger.of(sheetContext).showSnackBar(
-                  SnackBar(
-                    content: Text(err),
-                    backgroundColor: Colors.orange.shade800,
-                    action: (LocationService.instance.status ==
-                                LocationStatus.permissionDeniedForever ||
-                            LocationService.instance.status ==
-                                LocationStatus.serviceDisabled)
-                        ? SnackBarAction(
-                            label: 'Pengaturan',
-                            textColor: Colors.white,
-                            onPressed: () {
-                              if (LocationService.instance.status ==
-                                  LocationStatus.serviceDisabled) {
-                                LocationService.instance.openLocationSettings();
-                              } else {
-                                LocationService.instance.openAppSettings();
-                              }
-                            },
-                          )
-                        : null,
-                  ),
-                );
+            } catch (e) {
+              if (sheetContext.mounted) {
+                final message = 'Gagal mendapatkan lokasi GPS: $e';
+                setModalState(() {
+                  locationWarningMessage = message;
+                });
+                if (showSnackBar) {
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(
+                      content: Text(message),
+                      backgroundColor: Colors.orange.shade800,
+                    ),
+                  );
+                }
               }
               return null;
-=======
-            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
-              await handleFallbackLocation();
-              if (sheetContext.mounted) {
-                setModalState(() => isGettingLocation = false);
-              }
-              return;
-            }
-
-            try {
-              bool serviceEnabled =
-                  await Geolocator.isLocationServiceEnabled();
-              if (!serviceEnabled) {
-                if (sheetContext.mounted) {
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
-                    isError: true,
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Layanan lokasi (GPS) belum aktif. Silakan aktifkan GPS perangkat Anda.',
-                    isError: true,
-                  );
-                }
-                return;
-              }
-
-              LocationPermission permission =
-                  await Geolocator.checkPermission();
-              if (permission == LocationPermission.denied) {
-                permission = await Geolocator.requestPermission();
-                if (permission == LocationPermission.denied) {
-                  if (sheetContext.mounted) {
-                    showTopFrontNotification(
-                      sheetContext,
-                      message: 'Izin akses lokasi GPS ditolak.',
-                      isError: true,
-                    showTopFrontNotification(
-                      sheetContext,
-                      message: 'Izin akses lokasi GPS ditolak.',
-                      isError: true,
-                    );
-                  }
-                  return;
-                }
-              }
-
-              if (permission == LocationPermission.deniedForever) {
-                if (sheetContext.mounted) {
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
-                    isError: true,
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Izin lokasi ditolak permanen. Silakan izinkan di setelan aplikasi.',
-                    isError: true,
-                  );
-                }
-                return;
-              }
-
-              final position = await Geolocator.getCurrentPosition(
-                locationSettings: const LocationSettings(
-                  accuracy: LocationAccuracy.high,
-                  timeLimit: Duration(seconds: 12),
-                ),
-              );
-
-              latCtrl.text = position.latitude.toStringAsFixed(6);
-              lngCtrl.text = position.longitude.toStringAsFixed(6);
-
-              if (lokasiCtrl.text.trim().isEmpty) {
-                lokasiCtrl.text =
-                    'Titik Koordinat (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})';
-              }
-
-              if (sheetContext.mounted) {
-                showTopFrontNotification(
-                  sheetContext,
-                  message: 'Koordinat GPS berhasil diperoleh!',
-                showTopFrontNotification(
-                  sheetContext,
-                  message: 'Koordinat GPS berhasil diperoleh!',
-                );
-              }
-            } on MissingPluginException {
-              await handleFallbackLocation();
-            } on PlatformException catch (pe) {
-              if (pe.code == 'MissingPluginException' ||
-                  pe.message?.contains('No implementation') == true) {
-                await handleFallbackLocation();
-              } else {
-                if (sheetContext.mounted) {
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
-                    isError: true,
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Gagal mendapatkan lokasi GPS: ${pe.message ?? pe}',
-                    isError: true,
-                  );
-                }
-              }
-            } catch (e) {
-              final msg = e.toString();
-              if (msg.contains('MissingPluginException') ||
-                  msg.contains('No implementation')) {
-                await handleFallbackLocation();
-              } else {
-                if (sheetContext.mounted) {
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Gagal mendapatkan lokasi GPS: $e',
-                    isError: true,
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Gagal mendapatkan lokasi GPS: $e',
-                    isError: true,
-                  );
-                }
-              }
             } finally {
               if (sheetContext.mounted) {
                 setModalState(() => isGettingLocation = false);
               }
->>>>>>> Stashed changes
             }
           }
 
@@ -1027,7 +637,9 @@ Future<void> showReportForm(
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: LaporanColors.primary.withValues(alpha: 0.14),
+                            color: LaporanColors.primary.withValues(
+                              alpha: 0.14,
+                            ),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(
@@ -1117,16 +729,17 @@ Future<void> showReportForm(
                 }
               }
 
-<<<<<<< Updated upstream
               if (picked == null) return;
+              final selectedPhoto = picked;
 
               setModalState(() => isProcessingPhoto = true);
 
               final rawBytes = await picked.readAsBytes();
 
               // Ambil koordinat GPS nyata saat foto diambil
-              UserLocationData? gpsData =
-                  await fetchRealGpsLocation(showSnackBar: false);
+              UserLocationData? gpsData = await fetchRealGpsLocation(
+                showSnackBar: false,
+              );
               gpsData ??= LocationService.instance.currentLocation;
 
               final double? lat =
@@ -1135,48 +748,13 @@ Future<void> showReportForm(
                   gpsData?.longitude ?? double.tryParse(lngCtrl.text.trim());
 
               if (lat != null && lng != null && gpsData == null) {
-                final rev =
-                    await LocationService.instance.reverseGeocode(lat, lng);
+                final rev = await LocationService.instance.reverseGeocode(
+                  lat,
+                  lng,
+                );
                 reverseGeocodedAddress = rev.fullAddress;
                 if (lokasiCtrl.text.trim().isEmpty) {
                   lokasiCtrl.text = rev.shortName;
-=======
-                if (picked != null) {
-                  final bytes = await picked.readAsBytes();
-                  setModalState(() {
-                    pickedPhotoFile = picked;
-                    pickedPhotoBytes = bytes;
-                    inlineStatusMessage =
-                        'Foto dokumentasi "${picked!.name}" berhasil dilampirkan. Silakan simpan atau selesaikan laporan di bawah.';
-                    inlineStatusIsError = false;
-                  });
-                  scrollFormToBottom();
-                  if (sheetContext.mounted) {
-                    showTopFrontNotification(
-                      sheetContext,
-                      message: 'Foto dokumentasi berhasil dilampirkan!',
-                    );
-                  }
-                    inlineStatusMessage =
-                        'Foto dokumentasi "${picked!.name}" berhasil dilampirkan. Silakan simpan atau selesaikan laporan di bawah.';
-                    inlineStatusIsError = false;
-                  });
-                  scrollFormToBottom();
-                  if (sheetContext.mounted) {
-                    showTopFrontNotification(
-                      sheetContext,
-                      message: 'Foto dokumentasi berhasil dilampirkan!',
-                    );
-                  }
-                }
-              } catch (e) {
-                if (sheetContext.mounted) {
-                  showTopFrontNotification(
-                    sheetContext,
-                    message: 'Gagal mengambil foto: $e',
-                    isError: true,
-                  );
->>>>>>> Stashed changes
                 }
               }
 
@@ -1198,7 +776,11 @@ Future<void> showReportForm(
                 pickedPhotoFile = picked;
                 pickedPhotoBytes = stampedBytes;
                 isProcessingPhoto = false;
+                inlineStatusMessage =
+                    'Foto dokumentasi "${selectedPhoto.name}" berhasil dilampirkan. Silakan simpan atau selesaikan laporan di bawah.';
+                inlineStatusIsError = false;
               });
+              scrollFormToBottom();
 
               ScaffoldMessenger.of(sheetContext).showSnackBar(
                 SnackBar(
@@ -1209,6 +791,12 @@ Future<void> showReportForm(
                         : 'Foto berhasil dilampirkan. Aktifkan GPS bila ingin menyertakan koordinat otomatis.',
                   ),
                 ),
+              );
+              showTopFrontNotification(
+                sheetContext,
+                message: lat != null && lng != null
+                    ? 'Foto dokumentasi dan koordinat berhasil dilampirkan.'
+                    : 'Foto dokumentasi berhasil dilampirkan.',
               );
             } catch (e) {
               if (sheetContext.mounted) {
@@ -1320,7 +908,6 @@ Future<void> showReportForm(
                     Flexible(
                       child: SingleChildScrollView(
                         controller: formScrollCtrl,
-                        controller: formScrollCtrl,
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
                         child: LayoutBuilder(
                           builder: (context, constraints) {
@@ -1333,8 +920,7 @@ Future<void> showReportForm(
                                 _SectionContainerCard(
                                   stepNumber: '1',
                                   title: 'Informasi Utama & Geolokasi',
-                                  subtitle:
-                                      'Isi judul, tanggal pelaksanaan, dan titik lokasi GPS kegiatan.',
+                                  subtitle: 'Isi judul, tanggal pelaksanaan, dan titik lokasi GPS kegiatan.',
                                   cardBg: cardBg,
                                   borderCol: borderCol,
                                   primaryGreen: primaryGreen,
@@ -1391,24 +977,23 @@ Future<void> showReportForm(
                                       _SpaciousLabeledField(
                                         controller: lokasiCtrl,
                                         label: 'Nama Lokasi / Wilayah Kegiatan',
-                                        hint:
-                                            'Ketuk "Ambil GPS" atau ketik nama lokasi...',
+                                        hint: 'Ketuk "Ambil GPS" atau ketik nama lokasi...',
                                         icon: Icons.location_on_outlined,
                                         suffixWidget: TextButton.icon(
                                           onPressed: isGettingLocation
                                               ? null
                                               : () => fetchRealGpsLocation(
-                                                    showSnackBar: true,
-                                                  ),
+                                                  showSnackBar: true,
+                                                ),
                                           icon: isGettingLocation
                                               ? SizedBox(
                                                   width: 14,
                                                   height: 14,
                                                   child:
                                                       CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: primaryGreen,
-                                                  ),
+                                                        strokeWidth: 2,
+                                                        color: primaryGreen,
+                                                      ),
                                                 )
                                               : const Icon(
                                                   Icons.my_location_rounded,
@@ -1437,8 +1022,9 @@ Future<void> showReportForm(
                                             color: isDark
                                                 ? const Color(0xFF332005)
                                                 : Colors.orange.shade50,
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                             border: Border.all(
                                               color: isDark
                                                   ? const Color(0xFF66440A)
@@ -1463,7 +1049,8 @@ Future<void> showReportForm(
                                                             0xFFFFCC80,
                                                           )
                                                         : Colors
-                                                            .orange.shade900,
+                                                              .orange
+                                                              .shade900,
                                                   ),
                                                 ),
                                               ),
@@ -1471,7 +1058,8 @@ Future<void> showReportForm(
                                           ),
                                         ),
                                       ],
-                                      if (reverseGeocodedAddress.isNotEmpty) ...[
+                                      if (reverseGeocodedAddress
+                                          .isNotEmpty) ...[
                                         const SizedBox(height: 8),
                                         Container(
                                           width: double.infinity,
@@ -1480,10 +1068,12 @@ Future<void> showReportForm(
                                             color: isDark
                                                 ? const Color(0xFF18221B)
                                                 : const Color(0xFFF2F7F0),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border:
-                                                Border.all(color: borderCol),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
                                           ),
                                           child: Row(
                                             crossAxisAlignment:
@@ -1544,9 +1134,9 @@ Future<void> showReportForm(
                                             style: TextButton.styleFrom(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 4,
-                                              ),
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
                                               minimumSize: Size.zero,
                                               tapTargetSize:
                                                   MaterialTapTargetSize
@@ -1600,8 +1190,7 @@ Future<void> showReportForm(
                                 _SectionContainerCard(
                                   stepNumber: '2',
                                   title: 'Isian Kegiatan ($jenisLaporan)',
-                                  subtitle:
-                                      'Bagian ini otomatis disusun sesuai template yang diatur oleh Admin.',
+                                  subtitle: 'Bagian ini otomatis disusun sesuai template yang diatur oleh Admin.',
                                   cardBg: cardBg,
                                   borderCol: borderCol,
                                   primaryGreen: primaryGreen,
@@ -1613,56 +1202,56 @@ Future<void> showReportForm(
                                     children: [
                                       if (existing == null &&
                                           templateFields.isNotEmpty) ...[
-                                        ...List.generate(
-                                          templateFields.length,
-                                          (index) {
-                                            final fieldLabel =
-                                                templateFields[index];
-                                            final ctrl =
-                                                fieldControllers[fieldLabel]!;
-                                            final isLongField = fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('hasil') ||
-                                                fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('uraian') ||
-                                                fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('kondisi') ||
-                                                fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('temuan') ||
-                                                fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('tindakan') ||
-                                                fieldLabel
-                                                    .toLowerCase()
-                                                    .contains('ringkasan');
+                                        ...List.generate(templateFields.length, (
+                                          index,
+                                        ) {
+                                          final fieldLabel =
+                                              templateFields[index];
+                                          final ctrl =
+                                              fieldControllers[fieldLabel]!;
+                                          final isLongField =
+                                              fieldLabel.toLowerCase().contains(
+                                                'hasil',
+                                              ) ||
+                                              fieldLabel.toLowerCase().contains(
+                                                'uraian',
+                                              ) ||
+                                              fieldLabel.toLowerCase().contains(
+                                                'kondisi',
+                                              ) ||
+                                              fieldLabel.toLowerCase().contains(
+                                                'temuan',
+                                              ) ||
+                                              fieldLabel.toLowerCase().contains(
+                                                'tindakan',
+                                              ) ||
+                                              fieldLabel.toLowerCase().contains(
+                                                'ringkasan',
+                                              );
 
-                                            return Padding(
-                                              padding: EdgeInsets.only(
-                                                bottom: index ==
-                                                        templateFields.length -
-                                                            1
-                                                    ? 8
-                                                    : 14,
-                                              ),
-                                              child: _SpaciousLabeledField(
-                                                controller: ctrl,
-                                                label:
-                                                    '${index + 1}. $fieldLabel',
-                                                hint:
-                                                    'Tuliskan ${fieldLabel.toLowerCase()}...',
-                                                icon: isLongField
-                                                    ? Icons.notes_rounded
-                                                    : Icons.edit_note_rounded,
-                                                maxLines: isLongField ? 3 : 1,
-                                                onChanged: (_) =>
-                                                    syncTemplateFieldsToIsi(),
-                                              ),
-                                            );
-                                          },
-                                        ),
+                                          return Padding(
+                                            padding: EdgeInsets.only(
+                                              bottom:
+                                                  index ==
+                                                      templateFields.length - 1
+                                                  ? 8
+                                                  : 14,
+                                            ),
+                                            child: _SpaciousLabeledField(
+                                              controller: ctrl,
+                                              label:
+                                                  '${index + 1}. $fieldLabel',
+                                              hint:
+                                                  'Tuliskan ${fieldLabel.toLowerCase()}...',
+                                              icon: isLongField
+                                                  ? Icons.notes_rounded
+                                                  : Icons.edit_note_rounded,
+                                              maxLines: isLongField ? 3 : 1,
+                                              onChanged: (_) =>
+                                                  syncTemplateFieldsToIsi(),
+                                            ),
+                                          );
+                                        }),
                                         Theme(
                                           data: Theme.of(sheetContext).copyWith(
                                             dividerColor: Colors.transparent,
@@ -1684,8 +1273,7 @@ Future<void> showReportForm(
                                                 controller: isiCtrl,
                                                 label:
                                                     'Naskah Laporan Terformat',
-                                                hint:
-                                                    'Naskah laporan otomatis terisi dari bagian di atas...',
+                                                hint: 'Naskah laporan otomatis terisi dari bagian di atas...',
                                                 icon: Icons.article_outlined,
                                                 maxLines: 6,
                                               ),
@@ -1696,8 +1284,7 @@ Future<void> showReportForm(
                                         _SpaciousLabeledField(
                                           controller: isiCtrl,
                                           label: 'Isi / Uraian Laporan',
-                                          hint:
-                                              'Tuliskan hasil kegiatan lapangan...',
+                                          hint: 'Tuliskan hasil kegiatan lapangan...',
                                           icon: Icons.notes_rounded,
                                           maxLines: 6,
                                         ),
@@ -1710,8 +1297,7 @@ Future<void> showReportForm(
                                 // KARTU SEKSI 3: LAMPIRAN FOTO LOKASI & GEOTAGGING
                                 _SectionContainerCard(
                                   stepNumber: '3',
-                                  title:
-                                      'Foto Dokumentasi & Geolokasi (Geolocator)',
+                                  title: 'Foto Dokumentasi & Geolokasi (Geolocator)',
                                   subtitle: requirePhoto
                                       ? 'Ambil foto langsung dari kamera atau pilih dari galeri. Koordinat GPS & alamat otomatis direkam pada foto.'
                                       : 'Opsional — tambahkan foto lokasi dokumentasi kegiatan.',
@@ -1735,10 +1321,12 @@ Future<void> showReportForm(
                                             color: isDark
                                                 ? const Color(0xFF18221B)
                                                 : LaporanColors.fieldFill,
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            border:
-                                                Border.all(color: borderCol),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
                                           ),
                                           child: Column(
                                             children: [
@@ -1764,10 +1352,12 @@ Future<void> showReportForm(
                                             color: isDark
                                                 ? const Color(0xFF18221B)
                                                 : LaporanColors.fieldFill,
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            border:
-                                                Border.all(color: borderCol),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
                                           ),
                                           child: Column(
                                             crossAxisAlignment:
@@ -1776,8 +1366,8 @@ Future<void> showReportForm(
                                               ClipRRect(
                                                 borderRadius:
                                                     const BorderRadius.vertical(
-                                                  top: Radius.circular(14),
-                                                ),
+                                                      top: Radius.circular(14),
+                                                    ),
                                                 child: Image.memory(
                                                   pickedPhotoBytes!,
                                                   height: 220,
@@ -1790,11 +1380,11 @@ Future<void> showReportForm(
                                                 width: double.infinity,
                                                 padding:
                                                     const EdgeInsets.fromLTRB(
-                                                  14,
-                                                  10,
-                                                  14,
-                                                  6,
-                                                ),
+                                                      14,
+                                                      10,
+                                                      14,
+                                                      6,
+                                                    ),
                                                 color: isDark
                                                     ? const Color(0xFF1E2D23)
                                                     : const Color(0xFFE8F5E9),
@@ -1815,9 +1405,11 @@ Future<void> showReportForm(
                                                         ),
                                                         Expanded(
                                                           child: Text(
-                                                            (latCtrl.text
+                                                            (latCtrl
+                                                                        .text
                                                                         .isNotEmpty &&
-                                                                    lngCtrl.text
+                                                                    lngCtrl
+                                                                        .text
                                                                         .isNotEmpty)
                                                                 ? 'Koordinat Foto: ${latCtrl.text}, ${lngCtrl.text}'
                                                                 : 'Koordinat GPS belum tersedia pada foto ini',
@@ -1844,7 +1436,7 @@ Future<void> showReportForm(
                                                                 .isNotEmpty
                                                             ? reverseGeocodedAddress
                                                             : lokasiCtrl.text
-                                                                .trim(),
+                                                                  .trim(),
                                                         maxLines: 2,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -1860,15 +1452,14 @@ Future<void> showReportForm(
                                               Padding(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 8,
-                                                ),
+                                                      horizontal: 14,
+                                                      vertical: 8,
+                                                    ),
                                                 child: Row(
                                                   children: [
                                                     Expanded(
                                                       child: Text(
-                                                        pickedPhotoFile?.name ??
-                                                            'Foto_Lokasi_Kegiatan.jpg',
+                                                        pickedPhotoFile?.name ?? 'Foto_Lokasi_Kegiatan.jpg',
                                                         maxLines: 1,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -1887,13 +1478,14 @@ Future<void> showReportForm(
                                                         Icons.refresh_rounded,
                                                         size: 16,
                                                       ),
-                                                      label:
-                                                          const Text('Ganti'),
+                                                      label: const Text(
+                                                        'Ganti',
+                                                      ),
                                                       style:
                                                           TextButton.styleFrom(
-                                                        foregroundColor:
-                                                            primaryGreen,
-                                                      ),
+                                                            foregroundColor:
+                                                                primaryGreen,
+                                                          ),
                                                     ),
                                                     TextButton.icon(
                                                       onPressed: () {
@@ -1931,10 +1523,12 @@ Future<void> showReportForm(
                                             color: isDark
                                                 ? const Color(0xFF18221B)
                                                 : LaporanColors.fieldFill,
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            border:
-                                                Border.all(color: borderCol),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
                                           ),
                                           child: Column(
                                             crossAxisAlignment:
@@ -1943,8 +1537,8 @@ Future<void> showReportForm(
                                               ClipRRect(
                                                 borderRadius:
                                                     const BorderRadius.vertical(
-                                                  top: Radius.circular(14),
-                                                ),
+                                                      top: Radius.circular(14),
+                                                    ),
                                                 child: _buildPhotoImageWidget(
                                                   existingPhotoUrl!,
                                                   height: 200,
@@ -1954,9 +1548,9 @@ Future<void> showReportForm(
                                               Padding(
                                                 padding:
                                                     const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 10,
-                                                ),
+                                                      horizontal: 14,
+                                                      vertical: 10,
+                                                    ),
                                                 child: Row(
                                                   children: [
                                                     Expanded(
@@ -1980,13 +1574,14 @@ Future<void> showReportForm(
                                                         Icons.refresh_rounded,
                                                         size: 16,
                                                       ),
-                                                      label:
-                                                          const Text('Ganti'),
+                                                      label: const Text(
+                                                        'Ganti',
+                                                      ),
                                                       style:
                                                           TextButton.styleFrom(
-                                                        foregroundColor:
-                                                            primaryGreen,
-                                                      ),
+                                                            foregroundColor:
+                                                                primaryGreen,
+                                                          ),
                                                     ),
                                                     TextButton.icon(
                                                       onPressed: () {
@@ -2028,9 +1623,10 @@ Future<void> showReportForm(
                                                   child: OutlinedButton.icon(
                                                     onPressed: () =>
                                                         captureOrPickPhotoWithGeolocation(
-                                                      explicitSource:
-                                                          ImageSource.camera,
-                                                    ),
+                                                          explicitSource:
+                                                              ImageSource
+                                                                  .camera,
+                                                        ),
                                                     icon: const Icon(
                                                       Icons.camera_alt_rounded,
                                                       size: 17,
@@ -2043,22 +1639,21 @@ Future<void> showReportForm(
                                                             FontWeight.w700,
                                                       ),
                                                     ),
-                                                    style: OutlinedButton
-                                                        .styleFrom(
+                                                    style: OutlinedButton.styleFrom(
                                                       foregroundColor:
                                                           primaryGreen,
                                                       side: BorderSide(
                                                         color: primaryGreen,
                                                       ),
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        vertical: 11,
-                                                      ),
-                                                      shape:
-                                                          RoundedRectangleBorder(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            vertical: 11,
+                                                          ),
+                                                      shape: RoundedRectangleBorder(
                                                         borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
                                                       ),
                                                     ),
                                                   ),
@@ -2068,9 +1663,10 @@ Future<void> showReportForm(
                                                   child: OutlinedButton.icon(
                                                     onPressed: () =>
                                                         captureOrPickPhotoWithGeolocation(
-                                                      explicitSource:
-                                                          ImageSource.gallery,
-                                                    ),
+                                                          explicitSource:
+                                                              ImageSource
+                                                                  .gallery,
+                                                        ),
                                                     icon: const Icon(
                                                       Icons
                                                           .photo_library_outlined,
@@ -2084,22 +1680,21 @@ Future<void> showReportForm(
                                                             FontWeight.w700,
                                                       ),
                                                     ),
-                                                    style: OutlinedButton
-                                                        .styleFrom(
+                                                    style: OutlinedButton.styleFrom(
                                                       foregroundColor:
                                                           primaryGreen,
                                                       side: BorderSide(
                                                         color: borderCol,
                                                       ),
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                        vertical: 11,
-                                                      ),
-                                                      shape:
-                                                          RoundedRectangleBorder(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            vertical: 11,
+                                                          ),
+                                                      shape: RoundedRectangleBorder(
                                                         borderRadius:
-                                                            BorderRadius
-                                                                .circular(12),
+                                                            BorderRadius.circular(
+                                                              12,
+                                                            ),
                                                       ),
                                                     ),
                                                   ),
@@ -2119,44 +1714,65 @@ Future<void> showReportForm(
                                   child: inlineStatusMessage == null
                                       ? const SizedBox.shrink()
                                       : Padding(
-                                          padding: const EdgeInsets.only(top: 14),
+                                          padding: const EdgeInsets.only(
+                                            top: 14,
+                                          ),
                                           child: TweenAnimationBuilder<double>(
                                             key: ValueKey(inlineStatusMessage),
                                             tween: Tween(begin: 0.0, end: 1.0),
-                                            duration: const Duration(milliseconds: 320),
+                                            duration: const Duration(
+                                              milliseconds: 320,
+                                            ),
                                             curve: Curves.easeOutCubic,
                                             builder: (context, value, child) {
                                               return Opacity(
                                                 opacity: value,
                                                 child: Transform.translate(
-                                                  offset: Offset(0, 12 * (1 - value)),
+                                                  offset: Offset(
+                                                    0,
+                                                    12 * (1 - value),
+                                                  ),
                                                   child: child,
                                                 ),
                                               );
                                             },
                                             child: Container(
                                               width: double.infinity,
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 14,
-                                                vertical: 12,
-                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 14,
+                                                    vertical: 12,
+                                                  ),
                                               decoration: BoxDecoration(
                                                 color: inlineStatusIsError
-                                                    ? Colors.red.withValues(alpha: 0.12)
-                                                    : LaporanColors.primary.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(14),
+                                                    ? Colors.red.withValues(
+                                                        alpha: 0.12,
+                                                      )
+                                                    : LaporanColors.primary
+                                                          .withValues(
+                                                            alpha: 0.12,
+                                                          ),
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
                                                 border: Border.all(
                                                   color: inlineStatusIsError
-                                                      ? Colors.red.withValues(alpha: 0.45)
-                                                      : LaporanColors.primary.withValues(alpha: 0.45),
+                                                      ? Colors.red.withValues(
+                                                          alpha: 0.45,
+                                                        )
+                                                      : LaporanColors.primary
+                                                            .withValues(
+                                                              alpha: 0.45,
+                                                            ),
                                                 ),
                                               ),
                                               child: Row(
                                                 children: [
                                                   Icon(
                                                     inlineStatusIsError
-                                                        ? Icons.error_outline_rounded
-                                                        : Icons.check_circle_rounded,
+                                                        ? Icons
+                                                              .error_outline_rounded
+                                                        : Icons
+                                                              .check_circle_rounded,
                                                     color: inlineStatusIsError
                                                         ? Colors.red.shade700
                                                         : primaryGreen,
@@ -2168,9 +1784,13 @@ Future<void> showReportForm(
                                                       inlineStatusMessage!,
                                                       style: TextStyle(
                                                         fontSize: 12.8,
-                                                        fontWeight: FontWeight.w700,
-                                                        color: inlineStatusIsError
-                                                            ? Colors.red.shade700
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color:
+                                                            inlineStatusIsError
+                                                            ? Colors
+                                                                  .red
+                                                                  .shade700
                                                             : primaryGreen,
                                                       ),
                                                     ),
@@ -2223,33 +1843,6 @@ Future<void> showReportForm(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
-<<<<<<< Updated upstream
-                                    onPressed: () async {
-                                      if (existing == null &&
-                                          templateFields.isNotEmpty) {
-                                        syncTemplateFieldsToIsi();
-                                      }
-                                      await _handleSubmit(
-                                        context: sheetContext,
-                                        parentContext: context,
-                                        jenisLaporan: jenisLaporan,
-                                        existing: existing,
-                                        judulCtrl: judulCtrl,
-                                        isiCtrl: isiCtrl,
-                                        lokasiCtrl: lokasiCtrl,
-                                        latCtrl: latCtrl,
-                                        lngCtrl: lngCtrl,
-                                        addressGeolokasi:
-                                            reverseGeocodedAddress,
-                                        customActivityDate: formattedDateApi,
-                                        status: 'Draft',
-                                        onReportSaved: onReportSaved,
-                                        photoBytes: pickedPhotoBytes,
-                                        photoFilename: pickedPhotoFile?.name,
-                                        existingPhotoUrl: existingPhotoUrl,
-                                      );
-                                    },
-=======
                                     onPressed: isSubmittingForm
                                         ? null
                                         : () async {
@@ -2258,7 +1851,9 @@ Future<void> showReportForm(
                                               syncTemplateFieldsToIsi();
                                             }
                                             if (judulCtrl.text.trim().isEmpty ||
-                                                lokasiCtrl.text.trim().isEmpty) {
+                                                lokasiCtrl.text
+                                                    .trim()
+                                                    .isEmpty) {
                                               const msg =
                                                   'Judul dan lokasi kegiatan wajib diisi terlebih dahulu.';
                                               setModalState(() {
@@ -2280,35 +1875,48 @@ Future<void> showReportForm(
                                               inlineStatusIsError = false;
                                             });
                                             scrollFormToBottom();
-                                            await _handleSubmit(
-                                              context: sheetContext,
-                                              parentContext: context,
-                                              jenisLaporan: jenisLaporan,
-                                              existing: existing,
-                                              judulCtrl: judulCtrl,
-                                              isiCtrl: isiCtrl,
-                                              lokasiCtrl: lokasiCtrl,
-                                              latCtrl: latCtrl,
-                                              lngCtrl: lngCtrl,
-                                              customActivityDate: formattedDateApi,
-                                              status: 'Draft',
-                                              onReportSaved: onReportSaved,
-                                              closeOnSuccess: true,
-                                              photoBytes: pickedPhotoBytes,
-                                              photoFilename: pickedPhotoFile?.name,
-                                              onStatusFeedback: (msg, isErr) {
-                                                if (sheetContext.mounted) {
-                                                  setModalState(() {
-                                                    inlineStatusMessage = msg;
-                                                    inlineStatusIsError = isErr;
-                                                    isSubmittingForm = false;
-                                                  });
-                                                  scrollFormToBottom();
-                                                }
-                                              },
-                                            );
+                                            try {
+                                              await _handleSubmit(
+                                                context: sheetContext,
+                                                parentContext: context,
+                                                jenisLaporan: jenisLaporan,
+                                                existing: existing,
+                                                judulCtrl: judulCtrl,
+                                                isiCtrl: isiCtrl,
+                                                lokasiCtrl: lokasiCtrl,
+                                                latCtrl: latCtrl,
+                                                lngCtrl: lngCtrl,
+                                                addressGeolokasi:
+                                                    reverseGeocodedAddress,
+                                                customActivityDate:
+                                                    formattedDateApi,
+                                                status: 'Draft',
+                                                onReportSaved: onReportSaved,
+                                                closeOnSuccess: true,
+                                                photoBytes: pickedPhotoBytes,
+                                                photoFilename:
+                                                    pickedPhotoFile?.name,
+                                                existingPhotoUrl:
+                                                    existingPhotoUrl,
+                                                onStatusFeedback: (msg, isErr) {
+                                                  if (sheetContext.mounted) {
+                                                    setModalState(() {
+                                                      inlineStatusMessage = msg;
+                                                      inlineStatusIsError =
+                                                          isErr;
+                                                    });
+                                                    scrollFormToBottom();
+                                                  }
+                                                },
+                                              );
+                                            } finally {
+                                              if (sheetContext.mounted) {
+                                                setModalState(() {
+                                                  isSubmittingForm = false;
+                                                });
+                                              }
+                                            }
                                           },
->>>>>>> Stashed changes
                                     icon: const Icon(
                                       Icons.save_outlined,
                                       size: 18,
@@ -2339,7 +1947,9 @@ Future<void> showReportForm(
                                               syncTemplateFieldsToIsi();
                                             }
                                             if (judulCtrl.text.trim().isEmpty ||
-                                                lokasiCtrl.text.trim().isEmpty ||
+                                                lokasiCtrl.text
+                                                    .trim()
+                                                    .isEmpty ||
                                                 isiCtrl.text.trim().isEmpty) {
                                               const msg =
                                                   'Lengkapi judul, lokasi, dan isi laporan sebelum menyelesaikan laporan.';
@@ -2357,8 +1967,7 @@ Future<void> showReportForm(
                                             }
                                             setModalState(() {
                                               isSubmittingForm = true;
-                                              inlineStatusMessage =
-                                                  'Mengirim dan menyelesaikan laporan...';
+                                              inlineStatusMessage = 'Mengirim dan menyelesaikan laporan...';
                                               inlineStatusIsError = false;
                                             });
                                             scrollFormToBottom();
@@ -2372,12 +1981,14 @@ Future<void> showReportForm(
                                               lokasiCtrl: lokasiCtrl,
                                               latCtrl: latCtrl,
                                               lngCtrl: lngCtrl,
-                                              customActivityDate: formattedDateApi,
+                                              customActivityDate:
+                                                  formattedDateApi,
                                               status: 'Selesai',
                                               onReportSaved: onReportSaved,
                                               closeOnSuccess: true,
                                               photoBytes: pickedPhotoBytes,
-                                              photoFilename: pickedPhotoFile?.name,
+                                              photoFilename:
+                                                  pickedPhotoFile?.name,
                                               onStatusFeedback: (msg, isErr) {
                                                 if (sheetContext.mounted) {
                                                   setModalState(() {
@@ -2403,45 +2014,11 @@ Future<void> showReportForm(
                                             Icons.check_circle_outline,
                                             size: 18,
                                           ),
-<<<<<<< Updated upstream
-                                        );
-                                        return;
-                                      }
-                                      await _handleSubmit(
-                                        context: sheetContext,
-                                        parentContext: context,
-                                        jenisLaporan: jenisLaporan,
-                                        existing: existing,
-                                        judulCtrl: judulCtrl,
-                                        isiCtrl: isiCtrl,
-                                        lokasiCtrl: lokasiCtrl,
-                                        latCtrl: latCtrl,
-                                        lngCtrl: lngCtrl,
-                                        addressGeolokasi:
-                                            reverseGeocodedAddress,
-                                        customActivityDate: formattedDateApi,
-                                        status: 'Selesai',
-                                        onReportSaved: onReportSaved,
-                                        closeOnSuccess: true,
-                                        photoBytes: pickedPhotoBytes,
-                                        photoFilename: pickedPhotoFile?.name,
-                                        existingPhotoUrl: existingPhotoUrl,
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.check_circle_outline,
-                                      size: 18,
-                                    ),
-                                    label: const Text(
-                                      'Selesaikan Laporan',
-                                      style: TextStyle(
-=======
                                     label: Text(
                                       isSubmittingForm
                                           ? 'Memproses...'
                                           : 'Selesaikan Laporan',
                                       style: const TextStyle(
->>>>>>> Stashed changes
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -2500,17 +2077,16 @@ Future<void> showAdminTemplateEditor(
   );
   final newFieldCtrl = TextEditingController();
 
-  String selectedIconKey =
-      existingTemplate?['iconKey']?.toString() ?? 'groups';
-  String sampleFileName =
-      existingTemplate?['sampleFileName']?.toString() ?? '';
+  String selectedIconKey = existingTemplate?['iconKey']?.toString() ?? 'groups';
+  String sampleFileName = existingTemplate?['sampleFileName']?.toString() ?? '';
   bool requirePhoto = existingTemplate?['requirePhoto'] != false;
   bool requireLocation = existingTemplate?['requireLocation'] != false;
   bool isExtractingFile = false;
 
   int activeStepTab = 0;
 
-  final List<String> fields = (existingTemplate?['fields'] as List?)
+  final List<String> fields =
+      (existingTemplate?['fields'] as List?)
           ?.map((e) => e.toString())
           .toList() ??
       <String>[
@@ -2587,24 +2163,25 @@ Future<void> showAdminTemplateEditor(
 
                 final extracted =
                     ReportTemplateManager.extractTemplateFromSampleFile(
-                  fileName: picked.name,
-                  bytes: fileBytes,
-                );
+                      fileName: picked.name,
+                      bytes: fileBytes,
+                    );
 
                 setModalState(() {
                   sampleFileName = picked.name;
                   if (titleCtrl.text.trim().isEmpty || !isEditing) {
                     titleCtrl.text = (extracted['title'] ?? '').toString();
                   }
-                  categoryCtrl.text =
-                      (extracted['category'] ?? 'Penyuluhan').toString();
-                  selectedIconKey =
-                      (extracted['iconKey'] ?? 'groups').toString();
-                  defaultTitleCtrl.text =
-                      (extracted['defaultTitle'] ?? '').toString();
+                  categoryCtrl.text = (extracted['category'] ?? 'Penyuluhan')
+                      .toString();
+                  selectedIconKey = (extracted['iconKey'] ?? 'groups')
+                      .toString();
+                  defaultTitleCtrl.text = (extracted['defaultTitle'] ?? '')
+                      .toString();
                   descCtrl.text = (extracted['description'] ?? '').toString();
 
-                  final extFields = (extracted['fields'] as List?)
+                  final extFields =
+                      (extracted['fields'] as List?)
                           ?.map((e) => e.toString())
                           .toList() ??
                       [];
@@ -2792,8 +2369,9 @@ Future<void> showAdminTemplateEditor(
                                       color: cardBg,
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(
-                                        color:
-                                            primaryGreen.withValues(alpha: 0.4),
+                                        color: primaryGreen.withValues(
+                                          alpha: 0.4,
+                                        ),
                                         width: 1.3,
                                       ),
                                     ),
@@ -2861,8 +2439,9 @@ Future<void> showAdminTemplateEditor(
                                               color: softBg,
                                               borderRadius:
                                                   BorderRadius.circular(12),
-                                              border:
-                                                  Border.all(color: borderCol),
+                                              border: Border.all(
+                                                color: borderCol,
+                                              ),
                                             ),
                                             child: Row(
                                               children: [
@@ -2887,8 +2466,8 @@ Future<void> showAdminTemplateEditor(
                                                 TextButton(
                                                   onPressed: () =>
                                                       setModalState(
-                                                    () => activeStepTab = 1,
-                                                  ),
+                                                        () => activeStepTab = 1,
+                                                      ),
                                                   child: const Text(
                                                     'Lihat Hasil Form →',
                                                     style: TextStyle(
@@ -2913,9 +2492,9 @@ Future<void> showAdminTemplateEditor(
                                                     height: 16,
                                                     child:
                                                         CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: primaryGreen,
-                                                    ),
+                                                          strokeWidth: 2,
+                                                          color: primaryGreen,
+                                                        ),
                                                   )
                                                 : const Icon(
                                                     Icons.upload_file_rounded,
@@ -2936,8 +2515,8 @@ Future<void> showAdminTemplateEditor(
                                               ),
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                vertical: 13,
-                                              ),
+                                                    vertical: 13,
+                                                  ),
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(13),
@@ -2977,8 +2556,7 @@ Future<void> showAdminTemplateEditor(
                                                 child: _SpaciousLabeledField(
                                                   controller: titleCtrl,
                                                   label: 'Nama Jenis Laporan',
-                                                  hint:
-                                                      'Contoh: Laporan Penyuluhan / Laporan TRK',
+                                                  hint: 'Contoh: Laporan Penyuluhan / Laporan TRK',
                                                   icon: Icons.badge_outlined,
                                                 ),
                                               ),
@@ -2987,8 +2565,7 @@ Future<void> showAdminTemplateEditor(
                                                 child: _SpaciousLabeledField(
                                                   controller: categoryCtrl,
                                                   label: 'Kategori Laporan',
-                                                  hint:
-                                                      'Contoh: TRK & Rehabilitasi',
+                                                  hint: 'Contoh: TRK & Rehabilitasi',
                                                   icon: Icons.category_outlined,
                                                 ),
                                               ),
@@ -2998,8 +2575,7 @@ Future<void> showAdminTemplateEditor(
                                           _SpaciousLabeledField(
                                             controller: titleCtrl,
                                             label: 'Nama Jenis Laporan',
-                                            hint:
-                                                'Contoh: Laporan Penyuluhan / Laporan TRK',
+                                            hint: 'Contoh: Laporan Penyuluhan / Laporan TRK',
                                             icon: Icons.badge_outlined,
                                           ),
                                           const SizedBox(height: 14),
@@ -3014,17 +2590,14 @@ Future<void> showAdminTemplateEditor(
                                         _SpaciousLabeledField(
                                           controller: defaultTitleCtrl,
                                           label: 'Judul Default pada Form User',
-                                          hint:
-                                              'Contoh: Pelaksanaan Kegiatan TRK & Rehabilitasi Lahan',
+                                          hint: 'Contoh: Pelaksanaan Kegiatan TRK & Rehabilitasi Lahan',
                                           icon: Icons.title_rounded,
                                         ),
                                         const SizedBox(height: 14),
                                         _SpaciousLabeledField(
                                           controller: descCtrl,
-                                          label:
-                                              'Deskripsi / Petunjuk Singkat untuk Pegawai',
-                                          hint:
-                                              'Jelaskan kegunaan jenis laporan ini...',
+                                          label: 'Deskripsi / Petunjuk Singkat untuk Pegawai',
+                                          hint: 'Jelaskan kegunaan jenis laporan ini...',
                                           icon: Icons.info_outline_rounded,
                                           maxLines: 2,
                                         ),
@@ -3117,8 +2690,7 @@ Future<void> showAdminTemplateEditor(
                                               fontSize: 13.5,
                                             ),
                                             decoration: InputDecoration(
-                                              hintText:
-                                                  'Ketik nama bagian baru (misal: Luas Area Tanam)...',
+                                              hintText: 'Ketik nama bagian baru (misal: Luas Area Tanam)...',
                                               hintStyle: TextStyle(
                                                 fontSize: 12.5,
                                                 color: textSecondary,
@@ -3127,9 +2699,9 @@ Future<void> showAdminTemplateEditor(
                                               fillColor: softBg,
                                               contentPadding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 14,
-                                                vertical: 12,
-                                              ),
+                                                    horizontal: 14,
+                                                    vertical: 12,
+                                                  ),
                                               border: OutlineInputBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(12),
@@ -3150,8 +2722,8 @@ Future<void> showAdminTemplateEditor(
                                         const SizedBox(width: 10),
                                         ElevatedButton.icon(
                                           onPressed: () {
-                                            final val =
-                                                newFieldCtrl.text.trim();
+                                            final val = newFieldCtrl.text
+                                                .trim();
                                             if (val.isEmpty) return;
                                             setModalState(() {
                                               if (!fields.contains(val)) {
@@ -3195,8 +2767,9 @@ Future<void> showAdminTemplateEditor(
                                         ),
                                         decoration: BoxDecoration(
                                           color: softBg,
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           border: Border.all(color: borderCol),
                                         ),
                                         child: Row(
@@ -3364,8 +2937,7 @@ Future<void> showAdminTemplateEditor(
                                   _SpaciousLabeledField(
                                     controller: bodyCtrl,
                                     label: 'Format Naskah Laporan',
-                                    hint:
-                                        'Tulis kerangka laporan baku di sini...',
+                                    hint: 'Tulis kerangka laporan baku di sini...',
                                     icon: Icons.article_outlined,
                                     maxLines: 9,
                                   ),
@@ -3464,9 +3036,9 @@ Future<void> showAdminTemplateEditor(
                                   regenerateTemplateBodyFromFields();
                                 }
 
-                                final saved =
-                                    ReportTemplateManager.normalizeTemplate({
-                                  'id': existingTemplate?['id'] ??
+                                final saved = ReportTemplateManager.normalizeTemplate({
+                                  'id':
+                                      existingTemplate?['id'] ??
                                       'tpl_${DateTime.now().millisecondsSinceEpoch}',
                                   'title': titleCtrl.text.trim(),
                                   'category': categoryCtrl.text.trim().isEmpty
@@ -3532,7 +3104,8 @@ Future<void> showReportDownloadSheet(
   bool isExportingPhoto = false;
   ReportExportResult? lastResult;
 
-  final bool hasPhoto = (laporan['foto'] != null &&
+  final bool hasPhoto =
+      (laporan['foto'] != null &&
           laporan['foto'].toString().trim().isNotEmpty) ||
       (laporan['photo_base64'] != null &&
           laporan['photo_base64'].toString().trim().isNotEmpty) ||
@@ -3903,8 +3476,9 @@ Future<void> showReportDownloadSheet(
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
-                            onPressed:
-                                isExportingPhoto ? null : triggerExportPhoto,
+                            onPressed: isExportingPhoto
+                                ? null
+                                : triggerExportPhoto,
                             icon: isExportingPhoto
                                 ? SizedBox(
                                     width: 16,
@@ -3953,11 +3527,10 @@ void showReportDetail(
   BuildContext context, {
   required Map<String, dynamic> laporan,
   required void Function(String jenisLaporan, {Map<String, dynamic>? existing})
-      onEdit,
+  onEdit,
   required void Function(Map<String, dynamic> laporan) onDownload,
   bool isAdmin = false,
-  void Function(Map<String, dynamic> laporan, String newStatus)?
-      onUpdateStatus,
+  void Function(Map<String, dynamic> laporan, String newStatus)? onUpdateStatus,
 }) {
   showModalBottomSheet(
     context: context,
@@ -3969,14 +3542,16 @@ void showReportDetail(
     builder: (ctx) {
       final isDark = Theme.of(ctx).brightness == Brightness.dark;
       final textColor = isDark ? Colors.white : const Color(0xFF24352A);
-      final primaryGreen =
-          isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+      final primaryGreen = isDark
+          ? const Color(0xFF81C784)
+          : LaporanColors.primary;
       final pelapor =
           (laporan['pelapor'] ?? laporan['userName'] ?? 'Penyuluh Kehutanan')
               .toString();
       final currentStatus = (laporan['status'] ?? 'Draft').toString();
-      final alamatGeolokasi =
-          (laporan['alamatGeolokasi'] ?? '').toString().trim();
+      final alamatGeolokasi = (laporan['alamatGeolokasi'] ?? '')
+          .toString()
+          .trim();
 
       return Center(
         heightFactor: 1.0,
@@ -4064,20 +3639,16 @@ void showReportDetail(
                       ),
                     ),
                     child: Text(
-<<<<<<< Updated upstream
-                      (laporan['isi']?.toString().isNotEmpty ?? false)
-                          ? laporan['isi'].toString()
-                          : 'Isi laporan belum dilengkapi.',
-                      style: TextStyle(height: 1.5, color: textColor),
-=======
                       ReportTemplateManager.sanitizeReportIsi(
                         rawIsi: (laporan['isi'] ?? '').toString(),
-                        jenis: (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
-                        judul: (laporan['judul'] ?? 'Kegiatan Lapangan').toString(),
-                        lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+                        jenis: (laporan['jenis'] ?? 'Laporan Kegiatan')
+                            .toString(),
+                        judul: (laporan['judul'] ?? 'Kegiatan Lapangan')
+                            .toString(),
+                        lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut')
+                            .toString(),
                       ),
-                      style: const TextStyle(height: 1.5),
->>>>>>> Stashed changes
+                      style: TextStyle(height: 1.5, color: textColor),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -4093,8 +3664,8 @@ void showReportDetail(
                     title: 'Longitude',
                     value:
                         (laporan['longitude']?.toString().isNotEmpty ?? false)
-                            ? laporan['longitude'].toString()
-                            : 'Belum tersedia',
+                        ? laporan['longitude'].toString()
+                        : 'Belum tersedia',
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -4243,8 +3814,9 @@ Widget _buildPhotoImageWidget(
 }) {
   if (sourceUrl.startsWith('data:image')) {
     try {
-      final cleanB64 =
-          sourceUrl.contains(',') ? sourceUrl.split(',').last : sourceUrl;
+      final cleanB64 = sourceUrl.contains(',')
+          ? sourceUrl.split(',').last
+          : sourceUrl;
       final bytes = base64Decode(cleanB64);
       return Image.memory(
         bytes,
@@ -4272,8 +3844,8 @@ Widget _buildPhotoImageWidget(
   final fullUrl = sourceUrl.startsWith('http')
       ? sourceUrl
       : (sourceUrl.startsWith('/')
-          ? '${ApiConstants.baseUrl}$sourceUrl'
-          : '${ApiConstants.baseUrl}/storage/$sourceUrl');
+            ? '${ApiConstants.baseUrl}$sourceUrl'
+            : '${ApiConstants.baseUrl}/storage/$sourceUrl');
 
   return Image.network(
     fullUrl,
@@ -4326,8 +3898,9 @@ Widget _buildReportPhotoSection(
   if (rawFoto.startsWith('data:image')) {
     photoUrl = rawFoto;
   } else if (rawB64.isNotEmpty) {
-    photoUrl =
-        rawB64.startsWith('data:image') ? rawB64 : 'data:image/jpeg;base64,$rawB64';
+    photoUrl = rawB64.startsWith('data:image')
+        ? rawB64
+        : 'data:image/jpeg;base64,$rawB64';
   } else if (rawFoto.isNotEmpty) {
     photoUrl = rawFoto;
   }
@@ -4342,8 +3915,9 @@ Widget _buildReportPhotoSection(
           .toString()
           .trim();
       if (pB64.isNotEmpty) {
-        photoUrl =
-            pB64.startsWith('data:image') ? pB64 : 'data:image/jpeg;base64,$pB64';
+        photoUrl = pB64.startsWith('data:image')
+            ? pB64
+            : 'data:image/jpeg;base64,$pB64';
       } else if (first['id'] != null) {
         photoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
       } else if (raw.isNotEmpty) {
@@ -4442,8 +4016,10 @@ Widget _buildReportPhotoSection(
               bottom: 10,
               right: 10,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.65),
                   borderRadius: BorderRadius.circular(20),
@@ -4477,8 +4053,7 @@ Widget _buildReportPhotoSection(
             color: isDark ? const Color(0xFF18221B) : const Color(0xFFF2F7F0),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color:
-                  isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC),
+              color: isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC),
             ),
           ),
           child: Column(
@@ -4549,11 +4124,8 @@ Future<void> _handleSubmit({
   bool closeOnSuccess = false,
   Uint8List? photoBytes,
   String? photoFilename,
-<<<<<<< Updated upstream
   String? existingPhotoUrl,
-=======
   void Function(String message, bool isError)? onStatusFeedback,
->>>>>>> Stashed changes
 }) async {
   final prefs = await SharedPreferences.getInstance();
   final token = prefs.getString('token');
@@ -4561,18 +4133,8 @@ Future<void> _handleSubmit({
   if (token == null || token.isEmpty) {
     const msg = 'Sesi berakhir. Silakan login kembali.';
     onStatusFeedback?.call(msg, true);
-    const msg = 'Sesi berakhir. Silakan login kembali.';
-    onStatusFeedback?.call(msg, true);
     if (!parentContext.mounted) return;
-    showTopFrontNotification(
-      parentContext,
-      message: msg,
-      isError: true,
-    showTopFrontNotification(
-      parentContext,
-      message: msg,
-      isError: true,
-    );
+    showTopFrontNotification(parentContext, message: msg, isError: true);
     return;
   }
 
@@ -4582,18 +4144,8 @@ Future<void> _handleSubmit({
   if (title.isEmpty || location.isEmpty) {
     const msg = 'Judul dan lokasi wajib diisi.';
     onStatusFeedback?.call(msg, true);
-    const msg = 'Judul dan lokasi wajib diisi.';
-    onStatusFeedback?.call(msg, true);
     if (!parentContext.mounted) return;
-    showTopFrontNotification(
-      parentContext,
-      message: msg,
-      isError: true,
-    showTopFrontNotification(
-      parentContext,
-      message: msg,
-      isError: true,
-    );
+    showTopFrontNotification(parentContext, message: msg, isError: true);
     return;
   }
 
@@ -4601,14 +4153,15 @@ Future<void> _handleSubmit({
   final existingDate = existing?['tanggalApi']?.toString();
   final activityDate =
       (customActivityDate != null && customActivityDate.isNotEmpty)
-          ? customActivityDate
-          : ((existingDate != null && existingDate.isNotEmpty)
-              ? existingDate
-              : '${now.year}-${now.month.toString().padLeft(2, '0')}'
+      ? customActivityDate
+      : ((existingDate != null && existingDate.isNotEmpty)
+            ? existingDate
+            : '${now.year}-${now.month.toString().padLeft(2, '0')}'
                   '-${now.day.toString().padLeft(2, '0')}');
 
   final apiStatus = status == 'Draft' ? 'draft' : 'terkirim';
-  final currentUserName = prefs.getString('profil_nama') ??
+  final currentUserName =
+      prefs.getString('profil_nama') ??
       prefs.getString('name') ??
       (prefs.getString('email')?.isNotEmpty == true
           ? prefs.getString('email')!.split('@').first
@@ -4665,8 +4218,8 @@ Future<void> _handleSubmit({
         'lokasi': location,
         'alamatGeolokasi':
             (addressGeolokasi != null && addressGeolokasi.trim().isNotEmpty)
-                ? addressGeolokasi.trim()
-                : location,
+            ? addressGeolokasi.trim()
+            : location,
         'isi': isiCtrl.text.trim(),
         'latitude': latCtrl.text.trim(),
         'longitude': lngCtrl.text.trim(),
@@ -4674,7 +4227,8 @@ Future<void> _handleSubmit({
         'localPhotoPath': photoDataUri ?? existing?['localPhotoPath'],
         'foto': effectivePhoto,
         'photo_base64': photoDataUri ?? existing?['photo_base64'] ?? '',
-        'photos': serverPhotos ??
+        'photos':
+            serverPhotos ??
             (effectivePhoto.toString().isNotEmpty
                 ? [
                     {
@@ -4713,10 +4267,7 @@ Future<void> _handleSubmit({
         photoFilename: photoFilename,
       );
       final recordId = 'local_$insertedId';
-      await syncToLocalMonitoringStorage(
-        recordId,
-        savedPhotoUrl: photoDataUri,
-      );
+      await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
 
       await NotificationService.instance.addReportCreatedNotification(
         title: title,
@@ -4726,51 +4277,23 @@ Future<void> _handleSubmit({
         reportId: recordId,
       );
 
-<<<<<<< Updated upstream
-      await onReportSaved();
-
-      if (!parentContext.mounted) return;
-      ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF245C3A),
-          content: Text(
-            photoBytes != null
-                ? 'Laporan dan foto geolokasi berhasil disimpan di perangkat.'
-                : 'Laporan berhasil disimpan di perangkat.',
-          ),
-        ),
-      );
-=======
       final offlineMsg = photoBytes != null
           ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan saat online.'
           : 'Laporan disimpan secara offline. Akan otomatis dikirim saat ada koneksi.';
       onStatusFeedback?.call(offlineMsg, false);
->>>>>>> Stashed changes
 
-      if (context.mounted) {
+      await onReportSaved();
+      if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
-      await onReportSaved();
 
       if (!parentContext.mounted) return;
-<<<<<<< Updated upstream
-      ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(content: Text('Gagal menyimpan laporan: $e')),
-=======
-      showTopFrontNotification(
-        parentContext,
-        message: offlineMsg,
-      );
+      showTopFrontNotification(parentContext, message: offlineMsg);
     } catch (e) {
       final errMsg = 'Gagal menyimpan offline: $e';
       onStatusFeedback?.call(errMsg, true);
       if (!parentContext.mounted) return;
-      showTopFrontNotification(
-        parentContext,
-        message: errMsg,
-        isError: true,
->>>>>>> Stashed changes
-      );
+      showTopFrontNotification(parentContext, message: errMsg, isError: true);
     }
     return;
   }
@@ -4799,7 +4322,8 @@ Future<void> _handleSubmit({
           ? (reportData!['photos'] as List<dynamic>)
           : <dynamic>[];
 
-      bool photoUploaded = serverPhotos.isNotEmpty;
+      bool photoUploaded = photoBytes == null || serverPhotos.isNotEmpty;
+      String? photoError;
 
       // Jika foto belum masuk melalui JSON payload (misal server versi lama), kirim juga via Multipart
       if (reportId != null && photoBytes != null && !photoUploaded) {
@@ -4808,7 +4332,8 @@ Future<void> _handleSubmit({
             token: token,
             reportId: reportId,
             photoBytes: photoBytes,
-            filename: photoFilename ??
+            filename:
+                photoFilename ??
                 'bukti_laporan_${DateTime.now().millisecondsSinceEpoch}.jpg',
             latitude: double.tryParse(latCtrl.text.trim()),
             longitude: double.tryParse(lngCtrl.text.trim()),
@@ -4822,20 +4347,26 @@ Future<void> _handleSubmit({
                 serverPhotos = [pBody['data']];
               }
             } catch (_) {}
+          } else {
+            photoError =
+                'Upload foto gagal dengan status ${photoRes.statusCode}.';
           }
-        } catch (_) {}
+        } catch (e) {
+          photoError = 'Upload foto gagal: $e';
+        }
+      } else if (photoBytes != null && reportId == null && !photoUploaded) {
+        photoError =
+            'Foto belum dapat dikaitkan karena ID laporan tidak tersedia.';
       }
 
-      final finalRecordId =
-          (reportId ?? DateTime.now().millisecondsSinceEpoch).toString();
+      final finalRecordId = (reportId ?? DateTime.now().millisecondsSinceEpoch)
+          .toString();
 
       await syncToLocalMonitoringStorage(
         finalRecordId,
         savedPhotoUrl: photoDataUri,
         serverPhotos: serverPhotos.isNotEmpty ? serverPhotos : null,
       );
-<<<<<<< Updated upstream
-
       await NotificationService.instance.addReportCreatedNotification(
         title: title,
         jenisLaporan: jenisLaporan,
@@ -4847,44 +4378,27 @@ Future<void> _handleSubmit({
       await onReportSaved();
 
       if (!parentContext.mounted) return;
-=======
->>>>>>> Stashed changes
 
       final String notifyMsg;
       if (apiStatus == 'draft') {
-        notifyMsg = photoBytes != null
+        notifyMsg = photoError != null
+            ? 'Draft disimpan, tetapi upload foto gagal ($photoError).'
+            : photoBytes != null
             ? 'Draft laporan beserta foto geolokasi berhasil disimpan.'
             : 'Draft berhasil disimpan ke database.';
       } else {
-        notifyMsg = photoBytes != null
+        notifyMsg = photoError != null
+            ? 'Laporan terkirim, tetapi upload foto gagal ($photoError).'
+            : photoBytes != null
             ? 'Laporan dan foto bukti geolokasi berhasil dikirim.'
             : 'Laporan berhasil dikirim ke database.';
       }
 
-<<<<<<< Updated upstream
-      ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF245C3A),
-          content: Text(notifyMsg),
-        ),
-      );
-=======
       onStatusFeedback?.call(notifyMsg, photoError != null);
->>>>>>> Stashed changes
 
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
-      await onReportSaved();
-
-      if (!parentContext.mounted) return;
-      showTopFrontNotification(
-        parentContext,
-        message: notifyMsg,
-        isError: photoError != null,
-      );
-      await onReportSaved();
-
       if (!parentContext.mounted) return;
       showTopFrontNotification(
         parentContext,
@@ -4898,12 +4412,8 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
-<<<<<<< Updated upstream
       final recordId = 'local_$insertedId';
-      await syncToLocalMonitoringStorage(
-        recordId,
-        savedPhotoUrl: photoDataUri,
-      );
+      await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
       await NotificationService.instance.addReportCreatedNotification(
         title: title,
         jenisLaporan: jenisLaporan,
@@ -4911,37 +4421,17 @@ Future<void> _handleSubmit({
         status: status,
         reportId: recordId,
       );
-      await onReportSaved();
-
-      if (!parentContext.mounted) return;
-      ScaffoldMessenger.of(parentContext).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF245C3A),
-          content: Text(
-            status == 'Draft'
-                ? 'Draft laporan & foto disimpan lokal di perangkat.'
-                : 'Laporan & foto disimpan lokal di perangkat dan siap diunduh.',
-          ),
-        ),
-      );
-=======
-      await syncToLocalMonitoringStorage('local_$insertedId');
       final localMsg = status == 'Draft'
           ? 'Draft laporan disimpan lokal di perangkat.'
           : 'Laporan disimpan lokal di perangkat dan siap diunduh.';
       onStatusFeedback?.call(localMsg, false);
-
->>>>>>> Stashed changes
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
       await onReportSaved();
 
       if (!parentContext.mounted) return;
-      showTopFrontNotification(
-        parentContext,
-        message: localMsg,
-      );
+      showTopFrontNotification(parentContext, message: localMsg);
     }
   } catch (e) {
     try {
@@ -4951,12 +4441,8 @@ Future<void> _handleSubmit({
         photoBytes: photoBytes,
         photoFilename: photoFilename,
       );
-<<<<<<< Updated upstream
       final recordId = 'local_$insertedId';
-      await syncToLocalMonitoringStorage(
-        recordId,
-        savedPhotoUrl: photoDataUri,
-      );
+      await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
       await NotificationService.instance.addReportCreatedNotification(
         title: title,
         jenisLaporan: jenisLaporan,
@@ -4964,49 +4450,21 @@ Future<void> _handleSubmit({
         status: status,
         reportId: recordId,
       );
-      await onReportSaved();
-      if (parentContext.mounted) {
-        ScaffoldMessenger.of(parentContext).showSnackBar(
-          const SnackBar(
-            backgroundColor: Color(0xFF245C3A),
-            content: Text(
-              'Koneksi bermasalah. Laporan dan foto geolokasi disimpan aman di perangkat.',
-            ),
-          ),
-        );
-      }
-=======
-      await syncToLocalMonitoringStorage('local_$insertedId');
       const fallbackMsg =
           'Koneksi bermasalah. Laporan dan foto disimpan di perangkat.';
       onStatusFeedback?.call(fallbackMsg, false);
-
->>>>>>> Stashed changes
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
       }
       await onReportSaved();
       if (parentContext.mounted) {
-        showTopFrontNotification(
-          parentContext,
-          message: fallbackMsg,
-        );
+        showTopFrontNotification(parentContext, message: fallbackMsg);
       }
     } catch (_) {
       final errMsg = 'Gagal mengirim laporan: $e';
       onStatusFeedback?.call(errMsg, true);
-      final errMsg = 'Gagal mengirim laporan: $e';
-      onStatusFeedback?.call(errMsg, true);
       if (!parentContext.mounted) return;
-      showTopFrontNotification(
-        parentContext,
-        message: errMsg,
-        isError: true,
-      showTopFrontNotification(
-        parentContext,
-        message: errMsg,
-        isError: true,
-      );
+      showTopFrontNotification(parentContext, message: errMsg, isError: true);
     }
   }
 }
@@ -5104,10 +4562,7 @@ class _SectionContainerCard extends StatelessWidget {
                     const SizedBox(height: 1),
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: textSecondary,
-                      ),
+                      style: TextStyle(fontSize: 12, color: textSecondary),
                     ),
                   ],
                 ),
@@ -5145,12 +4600,15 @@ class _SpaciousLabeledField extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol =
-        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
-    final iconCol =
-        isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon;
-    final primaryColor =
-        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+    final borderCol = isDark
+        ? const Color(0xFF2E3D34)
+        : const Color(0xFFDCE6DC);
+    final iconCol = isDark
+        ? const Color(0xFF81C784)
+        : LaporanColors.textFieldIcon;
+    final primaryColor = isDark
+        ? const Color(0xFF81C784)
+        : const Color(0xFF245C3A);
     final labelColor = isDark ? Colors.white : const Color(0xFF24352A);
 
     return Column(
@@ -5169,7 +4627,7 @@ class _SpaciousLabeledField extends StatelessWidget {
                 ),
               ),
             ),
-            if (suffixWidget != null) suffixWidget!,
+            ?suffixWidget,
           ],
         ),
         const SizedBox(height: 7),
@@ -5187,8 +4645,9 @@ class _SpaciousLabeledField extends StatelessWidget {
               fontSize: 13,
               color: isDark ? Colors.white38 : Colors.grey.shade500,
             ),
-            prefixIcon:
-                maxLines == 1 ? Icon(icon, color: iconCol, size: 20) : null,
+            prefixIcon: maxLines == 1
+                ? Icon(icon, color: iconCol, size: 20)
+                : null,
             filled: true,
             fillColor: fill,
             contentPadding: const EdgeInsets.symmetric(
@@ -5205,10 +4664,7 @@ class _SpaciousLabeledField extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(13),
-              borderSide: BorderSide(
-                color: primaryColor,
-                width: 1.5,
-              ),
+              borderSide: BorderSide(color: primaryColor, width: 1.5),
             ),
           ),
         ),
@@ -5232,10 +4688,12 @@ class _DateSelectorField extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol =
-        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
-    final iconCol =
-        isDark ? const Color(0xFF81C784) : LaporanColors.textFieldIcon;
+    final borderCol = isDark
+        ? const Color(0xFF2E3D34)
+        : const Color(0xFFDCE6DC);
+    final iconCol = isDark
+        ? const Color(0xFF81C784)
+        : LaporanColors.textFieldIcon;
     final labelColor = isDark ? Colors.white : const Color(0xFF24352A);
 
     return Column(
@@ -5317,11 +4775,7 @@ class _StepTabButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected ? activeFg : inactiveFg,
-            ),
+            Icon(icon, size: 15, color: isSelected ? activeFg : inactiveFg),
             const SizedBox(width: 5),
             Flexible(
               child: Text(
@@ -5357,12 +4811,15 @@ class _TypeOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardBg =
-        isDark ? const Color(0xFF26352B) : LaporanColors.templateBackground;
-    final cardBorder =
-        isDark ? const Color(0xFF2E3D34) : LaporanColors.borderDetail;
-    final primaryColor =
-        isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final cardBg = isDark
+        ? const Color(0xFF26352B)
+        : LaporanColors.templateBackground;
+    final cardBorder = isDark
+        ? const Color(0xFF2E3D34)
+        : LaporanColors.borderDetail;
+    final primaryColor = isDark
+        ? const Color(0xFF81C784)
+        : LaporanColors.primary;
     final titleColor = isDark ? Colors.white : Colors.black87;
     final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
 
@@ -5408,10 +4865,7 @@ class _TypeOption extends StatelessWidget {
                       subtitle!,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: subColor,
-                      ),
+                      style: TextStyle(fontSize: 12, color: subColor),
                     ),
                   ],
                 ],
@@ -5437,20 +4891,19 @@ class _PhotoButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fill = isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7);
-    final borderCol =
-        isDark ? const Color(0xFF2E3D34) : const Color(0xFFDCE6DC);
-    final primaryColor =
-        isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final borderCol = isDark
+        ? const Color(0xFF2E3D34)
+        : const Color(0xFFDCE6DC);
+    final primaryColor = isDark
+        ? const Color(0xFF81C784)
+        : LaporanColors.primary;
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          vertical: 16,
-          horizontal: 15,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 15),
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(14),
@@ -5458,11 +4911,7 @@ class _PhotoButton extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              Icons.add_a_photo_rounded,
-              color: primaryColor,
-              size: 25,
-            ),
+            Icon(Icons.add_a_photo_rounded, color: primaryColor, size: 25),
             const SizedBox(width: 13),
             Expanded(
               child: Column(

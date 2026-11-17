@@ -78,7 +78,6 @@ class _LaporanPageState extends State<LaporanPage> {
   void dispose() {
     _connectivitySub?.cancel();
     _userScrollController.dispose();
-    _userScrollController.dispose();
     super.dispose();
   }
 
@@ -87,7 +86,8 @@ class _LaporanPageState extends State<LaporanPage> {
     final role = (prefs.getString('role') ?? '').trim().toLowerCase();
     final email = (prefs.getString('email') ?? '').trim().toLowerCase();
 
-    final detectedAdmin = widget.isAdminMode ??
+    final detectedAdmin =
+        widget.isAdminMode ??
         (role == 'admin' ||
             email == 'admin@kehutanan.go.id' ||
             email == 'admin@phonebook.com' ||
@@ -125,18 +125,16 @@ class _LaporanPageState extends State<LaporanPage> {
       setState(() => _isOffline = !online);
     }
 
-    _connectivitySub =
-        ConnectivityService.instance.onConnectivityChanged.listen(
-      (isOnline) async {
-        if (!mounted) return;
-        final wasOffline = _isOffline;
-        setState(() => _isOffline = !isOnline);
+    _connectivitySub = ConnectivityService.instance.onConnectivityChanged
+        .listen((isOnline) async {
+          if (!mounted) return;
+          final wasOffline = _isOffline;
+          setState(() => _isOffline = !isOnline);
 
-        if (wasOffline && isOnline) {
-          await _autoSync();
-        }
-      },
-    );
+          if (wasOffline && isOnline) {
+            await _autoSync();
+          }
+        });
 
     await _updatePendingCount();
   }
@@ -227,7 +225,8 @@ class _LaporanPageState extends State<LaporanPage> {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
       final email = prefs.getString('email');
-      final defaultUserName = prefs.getString('profil_nama') ??
+      final defaultUserName =
+          prefs.getString('profil_nama') ??
           prefs.getString('name') ??
           (email != null && email.isNotEmpty
               ? email.split('@').first
@@ -247,15 +246,6 @@ class _LaporanPageState extends State<LaporanPage> {
             '${item['id']}_${item['judul']?.toString().toLowerCase() ?? ''}';
         if (seenKeys.contains(key)) return;
         seenKeys.add(key);
-        final rawIsi = (item['isi'] ?? '').toString();
-        if (ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
-          item['isi'] = ReportTemplateManager.sanitizeReportIsi(
-            rawIsi: '',
-            jenis: (item['jenis'] ?? 'Laporan Kegiatan').toString(),
-            judul: (item['judul'] ?? 'Kegiatan Lapangan').toString(),
-            lokasi: (item['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
-          );
-        }
         final rawIsi = (item['isi'] ?? '').toString();
         if (ReportTemplateManager.isCorruptedBinaryText(rawIsi)) {
           item['isi'] = ReportTemplateManager.sanitizeReportIsi(
@@ -305,8 +295,8 @@ class _LaporanPageState extends State<LaporanPage> {
           'tanggal': LaporanDateUtils.formatApiDate(activityDate),
           'tanggalApi': activityDate,
           'lokasi': local['location'] ?? 'Belum diisi',
-          'alamatGeolokasi':
-              (local['address'] ?? local['location'] ?? '').toString(),
+          'alamatGeolokasi': (local['address'] ?? local['location'] ?? '')
+              .toString(),
           'isi': local['description'] ?? '',
           'latitude': local['latitude']?.toString() ?? '',
           'longitude': local['longitude']?.toString() ?? '',
@@ -345,25 +335,27 @@ class _LaporanPageState extends State<LaporanPage> {
 
             String resolvedFoto = (sr['foto'] ?? '').toString();
             if (resolvedFoto.isEmpty && localMatch != null) {
-              resolvedFoto = (localMatch['foto'] ??
-                      localMatch['photo_base64'] ??
-                      localMatch['localPhotoPath'] ??
-                      '')
-                  .toString();
+              resolvedFoto =
+                  (localMatch['foto'] ??
+                          localMatch['photo_base64'] ??
+                          localMatch['localPhotoPath'] ??
+                          '')
+                      .toString();
             }
 
             addUniqueReport({
               ...sr,
               'pelapor': sr['pelapor'] ?? sr['userName'] ?? defaultUserName,
               'foto': resolvedFoto,
-              'photo_base64': (sr['photo_base64']?.toString().isNotEmpty == true)
+              'photo_base64':
+                  (sr['photo_base64']?.toString().isNotEmpty == true)
                   ? sr['photo_base64']
                   : (localMatch?['photo_base64'] ?? ''),
               'localPhotoPath': localMatch?['localPhotoPath'],
               'alamatGeolokasi':
                   (sr['alamatGeolokasi']?.toString().isNotEmpty == true)
-                      ? sr['alamatGeolokasi']
-                      : (localMatch?['alamatGeolokasi'] ?? sr['lokasi'] ?? ''),
+                  ? sr['alamatGeolokasi']
+                  : (localMatch?['alamatGeolokasi'] ?? sr['lokasi'] ?? ''),
             });
           }
         } on UnauthorizedException catch (e) {
@@ -443,8 +435,8 @@ class _LaporanPageState extends State<LaporanPage> {
                     'jenis': _normalizeReportTypeName(
                       (map['kategori'] ?? 'Laporan Penyuluhan').toString(),
                     ),
-                    'pelapor':
-                        (map['userName'] ?? 'Penyuluh Kehutanan').toString(),
+                    'pelapor': (map['userName'] ?? 'Penyuluh Kehutanan')
+                        .toString(),
                     'tanggal': (map['tanggal'] ?? '-').toString(),
                     'tanggalApi': '',
                     'lokasi': (map['wilayah'] ?? '-').toString(),
@@ -482,7 +474,8 @@ class _LaporanPageState extends State<LaporanPage> {
       if (!mounted) return;
 
       try {
-        final localReports = await OfflineDatabase.instance.getAllLocalReports();
+        final localReports = await OfflineDatabase.instance
+            .getAllLocalReports();
         final List<Map<String, dynamic>> offlineList = [];
 
         for (final local in localReports) {
@@ -499,8 +492,8 @@ class _LaporanPageState extends State<LaporanPage> {
             'tanggal': LaporanDateUtils.formatApiDate(activityDate),
             'tanggalApi': activityDate,
             'lokasi': local['location'] ?? 'Belum diisi',
-            'alamatGeolokasi':
-                (local['address'] ?? local['location'] ?? '').toString(),
+            'alamatGeolokasi': (local['address'] ?? local['location'] ?? '')
+                .toString(),
             'isi': local['description'] ?? '',
             'latitude': local['latitude']?.toString() ?? '',
             'longitude': local['longitude']?.toString() ?? '',
@@ -632,40 +625,6 @@ class _LaporanPageState extends State<LaporanPage> {
     });
   }
 
-  Future<void> _handleReportSavedFromForm() async {
-    await _loadSavedReports();
-    if (!mounted) return;
-    setState(() {
-      _selectedTab = 0;
-      _highlightLatestCard = true;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final arsipCtx = _arsipSectionKey.currentContext;
-      if (arsipCtx != null) {
-        Scrollable.ensureVisible(
-          arsipCtx,
-          duration: const Duration(milliseconds: 550),
-          curve: Curves.easeOutCubic,
-          alignment: 0.08,
-        );
-      } else if (_userScrollController.hasClients) {
-        _userScrollController.animateTo(
-          _userScrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 550),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    });
-
-    Future.delayed(const Duration(milliseconds: 2200), () {
-      if (mounted) {
-        setState(() => _highlightLatestCard = false);
-      }
-    });
-  }
-
   void _openReportForm(
     String jenisLaporan, {
     Map<String, dynamic>? existing,
@@ -675,7 +634,6 @@ class _LaporanPageState extends State<LaporanPage> {
       context,
       jenisLaporan: jenisLaporan,
       existing: existing,
-      onReportSaved: _handleReportSavedFromForm,
       onReportSaved: _handleReportSavedFromForm,
       isPreviewOnly: isPreviewOnly,
     );
@@ -752,16 +710,15 @@ class _LaporanPageState extends State<LaporanPage> {
 
     if (confirmed != true) return;
 
-    final updated =
-        _templatesList.where((t) => t['id'] != template['id']).toList();
+    final updated = _templatesList
+        .where((t) => t['id'] != template['id'])
+        .toList();
     await ReportTemplateManager.saveTemplates(updated);
     await _reloadTemplates();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Template "${template['title']}" telah dihapus.'),
-      ),
+      SnackBar(content: Text('Template "${template['title']}" telah dihapus.')),
     );
   }
 
@@ -806,19 +763,14 @@ class _LaporanPageState extends State<LaporanPage> {
   }
 
   void _downloadReport(Map<String, dynamic> laporan) {
-    showReportDownloadSheet(
-      context,
-      laporan: laporan,
-    );
+    showReportDownloadSheet(context, laporan: laporan);
   }
 
   Future<void> _deleteReport(Map<String, dynamic> laporan) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Hapus Laporan',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -830,10 +782,7 @@ class _LaporanPageState extends State<LaporanPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text(
-              'Batal',
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -862,9 +811,7 @@ class _LaporanPageState extends State<LaporanPage> {
 
         if (!mounted) return;
         setState(() {
-          _laporanList.removeWhere(
-            (item) => item['id'] == laporan['id'],
-          );
+          _laporanList.removeWhere((item) => item['id'] == laporan['id']);
         });
         await _persistReports();
         await _updatePendingCount();
@@ -922,6 +869,7 @@ class _LaporanPageState extends State<LaporanPage> {
         _laporanList.removeWhere((item) => item['id'] == laporan['id']);
       });
       await _persistReports();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Laporan "${laporan['judul']}" dihapus dari daftar.'),
@@ -940,8 +888,9 @@ class _LaporanPageState extends State<LaporanPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final appBarBg = isDark ? const Color(0xFF18221B) : Colors.white;
     final titleColor = isDark ? Colors.white : LaporanColors.textDark;
-    final primaryGreen =
-        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+    final primaryGreen = isDark
+        ? const Color(0xFF81C784)
+        : const Color(0xFF245C3A);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -999,10 +948,7 @@ class _LaporanPageState extends State<LaporanPage> {
                       )
                     : Badge(
                         label: Text('$_pendingSyncCount'),
-                        child: Icon(
-                          Icons.sync_rounded,
-                          color: primaryGreen,
-                        ),
+                        child: Icon(Icons.sync_rounded, color: primaryGreen),
                       ),
               ),
             ),
@@ -1161,8 +1107,9 @@ class _LaporanPageState extends State<LaporanPage> {
                           'Masukkan file contoh laporan (.docx / .pdf / .txt) untuk diekstrak menjadi template dan sesuaikan form yang harus diisi user.',
                           style: TextStyle(
                             fontSize: 12.5,
-                            color:
-                                isDark ? Colors.white70 : Colors.grey.shade600,
+                            color: isDark
+                                ? Colors.white70
+                                : Colors.grey.shade600,
                             height: 1.35,
                           ),
                         ),
@@ -1187,8 +1134,9 @@ class _LaporanPageState extends State<LaporanPage> {
                   ? const Color(0xFF1E2822)
                   : LaporanColors.tabBackground,
               borderRadius: BorderRadius.circular(14),
-              border:
-                  isDark ? Border.all(color: const Color(0xFF2E3D34)) : null,
+              border: isDark
+                  ? Border.all(color: const Color(0xFF2E3D34))
+                  : null,
             ),
             child: Row(
               children: [
@@ -1269,12 +1217,13 @@ class _LaporanPageState extends State<LaporanPage> {
     Color primaryGreen,
   ) {
     final totalCount = _laporanList.length;
-    final selesaiCount =
-        _laporanList.where((r) => r['status'] == 'Selesai').length;
-    final diprosesCount =
-        _laporanList.where((r) => r['status'] == 'Diproses').length;
-    final draftCount =
-        _laporanList.where((r) => r['status'] == 'Draft').length;
+    final selesaiCount = _laporanList
+        .where((r) => r['status'] == 'Selesai')
+        .length;
+    final diprosesCount = _laporanList
+        .where((r) => r['status'] == 'Diproses')
+        .length;
+    final draftCount = _laporanList.where((r) => r['status'] == 'Draft').length;
 
     final jenisFilters = <String>[
       'Semua',
@@ -1348,8 +1297,7 @@ class _LaporanPageState extends State<LaporanPage> {
           onChanged: (val) => setState(() => _adminSearchQuery = val),
           style: TextStyle(color: titleColor, fontSize: 13.5),
           decoration: InputDecoration(
-            hintText:
-                'Cari judul laporan, nama pegawai, jenis laporan, atau lokasi...',
+            hintText: 'Cari judul laporan, nama pegawai, jenis laporan, atau lokasi...',
             hintStyle: TextStyle(
               fontSize: 13,
               color: isDark ? Colors.white54 : Colors.grey,
@@ -1398,8 +1346,9 @@ class _LaporanPageState extends State<LaporanPage> {
                   selected: selected,
                   showCheckmark: false,
                   selectedColor: const Color(0xFF245C3A),
-                  backgroundColor:
-                      isDark ? const Color(0xFF1E2822) : Colors.white,
+                  backgroundColor: isDark
+                      ? const Color(0xFF1E2822)
+                      : Colors.white,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1424,8 +1373,9 @@ class _LaporanPageState extends State<LaporanPage> {
                   selected: selected,
                   showCheckmark: false,
                   selectedColor: const Color(0xFF4F8A5B),
-                  backgroundColor:
-                      isDark ? const Color(0xFF1E2822) : Colors.white,
+                  backgroundColor: isDark
+                      ? const Color(0xFF1E2822)
+                      : Colors.white,
                   labelStyle: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
@@ -1532,12 +1482,8 @@ class _LaporanPageState extends State<LaporanPage> {
 
   Widget _buildUserLaporanBody(bool isDark, Color titleColor) {
     return SingleChildScrollView(
-<<<<<<< Updated upstream
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
-=======
       controller: _userScrollController,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
->>>>>>> Stashed changes
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1547,14 +1493,11 @@ class _LaporanPageState extends State<LaporanPage> {
           const LaporanHeader(),
           const SizedBox(height: 24),
           CreateReportCard(
-            onTap: () => showReportTypeDialog(
-              context,
-              onSelectType: _openReportForm,
-            ),
+            onTap: () =>
+                showReportTypeDialog(context, onSelectType: _openReportForm),
           ),
           const SizedBox(height: 28),
           Column(
-            key: _arsipSectionKey,
             key: _arsipSectionKey,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1820,43 +1763,6 @@ class _LaporanPageState extends State<LaporanPage> {
             onDownload: () => _downloadReport(laporan),
             onDelete: () => _deleteReport(laporan),
           ),
-      children: _laporanList.asMap().entries.map((entry) {
-        final index = entry.key;
-        final laporan = entry.value;
-        final isHighlighted = index == 0 && _highlightLatestCard;
-
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 450),
-          curve: Curves.easeOutCubic,
-          margin: EdgeInsets.only(bottom: isHighlighted ? 6 : 0),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isHighlighted
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF245C3A).withValues(alpha: 0.22),
-                      blurRadius: 18,
-                      spreadRadius: 1,
-                      offset: const Offset(0, 6),
-                    ),
-                  ]
-                : null,
-          ),
-          child: ReportCard(
-            laporan: laporan,
-            onView: () => showReportDetail(
-              context,
-              laporan: laporan,
-              onEdit: _openReportForm,
-              onDownload: _downloadReport,
-            ),
-            onEdit: () => _openReportForm(
-              (laporan['jenis'] ?? 'Laporan Kegiatan').toString(),
-              existing: laporan,
-            ),
-            onDownload: () => _downloadReport(laporan),
-            onDelete: () => _deleteReport(laporan),
-          ),
         );
       }).toList(),
     );
@@ -1880,8 +1786,9 @@ class _AdminTabSwitchItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeBg = isDark ? const Color(0xFF26352B) : Colors.white;
-    final activeColor =
-        isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+    final activeColor = isDark
+        ? const Color(0xFF81C784)
+        : const Color(0xFF245C3A);
     final inactiveColor = isDark ? Colors.white60 : Colors.grey.shade600;
 
     return GestureDetector(
@@ -1905,11 +1812,7 @@ class _AdminTabSwitchItem extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: isActive ? activeColor : inactiveColor,
-            ),
+            Icon(icon, size: 18, color: isActive ? activeColor : inactiveColor),
             const SizedBox(width: 6),
             Flexible(
               child: Text(

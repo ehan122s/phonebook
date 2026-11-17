@@ -23,10 +23,7 @@ import 'kategori.dart';
 class DashboardPage extends StatefulWidget {
   final Function(int)? onNavigate;
 
-  const DashboardPage({
-    super.key,
-    this.onNavigate,
-  });
+  const DashboardPage({super.key, this.onNavigate});
 
   // Palet Warna Modern Soft Green Forest
   static const Color kPrimary = Color(0xFF245C3A);
@@ -43,8 +40,6 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  final LaporanService _laporanService = LaporanService();
-
   bool _isLoadingData = true;
   String? _loadError;
   String _userName = '';
@@ -69,12 +64,14 @@ class _DashboardPageState extends State<DashboardPage> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
       final savedName =
           (prefs.getString('profil_nama') ?? prefs.getString('name') ?? '')
               .trim();
       final currentUserId = (prefs.getString('user_id') ?? '').trim();
-      final currentUserEmail =
-          (prefs.getString('email') ?? '').trim().toLowerCase();
+      final currentUserEmail = (prefs.getString('email') ?? '')
+          .trim()
+          .toLowerCase();
 
       // 1. Muat jadwal asli dari JadwalService (tanpa dummy)
       final loadedSchedules = await JadwalService.loadSchedules();
@@ -87,26 +84,30 @@ class _DashboardPageState extends State<DashboardPage> {
         final title = (raw['title'] ?? raw['judul'] ?? '').toString().trim();
         if (title.isEmpty) return;
 
-        final idStr =
-            (raw['server_id'] ?? raw['id'] ?? title).toString().trim();
-        final dateStr = (raw['report_date'] ??
-                raw['date'] ??
-                raw['tanggal'] ??
-                raw['created_at'] ??
-                '')
+        final idStr = (raw['server_id'] ?? raw['id'] ?? title)
             .toString()
             .trim();
+        final dateStr =
+            (raw['report_date'] ??
+                    raw['date'] ??
+                    raw['activity_date'] ??
+                    raw['tanggal'] ??
+                    raw['created_at'] ??
+                    '')
+                .toString()
+                .trim();
         final dedupKey = '${idStr.toLowerCase()}|${title.toLowerCase()}';
         if (seenReportKeys.contains(dedupKey)) return;
 
         // Filter laporan agar sesuai dengan akun pengguna yang sedang login bila ada info user
         final reportUserId = (raw['user_id'] ?? '').toString().trim();
-        final reportUserEmail = (raw['user'] is Map
-                ? (raw['user']['email'] ?? '')
-                : (raw['email'] ?? ''))
-            .toString()
-            .trim()
-            .toLowerCase();
+        final reportUserEmail =
+            (raw['user'] is Map
+                    ? (raw['user']['email'] ?? '')
+                    : (raw['email'] ?? ''))
+                .toString()
+                .trim()
+                .toLowerCase();
         if (currentUserId.isNotEmpty &&
             reportUserId.isNotEmpty &&
             reportUserId != currentUserId) {
@@ -122,21 +123,26 @@ class _DashboardPageState extends State<DashboardPage> {
         combinedReports.add({
           'id': idStr,
           'judul': title,
-          'kategori': (raw['category_name'] ??
-                  (raw['category'] is Map ? raw['category']['name'] : null) ??
-                  raw['jenis'] ??
-                  'Penyuluhan')
-              .toString(),
+          'kategori':
+              (raw['category_name'] ??
+                      (raw['category'] is Map
+                          ? raw['category']['name']
+                          : null) ??
+                      raw['jenis'] ??
+                      'Penyuluhan')
+                  .toString(),
           'lokasi': (raw['location'] ?? raw['lokasi'] ?? '-').toString(),
           'tanggal': _formatDisplayDate(dateStr),
           'status': _normalizeStatus((raw['status'] ?? 'Terkirim').toString()),
-          'deskripsi':
-              (raw['description'] ?? raw['isi'] ?? '').toString().trim(),
+          'deskripsi': (raw['description'] ?? raw['isi'] ?? '')
+              .toString()
+              .trim(),
         });
       }
 
       try {
-        final localReports = await OfflineDatabase.instance.getAllReports();
+        final localReports = await OfflineDatabase.instance
+            .getAllLocalReports();
         for (final item in localReports) {
           addReportItem(item);
         }
@@ -155,11 +161,9 @@ class _DashboardPageState extends State<DashboardPage> {
       }
 
       try {
-        final apiReports = await _laporanService.getReports();
+        final apiReports = await LaporanService.fetchReports(token);
         for (final item in apiReports) {
-          if (item is Map) {
-            addReportItem(Map<String, dynamic>.from(item));
-          }
+          addReportItem(item);
         }
       } catch (_) {}
 
@@ -200,31 +204,25 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _openUserFolders(BuildContext context) {
     Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => const KategoriPage(),
-          ),
-        )
+        .push(MaterialPageRoute(builder: (_) => const KategoriPage()))
         .then((_) => _loadDashboardData());
   }
 
   void _openNotificationPage(BuildContext context) {
     Navigator.of(context)
-        .push(
-          MaterialPageRoute(
-            builder: (_) => const NotificationPage(),
-          ),
-        )
+        .push(MaterialPageRoute(builder: (_) => const NotificationPage()))
         .then((_) => _loadDashboardData());
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor =
-        isDark ? const Color(0xFF121A15) : DashboardPage.kBackground;
-    final textColor =
-        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
+    final bgColor = isDark
+        ? const Color(0xFF121A15)
+        : DashboardPage.kBackground;
+    final textColor = isDark
+        ? DashboardPage.kWhite
+        : DashboardPage.kTextPrimary;
 
     return Container(
       color: bgColor,
@@ -291,8 +289,9 @@ class _DashboardPageState extends State<DashboardPage> {
                               bgColor: isDark
                                   ? const Color(0xFF1E2D24)
                                   : DashboardPage.kLightGreen,
-                              accentColor: DashboardPage.kSecondary
-                                  .withValues(alpha: 0.15),
+                              accentColor: DashboardPage.kSecondary.withValues(
+                                alpha: 0.15,
+                              ),
                               isPrimaryVariant: true,
                               onTap: () => widget.onNavigate?.call(1),
                             ),
@@ -307,8 +306,9 @@ class _DashboardPageState extends State<DashboardPage> {
                               bgColor: isDark
                                   ? const Color(0xFF1A2820)
                                   : DashboardPage.kSoftGreen,
-                              accentColor: DashboardPage.kPrimary
-                                  .withValues(alpha: 0.10),
+                              accentColor: DashboardPage.kPrimary.withValues(
+                                alpha: 0.10,
+                              ),
                               isPrimaryVariant: false,
                               onTap: () => widget.onNavigate?.call(2),
                             ),
@@ -404,8 +404,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildWelcomeHeader(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-    final greetingName =
-        _userName.isNotEmpty ? 'Halo, $_userName 👋' : 'Selamat Datang 👋';
+    final greetingName = _userName.isNotEmpty
+        ? 'Halo, $_userName 👋'
+        : 'Selamat Datang 👋';
 
     return Container(
       width: double.infinity,
@@ -440,9 +441,7 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: CustomPaint(
-                painter: _ForestHeaderPainter(),
-              ),
+              child: CustomPaint(painter: _ForestHeaderPainter()),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(22, topPadding + 20, 22, 24),
@@ -501,8 +500,9 @@ class _DashboardPageState extends State<DashboardPage> {
                                     width: 46,
                                     height: 46,
                                     decoration: BoxDecoration(
-                                      color: DashboardPage.kWhite
-                                          .withValues(alpha: 0.92),
+                                      color: DashboardPage.kWhite.withValues(
+                                        alpha: 0.92,
+                                      ),
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
@@ -535,8 +535,9 @@ class _DashboardPageState extends State<DashboardPage> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFE53935),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           border: Border.all(
                                             color: DashboardPage.kWhite,
                                             width: 1.8,
@@ -577,28 +578,23 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildRingkasanSection(bool isDark, Color textColor) {
-    final containerBg =
-        isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final containerBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
 
-    final laporanCountText =
-        _isLoadingData ? '...' : '${_reports.length}';
-    final jadwalCountText =
-        _isLoadingData ? '...' : '${_schedules.length}';
+    final laporanCountText = _isLoadingData ? '...' : '${_reports.length}';
+    final jadwalCountText = _isLoadingData ? '...' : '${_schedules.length}';
 
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: containerBg,
         borderRadius: BorderRadius.circular(24),
-        border: isDark
-            ? Border.all(color: const Color(0xFF2E3D34))
-            : null,
+        border: isDark ? Border.all(color: const Color(0xFF2E3D34)) : null,
         boxShadow: [
           BoxShadow(
-            color:
-                DashboardPage.kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
+            color: DashboardPage.kPrimary.withValues(
+              alpha: isDark ? 0.2 : 0.05,
+            ),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -633,8 +629,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 onTap: () => _openUserFolders(context),
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
                   child: Row(
                     children: [
                       Text(
@@ -692,8 +690,7 @@ class _DashboardPageState extends State<DashboardPage> {
     String? actionText,
     VoidCallback? onActionTap,
   }) {
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -701,8 +698,7 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             Icon(
               icon,
-              color:
-                  isDark ? const Color(0xFF81C784) : DashboardPage.kPrimary,
+              color: isDark ? const Color(0xFF81C784) : DashboardPage.kPrimary,
               size: 22,
             ),
             const SizedBox(width: 8),
@@ -733,11 +729,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ),
                   const SizedBox(width: 2),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: subColor,
-                  ),
+                  Icon(Icons.chevron_right_rounded, size: 20, color: subColor),
                 ],
               ),
             ),
@@ -748,12 +740,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildLaporanTerbaruCard(bool isDark) {
     final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
-    final titleColor =
-        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
-    final borderCol =
-        isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+    final titleColor = isDark
+        ? DashboardPage.kWhite
+        : DashboardPage.kTextPrimary;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final borderCol = isDark ? const Color(0xFF2E3D34) : Colors.transparent;
 
     if (_isLoadingData) {
       return Container(
@@ -817,8 +808,9 @@ class _DashboardPageState extends State<DashboardPage> {
           border: Border.all(color: borderCol),
           boxShadow: [
             BoxShadow(
-              color: DashboardPage.kPrimary
-                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              color: DashboardPage.kPrimary.withValues(
+                alpha: isDark ? 0.2 : 0.05,
+              ),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -911,8 +903,9 @@ class _DashboardPageState extends State<DashboardPage> {
           border: Border.all(color: borderCol),
           boxShadow: [
             BoxShadow(
-              color: DashboardPage.kPrimary
-                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              color: DashboardPage.kPrimary.withValues(
+                alpha: isDark ? 0.2 : 0.05,
+              ),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -998,10 +991,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           const SizedBox(width: 4),
                           Text(
                             tanggal,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: subColor,
-                            ),
+                            style: TextStyle(fontSize: 13, color: subColor),
                           ),
                         ],
                       ),
@@ -1019,10 +1009,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             child: Text(
                               lokasi,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: subColor,
-                              ),
+                              style: TextStyle(fontSize: 13, color: subColor),
                             ),
                           ),
                         ],
@@ -1049,12 +1036,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildJurnalKegiatanCard(bool isDark) {
     final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
-    final titleColor =
-        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
-    final borderCol =
-        isDark ? const Color(0xFF2E3D34) : Colors.transparent;
+    final titleColor = isDark
+        ? DashboardPage.kWhite
+        : DashboardPage.kTextPrimary;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final borderCol = isDark ? const Color(0xFF2E3D34) : Colors.transparent;
 
     if (_isLoadingData) {
       return Container(
@@ -1086,8 +1072,9 @@ class _DashboardPageState extends State<DashboardPage> {
           border: Border.all(color: borderCol),
           boxShadow: [
             BoxShadow(
-              color: DashboardPage.kPrimary
-                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              color: DashboardPage.kPrimary.withValues(
+                alpha: isDark ? 0.2 : 0.05,
+              ),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -1162,9 +1149,8 @@ class _DashboardPageState extends State<DashboardPage> {
             JadwalDateUtils.parseIsoDate(tanggalIso),
           )
         : '-';
-    final waktu =
-        (latestSchedule['waktu'] ?? latestSchedule['time'] ?? '08:00')
-            .toString();
+    final waktu = (latestSchedule['waktu'] ?? latestSchedule['time'] ?? '08:00')
+        .toString();
     final lokasi =
         (latestSchedule['lokasi'] ?? latestSchedule['location'] ?? '-')
             .toString();
@@ -1181,8 +1167,7 @@ class _DashboardPageState extends State<DashboardPage> {
             .push(
               MaterialPageRoute(
                 builder: (_) => JadwalPage(
-                  initialScheduleId:
-                      scheduleId.isNotEmpty ? scheduleId : null,
+                  initialScheduleId: scheduleId.isNotEmpty ? scheduleId : null,
                   initialScheduleTitle: judul,
                 ),
               ),
@@ -1197,8 +1182,9 @@ class _DashboardPageState extends State<DashboardPage> {
           border: Border.all(color: borderCol),
           boxShadow: [
             BoxShadow(
-              color: DashboardPage.kPrimary
-                  .withValues(alpha: isDark ? 0.2 : 0.05),
+              color: DashboardPage.kPrimary.withValues(
+                alpha: isDark ? 0.2 : 0.05,
+              ),
               blurRadius: 14,
               offset: const Offset(0, 4),
             ),
@@ -1313,10 +1299,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             const SizedBox(width: 4),
                             Text(
                               '$tanggalFormatted • $waktu WIB',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: subColor,
-                              ),
+                              style: TextStyle(fontSize: 13, color: subColor),
                             ),
                           ],
                         ),
@@ -1334,10 +1317,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               child: Text(
                                 lokasi,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: subColor,
-                                ),
+                                style: TextStyle(fontSize: 13, color: subColor),
                               ),
                             ),
                           ],
@@ -1350,10 +1330,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         catatan,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          color: subColor,
-                        ),
+                        style: TextStyle(fontSize: 13.5, color: subColor),
                       ),
                     ],
                   ],
@@ -1387,10 +1364,10 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF223026) : DashboardPage.kSoftGreen;
-    final valueColor =
-        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final valueColor = isDark
+        ? DashboardPage.kWhite
+        : DashboardPage.kTextPrimary;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -1401,9 +1378,7 @@ class _StatCard extends StatelessWidget {
           color: cardBg,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isDark
-                ? const Color(0xFF2E3D34)
-                : DashboardPage.kLightGreen,
+            color: isDark ? const Color(0xFF2E3D34) : DashboardPage.kLightGreen,
             width: 1,
           ),
         ),
@@ -1614,10 +1589,10 @@ class _ArchiveActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1A241E) : DashboardPage.kWhite;
-    final titleColor =
-        isDark ? DashboardPage.kWhite : DashboardPage.kTextPrimary;
-    final subColor =
-        isDark ? Colors.white70 : DashboardPage.kTextSecondary;
+    final titleColor = isDark
+        ? DashboardPage.kWhite
+        : DashboardPage.kTextPrimary;
+    final subColor = isDark ? Colors.white70 : DashboardPage.kTextSecondary;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1632,8 +1607,9 @@ class _ArchiveActionCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                DashboardPage.kPrimary.withValues(alpha: isDark ? 0.2 : 0.05),
+            color: DashboardPage.kPrimary.withValues(
+              alpha: isDark ? 0.2 : 0.05,
+            ),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -1649,8 +1625,8 @@ class _ArchiveActionCard extends StatelessWidget {
               color: isDark
                   ? const Color(0xFF26352B)
                   : (isPrimary
-                      ? DashboardPage.kLightGreen
-                      : DashboardPage.kSoftGreen),
+                        ? DashboardPage.kLightGreen
+                        : DashboardPage.kSoftGreen),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -1658,8 +1634,8 @@ class _ArchiveActionCard extends StatelessWidget {
               color: isDark
                   ? const Color(0xFF81C784)
                   : (isPrimary
-                      ? DashboardPage.kPrimary
-                      : DashboardPage.kSecondary),
+                        ? DashboardPage.kPrimary
+                        : DashboardPage.kSecondary),
               size: 24,
             ),
           ),
@@ -1675,11 +1651,7 @@ class _ArchiveActionCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             description,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              color: subColor,
-            ),
+            style: TextStyle(fontSize: 13, height: 1.35, color: subColor),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -1690,13 +1662,13 @@ class _ArchiveActionCard extends StatelessWidget {
                 backgroundColor: isPrimary
                     ? DashboardPage.kPrimary
                     : (isDark
-                        ? const Color(0xFF26352B)
-                        : DashboardPage.kLightGreen),
+                          ? const Color(0xFF26352B)
+                          : DashboardPage.kLightGreen),
                 foregroundColor: isPrimary
                     ? DashboardPage.kWhite
                     : (isDark
-                        ? const Color(0xFF81C784)
-                        : DashboardPage.kPrimary),
+                          ? const Color(0xFF81C784)
+                          : DashboardPage.kPrimary),
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 shape: RoundedRectangleBorder(

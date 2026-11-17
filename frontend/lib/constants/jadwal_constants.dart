@@ -35,6 +35,18 @@ class JadwalColors {
   static const Color completedText = Color(0xFF2E7D32);
 }
 
+bool isDummyScheduleId(dynamic value) {
+  final id = (value ?? '').toString().trim().toLowerCase();
+  return const {
+    'jadwal_1',
+    'jadwal_2',
+    'jadwal_3',
+    'jadwal_4',
+    'jadwal_5',
+    'jadwal_6',
+  }.contains(id);
+}
+
 /// Date, Time & Asia/Jakarta (WIB / UTC+7) utilities for Jadwal & Reminder.
 class JadwalDateUtils {
   JadwalDateUtils._();
@@ -102,8 +114,14 @@ class JadwalDateUtils {
     int minute, [
     int second = 0,
   ]) {
-    final utcMoment =
-        DateTime.utc(year, month, day, hour, minute, second).subtract(wibOffset);
+    final utcMoment = DateTime.utc(
+      year,
+      month,
+      day,
+      hour,
+      minute,
+      second,
+    ).subtract(wibOffset);
     return utcMoment.millisecondsSinceEpoch;
   }
 
@@ -171,7 +189,10 @@ class JadwalDateUtils {
   /// Menghitung jam munculnya reminder dalam format `HH:mm`
   /// Contoh: waktu jadwal `13:00` dengan reminder `5` menit -> `12:55`
   /// Contoh: waktu jadwal `13:00` dengan reminder `10` menit -> `12:50`
-  static String calculateReminderTimeStr(String scheduleTimeHHmm, int reminderMinutes) {
+  static String calculateReminderTimeStr(
+    String scheduleTimeHHmm,
+    int reminderMinutes,
+  ) {
     final parts = scheduleTimeHHmm.split(':');
     final hour = parts.isNotEmpty ? (int.tryParse(parts[0]) ?? 8) : 8;
     final minute = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
@@ -206,8 +227,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '08:00',
       'reminderMinutes': 30,
       'lokasi': 'Kecamatan Garut',
-      'catatan':
-          'Sosialisasi program perhutanan sosial dan pembagian bibit produktif kepada kelompok tani hutan.',
+      'catatan': 'Sosialisasi program perhutanan sosial dan pembagian bibit produktif kepada kelompok tani hutan.',
       'isCompleted': false,
     },
     {
@@ -218,8 +238,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '13:00',
       'reminderMinutes': 10,
       'lokasi': 'Kawasan Hutan Garut',
-      'catatan':
-          'Pengecekan kondisi patok batas kawasan dan pemantauan titik rawan kebakaran hutan.',
+      'catatan': 'Pengecekan kondisi patok batas kawasan dan pemantauan titik rawan kebakaran hutan.',
       'isCompleted': false,
     },
     {
@@ -230,8 +249,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '09:30',
       'reminderMinutes': 15,
       'lokasi': 'Desa Sukamaju, Garut',
-      'catatan':
-          'Pendampingan administrasi dan evaluasi hasil panen komoditas agroforestri triwulan III.',
+      'catatan': 'Pendampingan administrasi dan evaluasi hasil panen komoditas agroforestri triwulan III.',
       'isCompleted': false,
     },
     {
@@ -242,8 +260,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '07:30',
       'reminderMinutes': 30,
       'lokasi': 'Lereng Gunung Guntur',
-      'catatan':
-          'Kegiatan penanaman 500 bibit pohon keras di lahan kritis bersama masyarakat sekitar.',
+      'catatan': 'Kegiatan penanaman 500 bibit pohon keras di lahan kritis bersama masyarakat sekitar.',
       'isCompleted': false,
     },
     {
@@ -254,8 +271,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '08:30',
       'reminderMinutes': 15,
       'lokasi': 'Blok Cikuray Selatan',
-      'catatan':
-          'Patroli rutin bersama tim Polisi Kehutanan. Situasi aman dan kondusif.',
+      'catatan': 'Patroli rutin bersama tim Polisi Kehutanan. Situasi aman dan kondusif.',
       'isCompleted': true,
     },
     {
@@ -266,8 +282,7 @@ List<Map<String, dynamic>> buildDefaultJadwalList() {
       'waktu': '10:00',
       'reminderMinutes': 10,
       'lokasi': 'Kecamatan Cisurupan',
-      'catatan':
-          'Inventarisasi produksi madu hutan dan kopi bawah tegakan milik KTH setempat.',
+      'catatan': 'Inventarisasi produksi madu hutan dan kopi bawah tegakan milik KTH setempat.',
       'isCompleted': true,
     },
   ];

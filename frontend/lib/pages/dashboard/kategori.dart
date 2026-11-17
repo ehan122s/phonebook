@@ -46,8 +46,6 @@ class _KategoriPageState extends State<KategoriPage> {
     'my_jadwal_jadwal_6',
   };
 
-  final LaporanService _laporanService = LaporanService();
-
   String _searchQuery = '';
   String _selectedTypeFilter = 'Semua';
   bool _isLoading = true;
@@ -130,7 +128,7 @@ class _KategoriPageState extends State<KategoriPage> {
 
     // 2. Sinkronkan laporan asli dari SQLite / API Backend
     try {
-      final localReports = await OfflineDatabase.instance.getAllReports();
+      final localReports = await OfflineDatabase.instance.getAllLocalReports();
       for (final r in localReports) {
         final id = 'my_report_${r['server_id'] ?? r['id'] ?? r['title']}';
         if (!items.any((e) => e['id'] == id)) {
@@ -142,7 +140,9 @@ class _KategoriPageState extends State<KategoriPage> {
               (r['category_name'] ?? 'Penyuluhan').toString(),
             ),
             'lokasi': (r['location'] ?? '-').toString(),
-            'tanggal': (r['date'] ?? '-').toString(),
+            'tanggal':
+                (r['date'] ?? r['activity_date'] ?? r['created_at'] ?? '-')
+                    .toString(),
             'waktu': '09:00',
             'status': (r['status'] ?? '').toString().toLowerCase() == 'draft'
                 ? 'Draft'
@@ -154,7 +154,9 @@ class _KategoriPageState extends State<KategoriPage> {
     } catch (_) {}
 
     try {
-      final apiReports = await _laporanService.getReports();
+      final apiReports = await LaporanService.fetchReports(
+        prefs.getString('token') ?? '',
+      );
       for (final r in apiReports) {
         final map = Map<String, dynamic>.from(r as Map);
         final id = 'my_report_${map['id'] ?? map['title']}';
@@ -164,9 +166,7 @@ class _KategoriPageState extends State<KategoriPage> {
             'judul': (map['title'] ?? 'Laporan Kegiatan').toString(),
             'tipe': 'Laporan',
             'kategori': _normalizeCategory(
-              (map['category_name'] ??
-                      map['category']?['name'] ??
-                      'Penyuluhan')
+              (map['category_name'] ?? map['category']?['name'] ?? 'Penyuluhan')
                   .toString(),
             ),
             'lokasi': (map['location'] ?? '-').toString(),
@@ -554,8 +554,9 @@ class _KategoriPageState extends State<KategoriPage> {
   @override
   Widget build(BuildContext context) {
     final totalLaporan = _myItems.where((e) => e['tipe'] == 'Laporan').length;
-    final totalJadwal =
-        _myItems.where((e) => e['tipe'] == 'Arsip Jadwal').length;
+    final totalJadwal = _myItems
+        .where((e) => e['tipe'] == 'Arsip Jadwal')
+        .length;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -570,10 +571,7 @@ class _KategoriPageState extends State<KategoriPage> {
         leading: _openedCategoryFolder != null
             ? IconButton(
                 onPressed: () => setState(() => _openedCategoryFolder = null),
-                icon: Icon(
-                  Icons.arrow_back_rounded,
-                  color: _primaryCol,
-                ),
+                icon: Icon(Icons.arrow_back_rounded, color: _primaryCol),
               )
             : null,
         title: Text(
@@ -732,11 +730,7 @@ class _KategoriPageState extends State<KategoriPage> {
               ],
             ),
           ),
-          const SizedBox(
-            width: 60,
-            height: 100,
-            child: _LeafIllustration(),
-          ),
+          const SizedBox(width: 60, height: 100, child: _LeafIllustration()),
         ],
       ),
     );
@@ -780,11 +774,7 @@ class _KategoriPageState extends State<KategoriPage> {
         decoration: InputDecoration(
           hintText: 'Cari folder, judul laporan, atau lokasi...',
           hintStyle: TextStyle(fontSize: 14, color: _textSecondaryCol),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            color: _primaryCol,
-            size: 24,
-          ),
+          prefixIcon: Icon(Icons.search_rounded, color: _primaryCol, size: 24),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   tooltip: 'Bersihkan pencarian',
@@ -854,11 +844,7 @@ class _KategoriPageState extends State<KategoriPage> {
                     color: _lightGreenCol,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(
-                    _categoryIcon(cat),
-                    color: _primaryCol,
-                    size: 26,
-                  ),
+                  child: Icon(_categoryIcon(cat), color: _primaryCol, size: 26),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -885,8 +871,10 @@ class _KategoriPageState extends State<KategoriPage> {
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: _softGreenCol,
                     borderRadius: BorderRadius.circular(8),
@@ -1208,10 +1196,7 @@ class _LeafIllustration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(60, 100),
-      painter: _LeafPainter(),
-    );
+    return CustomPaint(size: const Size(60, 100), painter: _LeafPainter());
   }
 }
 
@@ -1288,12 +1273,7 @@ class _LeafPainter extends CustomPainter {
 
     final path = Path();
     path.moveTo(baseX, baseY);
-    path.quadraticBezierTo(
-      baseX - ctrlDx * 0.4,
-      baseY - ctrlDy,
-      tipX,
-      tipY,
-    );
+    path.quadraticBezierTo(baseX - ctrlDx * 0.4, baseY - ctrlDy, tipX, tipY);
     path.quadraticBezierTo(
       baseX + ctrlDx * 0.6,
       baseY - ctrlDy * 0.8,
