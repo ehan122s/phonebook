@@ -104,32 +104,11 @@ class DiscordInteractionController extends Controller
             return $this->processTicketAction($ticketId, 'acc', null, $devTag);
         }
 
-        // 2. TOLAK LAPORAN -> Tampilkan Modal Form untuk Alasan Penolakan
+        // 2. TOLAK LAPORAN -> Langsung buka Modal Form secara instan (0ms) untuk mencegah Discord interaction timeout
         if (str_starts_with($customId, 'ticket_tolak_')) {
             $ticketId = substr($customId, strlen('ticket_tolak_'));
 
-            $ticket = self::findTicket($ticketId);
-            if (!$ticket) {
-                return response()->json([
-                    'type' => 4,
-                    'data' => [
-                        'content' => "⚠️ Tiket #{$ticketId} tidak ditemukan.",
-                        'flags' => 64,
-                    ],
-                ]);
-            }
-
-            if (strtoupper($ticket->status) === 'DITOLAK' || strtoupper($ticket->status) === 'SELESAI') {
-                return response()->json([
-                    'type' => 4,
-                    'data' => [
-                        'content' => "⚠️ Tiket {$ticket->ticket_code} sudah berstatus {$ticket->status} dan tidak dapat ditolak lagi.",
-                        'flags' => 64,
-                    ],
-                ]);
-            }
-
-            // Kembalikan Discord Modal Dialog (Type 9)
+            // Kembalikan Discord Modal Dialog (Type 9) langsung tanpa menunggu query database
             return response()->json([
                 'type' => 9, // MODAL
                 'data' => [
@@ -156,32 +135,11 @@ class DiscordInteractionController extends Controller
             ]);
         }
 
-        // 3. SELESAIKAN TIKET -> Tampilkan Modal Form untuk Alasan / Penjelasan Penyelesaian
+        // 3. SELESAIKAN TIKET -> Langsung buka Modal Form secara instan (0ms) untuk mencegah Discord interaction timeout
         if (str_starts_with($customId, 'ticket_selesai_')) {
             $ticketId = substr($customId, strlen('ticket_selesai_'));
 
-            $ticket = self::findTicket($ticketId);
-            if (!$ticket) {
-                return response()->json([
-                    'type' => 4,
-                    'data' => [
-                        'content' => "⚠️ Tiket #{$ticketId} tidak ditemukan.",
-                        'flags' => 64,
-                    ],
-                ]);
-            }
-
-            if (strtoupper($ticket->status) === 'SELESAI' || strtoupper($ticket->status) === 'RESOLVED') {
-                return response()->json([
-                    'type' => 4,
-                    'data' => [
-                        'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah berstatus SELESAI sebelumnya.",
-                        'flags' => 64,
-                    ],
-                ]);
-            }
-
-            // Kembalikan Discord Modal Dialog (Type 9) sesuai spesifikasi resmi Discord API
+            // Kembalikan Discord Modal Dialog (Type 9) langsung tanpa menunggu query database
             return response()->json([
                 'type' => 9, // MODAL
                 'data' => [
@@ -273,138 +231,136 @@ class DiscordInteractionController extends Controller
     }
 
     /**
-     * Memproses perubahan status tiket dan mengirimkan notifikasi WhatsApp secara aman & idempoten.
+     * Memproses perubahan status tiket dan mengirimkan notifikasi WhatsApp secara cepat, aman & idempoten.
      */
     public function processTicketAction($ticketId, string $action, ?string $reason = null, ?string $developerName = null)
     {
         $devTag = $developerName ?: 'Developer Phonebook';
 
-        return DB::transaction(function () use ($ticketId, $action, $reason, $devTag) {
-            $ticket = self::findTicket($ticketId, true);
-            if (!$ticket) {
+        $ticket = self::findTicket($ticketId);
+        if (!$ticket) {
+            return response()->json([
+                'type' => 4,
+                'data' => [
+                    'content' => "⚠️ Tiket laporan ID {$ticketId} tidak ditemukan di sistem database.",
+                    'flags' => 64,
+                ],
+            ], 404);
+        }
+
+        $statusUpper = strtoupper($ticket->status ?: 'MENUNGGU PERSETUJUAN');
+
+        // 1. Aksi ACC LAPORAN
+        if ($action === 'acc') {
+            if ($statusUpper === 'DITERIMA') {
                 return response()->json([
                     'type' => 4,
                     'data' => [
-                        'content' => "⚠️ Tiket laporan ID {$ticketId} tidak ditemukan di sistem database.",
+                        'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah disetujui sebelumnya oleh {$ticket->handled_by}.",
                         'flags' => 64,
                     ],
-                ], 404);
+                ]);
             }
-
-            $statusUpper = strtoupper($ticket->status ?: 'MENUNGGU PERSETUJUAN');
-
-            // 1. Aksi ACC LAPORAN
-            if ($action === 'acc') {
-                if ($statusUpper === 'DITERIMA') {
-                    return response()->json([
-                        'type' => 4,
-                        'data' => [
-                            'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah disetujui sebelumnya oleh {$ticket->handled_by}.",
-                            'flags' => 64,
-                        ],
-                    ]);
-                }
-                if ($statusUpper === 'SELESAI') {
-                    return response()->json([
-                        'type' => 4,
-                        'data' => [
-                            'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah berstatus SELESAI.",
-                            'flags' => 64,
-                        ],
-                    ]);
-                }
-
-                $ticket->status = 'DITERIMA';
-                $ticket->handled_by = $devTag;
-                $ticket->approved_at = Carbon::now('Asia/Jakarta');
-                $ticket->accepted_at = Carbon::now('Asia/Jakarta');
-                $ticket->save();
-
-                // Catat notifikasi aplikasi user di PostgreSQL Supabase
-                TicketNotificationService::createAppNotification($ticket, 'acc');
-
-                // Kirim notifikasi WhatsApp otomatis via Fonnte
-                $waResult = TicketNotificationService::sendWhatsAppUpdate($ticket, 'acc');
-
+            if ($statusUpper === 'SELESAI') {
                 return response()->json([
-                    'type' => 7, // UPDATE_MESSAGE
+                    'type' => 4,
                     'data' => [
-                        'embeds' => [DiscordTicketService::buildEmbed($ticket)],
-                        'components' => DiscordTicketService::buildComponents($ticket),
+                        'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah berstatus SELESAI.",
+                        'flags' => 64,
                     ],
                 ]);
             }
 
-            // 2. Aksi TOLAK LAPORAN
-            if ($action === 'tolak') {
-                if ($statusUpper === 'DITOLAK') {
-                    return response()->json([
-                        'type' => 4,
-                        'data' => [
-                            'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah ditolak sebelumnya.",
-                            'flags' => 64,
-                        ],
-                    ]);
-                }
+            $ticket->status = 'DITERIMA';
+            $ticket->handled_by = $devTag;
+            $ticket->approved_at = Carbon::now('Asia/Jakarta');
+            $ticket->accepted_at = Carbon::now('Asia/Jakarta');
+            $ticket->save();
 
-                $ticket->status = 'DITOLAK';
-                $ticket->handled_by = $devTag;
-                $ticket->rejection_reason = $reason ?: 'Laporan belum dapat diproses.';
-                $ticket->save();
+            // Catat notifikasi aplikasi user di PostgreSQL Supabase
+            TicketNotificationService::createAppNotification($ticket, 'acc');
 
-                // Catat notifikasi aplikasi user di PostgreSQL Supabase
-                TicketNotificationService::createAppNotification($ticket, 'tolak', $reason);
-
-                // Kirim notifikasi WhatsApp otomatis via Fonnte
-                $waResult = TicketNotificationService::sendWhatsAppUpdate($ticket, 'tolak', $reason);
-
-                return response()->json([
-                    'type' => 7, // UPDATE_MESSAGE
-                    'data' => [
-                        'embeds' => [DiscordTicketService::buildEmbed($ticket)],
-                        'components' => DiscordTicketService::buildComponents($ticket),
-                    ],
-                ]);
-            }
-
-            // 3. Aksi SELESAI DIPROSES
-            if ($action === 'selesai') {
-                if ($statusUpper === 'SELESAI') {
-                    return response()->json([
-                        'type' => 4,
-                        'data' => [
-                            'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah ditandai SELESAI sebelumnya.",
-                            'flags' => 64,
-                        ],
-                    ]);
-                }
-
-                $ticket->status = 'SELESAI';
-                $ticket->handled_by = $devTag;
-                $ticket->resolution_reason = $reason ?: 'Masalah telah diselesaikan oleh tim developer.';
-                $ticket->resolved_at = Carbon::now('Asia/Jakarta');
-                $ticket->save();
-
-                // Catat notifikasi aplikasi user di PostgreSQL Supabase lengkap dengan reason developer
-                TicketNotificationService::createAppNotification($ticket, 'selesai', $reason);
-
-                // Kirim notifikasi WhatsApp otomatis via Fonnte
-                $waResult = TicketNotificationService::sendWhatsAppUpdate($ticket, 'selesai', $reason);
-
-                return response()->json([
-                    'type' => 7, // UPDATE_MESSAGE
-                    'data' => [
-                        'embeds' => [DiscordTicketService::buildEmbed($ticket)],
-                        'components' => DiscordTicketService::buildComponents($ticket),
-                    ],
-                ]);
-            }
+            // Kirim notifikasi WhatsApp otomatis via Fonnte (timeout 3s aman)
+            TicketNotificationService::sendWhatsAppUpdate($ticket, 'acc');
 
             return response()->json([
-                'type' => 4,
-                'data' => ['content' => 'Aksi tiket tidak dikenali.', 'flags' => 64],
+                'type' => 7, // UPDATE_MESSAGE
+                'data' => [
+                    'embeds' => [DiscordTicketService::buildEmbed($ticket)],
+                    'components' => DiscordTicketService::buildComponents($ticket),
+                ],
             ]);
-        });
+        }
+
+        // 2. Aksi TOLAK LAPORAN
+        if ($action === 'tolak') {
+            if ($statusUpper === 'DITOLAK') {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah ditolak sebelumnya.",
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            $ticket->status = 'DITOLAK';
+            $ticket->handled_by = $devTag;
+            $ticket->rejection_reason = $reason ?: 'Laporan belum dapat diproses.';
+            $ticket->save();
+
+            // Catat notifikasi aplikasi user di PostgreSQL Supabase
+            TicketNotificationService::createAppNotification($ticket, 'tolak', $reason);
+
+            // Kirim notifikasi WhatsApp otomatis via Fonnte
+            TicketNotificationService::sendWhatsAppUpdate($ticket, 'tolak', $reason);
+
+            return response()->json([
+                'type' => 7, // UPDATE_MESSAGE
+                'data' => [
+                    'embeds' => [DiscordTicketService::buildEmbed($ticket)],
+                    'components' => DiscordTicketService::buildComponents($ticket),
+                ],
+            ]);
+        }
+
+        // 3. Aksi SELESAI DIPROSES
+        if ($action === 'selesai') {
+            if ($statusUpper === 'SELESAI') {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => "ℹ️ Tiket {$ticket->ticket_code} sudah ditandai SELESAI sebelumnya.",
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            $ticket->status = 'SELESAI';
+            $ticket->handled_by = $devTag;
+            $ticket->resolution_reason = $reason ?: 'Masalah telah diselesaikan oleh tim developer.';
+            $ticket->resolved_at = Carbon::now('Asia/Jakarta');
+            $ticket->save();
+
+            // Catat notifikasi aplikasi user di PostgreSQL Supabase lengkap dengan reason developer
+            TicketNotificationService::createAppNotification($ticket, 'selesai', $reason);
+
+            // Kirim notifikasi WhatsApp otomatis via Fonnte
+            TicketNotificationService::sendWhatsAppUpdate($ticket, 'selesai', $reason);
+
+            return response()->json([
+                'type' => 7, // UPDATE_MESSAGE
+                'data' => [
+                    'embeds' => [DiscordTicketService::buildEmbed($ticket)],
+                    'components' => DiscordTicketService::buildComponents($ticket),
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'type' => 4,
+            'data' => ['content' => 'Aksi tiket tidak dikenali.', 'flags' => 64],
+        ]);
     }
 
     /**

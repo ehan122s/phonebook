@@ -22,21 +22,9 @@ class TicketNotificationService
         }
 
         try {
-            if (!Schema::hasTable('app_notifications')) {
-                return null;
-            }
-
             $code = $ticket->ticket_code ?: "PB-{$ticket->id}";
             $devName = $ticket->handled_by ?: 'Tim Developer Phonebook';
             $refId = 'ticket_' . strtolower($action) . '_' . $ticket->id;
-
-            // Idempoten: Jangan buat notifikasi ganda dengan reference_id yang sama
-            $existing = AppNotification::where('user_id', $ticket->user_id)
-                ->where('reference_id', $refId)
-                ->first();
-            if ($existing) {
-                return $existing;
-            }
 
             $title = '';
             $message = '';
@@ -72,26 +60,30 @@ class TicketNotificationService
                     $message = "Status laporan tiket #{$code} diperbarui: {$ticket->status}";
             }
 
-            return AppNotification::create([
-                'user_id' => $ticket->user_id,
-                'type' => 'laporan_masalah',
-                'title' => $title,
-                'message' => $message,
-                'reference_id' => $refId,
-                'metadata' => [
-                    'ticket_id' => $ticket->id,
-                    'ticket_code' => $code,
-                    'category' => $ticket->category,
-                    'title' => $ticket->title,
-                    'status' => $statusStr,
-                    'developer' => $devName,
-                    'reason' => $reason ?: ($ticket->resolution_reason ?: $ticket->rejection_reason),
-                    'action' => $action,
-                    'resolved_at' => $ticket->resolved_at?->toIso8601String(),
-                    'approved_at' => $ticket->approved_at?->toIso8601String(),
+            return AppNotification::updateOrCreate(
+                [
+                    'user_id' => $ticket->user_id,
+                    'reference_id' => $refId,
                 ],
-                'is_read' => false,
-            ]);
+                [
+                    'type' => 'laporan_masalah',
+                    'title' => $title,
+                    'message' => $message,
+                    'metadata' => [
+                        'ticket_id' => $ticket->id,
+                        'ticket_code' => $code,
+                        'category' => $ticket->category,
+                        'title' => $ticket->title,
+                        'status' => $statusStr,
+                        'developer' => $devName,
+                        'reason' => $reason ?: ($ticket->resolution_reason ?: $ticket->rejection_reason),
+                        'action' => $action,
+                        'resolved_at' => $ticket->resolved_at?->toIso8601String(),
+                        'approved_at' => $ticket->approved_at?->toIso8601String(),
+                    ],
+                    'is_read' => false,
+                ]
+            );
         } catch (\Throwable $e) {
             Log::warning("TicketNotificationService: Gagal mencatat AppNotification untuk tiket #{$ticket->id}: " . $e->getMessage());
             return null;
@@ -148,7 +140,7 @@ class TicketNotificationService
 
             $response = Http::withHeaders([
                 'Authorization' => $token,
-            ])->timeout(10)->asForm()->post('https://api.fonnte.com/send', $payload);
+            ])->timeout(3)->asForm()->post('https://api.fonnte.com/send', $payload);
 
             $json = $response->json() ?? [];
             $isSuccess = $response->successful() && (($json['status'] ?? false) === true);

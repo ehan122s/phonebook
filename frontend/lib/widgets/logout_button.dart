@@ -14,7 +14,100 @@ class LogoutButton extends StatelessWidget {
     this.onLoggedOut,
   });
 
-  Future<void> logout(BuildContext context) async {
+  /// Dialog konfirmasi logout: "Apakah Anda yakin ingin logout dari aplikasi?"
+  static Future<bool> confirmLogout(BuildContext context) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryDark = isDark ? Colors.white : const Color(0xFF1E2923);
+    final subColor = isDark ? Colors.white70 : Colors.grey.shade600;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFC62828).withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.logout_rounded,
+                color: Color(0xFFC62828),
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Konfirmasi Keluar',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: primaryDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin logout dari aplikasi?',
+          style: TextStyle(
+            fontSize: 14.5,
+            color: subColor,
+            height: 1.4,
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: primaryDark,
+              side: BorderSide(
+                color: isDark ? Colors.white24 : Colors.grey.shade300,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Ya, Logout',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
+  }
+
+  Future<void> logout(BuildContext context, {bool showConfirmation = true}) async {
+    if (showConfirmation) {
+      final confirmed = await confirmLogout(context);
+      if (!confirmed) return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -51,6 +144,16 @@ class LogoutButton extends StatelessWidget {
     onLoggedOut?.call();
 
     if (!context.mounted) return;
+
+    // Tampilkan notifikasi berhasil logout
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Anda telah berhasil logout dari aplikasi.'),
+        backgroundColor: Color(0xFF245C3A),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 3),
+      ),
+    );
 
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
       PageRouteBuilder(
