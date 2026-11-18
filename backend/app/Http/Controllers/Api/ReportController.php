@@ -14,7 +14,11 @@ class ReportController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Report::with(['user', 'category', 'photos']);
+        $query = Report::with([
+            'user:id,name,email',
+            'category:id,name',
+            'photos:id,report_id,url,address,latitude,longitude,created_at'
+        ]);
 
         // Jika user bukan admin, HANYA ambil laporan milik user tersebut agar tidak tercampur
         if (!$user || $user->role !== 'admin') {
@@ -30,7 +34,7 @@ class ReportController extends Controller
             'success' => true,
             'message' => 'Data laporan berhasil diambil',
             'data' => $reports,
-        ]);
+        ])->header('Cache-Control', 'private, max-age=15, stale-while-revalidate=60');
     }
 
     public function show(Request $request, $id)

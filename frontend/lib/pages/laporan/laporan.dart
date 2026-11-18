@@ -213,8 +213,9 @@ class _LaporanPageState extends State<LaporanPage> {
   // Data loading (User & Admin Monitoring - Tanpa Data Dummy)
   // ---------------------------------------------------------------------------
 
-  Future<void> _loadSavedReports() async {
-    if (mounted) {
+  Future<void> _loadSavedReports({bool silent = false}) async {
+    final hasExisting = _laporanList.isNotEmpty;
+    if (!hasExisting && !silent && mounted) {
       setState(() {
         _isLoadingReports = true;
         _loadErrorMessage = null;
@@ -319,6 +320,16 @@ class _LaporanPageState extends State<LaporanPage> {
           'isOffline': true,
           'syncStatus': local['sync_status'],
           'localId': local['id'],
+        });
+      }
+
+      // RENDER CEPAT: Tampilkan laporan lokal/drafts segera (<10ms) tanpa menunggu request jaringan
+      if (mounted && allReports.isNotEmpty && _laporanList.isEmpty) {
+        setState(() {
+          _laporanList
+            ..clear()
+            ..addAll(allReports);
+          _isLoadingReports = false;
         });
       }
 

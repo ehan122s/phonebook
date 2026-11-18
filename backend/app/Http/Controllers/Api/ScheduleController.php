@@ -62,32 +62,30 @@ class ScheduleController extends Controller
     public function index(Request $request)
     {
         $now = Carbon::now(self::TIMEZONE);
+        $userId = $request->user()->id;
 
-        $schedules = Schedule::with('user')
-            ->where('user_id', $request->user()->id)
+        // Batch update jika ada jadwal whatsapp pending yang sudah jatuh tempo dalam 1 query efisien
+        Schedule::where('user_id', $userId)
+            ->where('whatsapp_status', 'pending')
+            ->whereNotNull('whatsapp_message_id')
+            ->where('reminder_at', '<=', $now)
+            ->update([
+                'whatsapp_status' => 'sent',
+                'whatsapp_sent' => true,
+                'whatsapp_sent_at' => $now,
+            ]);
+
+        $schedules = Schedule::with('user:id,name,email')
+            ->where('user_id', $userId)
             ->orderByDesc('date')
             ->orderBy('start_time')
             ->get();
-
-        // Sinkronisasi status pengiriman jika jadwal yang telah dijadwalkan di Fonnte sudah jatuh tempo
-        foreach ($schedules as $s) {
-            if ($s->whatsapp_status === 'pending' && !empty($s->whatsapp_message_id) && !empty($s->reminder_at)) {
-                $remAt = $s->reminder_at instanceof Carbon ? $s->reminder_at : Carbon::parse($s->reminder_at);
-                if ($remAt->lessThanOrEqualTo($now)) {
-                    $s->update([
-                        'whatsapp_status' => 'sent',
-                        'whatsapp_sent' => true,
-                        'whatsapp_sent_at' => $remAt,
-                    ]);
-                }
-            }
-        }
 
         return response()->json([
             'success' => true,
             'message' => 'Data jadwal berhasil diambil',
             'data' => $schedules,
-        ]);
+        ])->header('Cache-Control', 'private, max-age=15, stale-while-revalidate=60');
     }
 
     public function show(Request $request, $id)

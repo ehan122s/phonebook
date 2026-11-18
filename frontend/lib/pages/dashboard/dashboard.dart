@@ -40,6 +40,10 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  static List<Map<String, dynamic>>? _staticReports;
+  static List<Map<String, dynamic>>? _staticSchedules;
+  static String? _staticUserName;
+
   bool _isLoadingData = true;
   String? _loadError;
   String _userName = '';
@@ -49,13 +53,21 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    // Gunakan in-memory cache jika ada sehingga navigasi tab ke Dashboard instan (0ms)
+    if (_staticReports != null && _staticSchedules != null) {
+      _reports = List.from(_staticReports!);
+      _schedules = List.from(_staticSchedules!);
+      _userName = _staticUserName ?? '';
+      _isLoadingData = false;
+    }
     // Inisialisasi tunggal LocationService (digunakan bersama oleh Header & Widget Lokasi)
     LocationService.instance.ensureInitialized();
-    _loadDashboardData();
+    _loadDashboardData(silent: _reports.isNotEmpty || _schedules.isNotEmpty);
   }
 
-  Future<void> _loadDashboardData() async {
-    if (mounted) {
+  Future<void> _loadDashboardData({bool silent = false}) async {
+    final hasExistingData = _reports.isNotEmpty || _schedules.isNotEmpty;
+    if (!hasExistingData && !silent && mounted) {
       setState(() {
         _isLoadingData = true;
         _loadError = null;
@@ -73,14 +85,17 @@ class _DashboardPageState extends State<DashboardPage> {
           .trim()
           .toLowerCase();
 
-      // 1. Muat jadwal asli dari JadwalService (tanpa dummy)
-      final loadedSchedules = await JadwalService.loadSchedules();
+      // FAST PATH 1: Muat jadwal dari cache lokal secara instan (<5ms)
+      final localSchedules = await JadwalService.getLocalCachedSchedules();
 
-      // 2. Muat laporan asli dari SQLite lokal & API Backend
-      final List<Map<String, dynamic>> combinedReports = [];
+      // FAST PATH 2: Muat laporan asli dari SQLite lokal & drafts
+      final List<Map<String, dynamic>> localCombinedReports = [];
       final Set<String> seenReportKeys = {};
 
-      void addReportItem(Map<String, dynamic> raw) {
+      void addReportItemToList(
+        Map<String, dynamic> raw,
+        List<Map<String, dynamic>> targetList,
+      ) {
         final title = (raw['title'] ?? raw['judul'] ?? '').toString().trim();
         if (title.isEmpty) return;
 
@@ -99,7 +114,7 @@ class _DashboardPageState extends State<DashboardPage> {
         final dedupKey = '${idStr.toLowerCase()}|${title.toLowerCase()}';
         if (seenReportKeys.contains(dedupKey)) return;
 
-        // Filter laporan agar sesuai dengan akun pengguna yang sedang login bila ada info user
+        // Filter laporan agar sesuai dengan akun pengguna yang sedang login
         final reportUserId = (raw['user_id'] ?? '').toString().trim();
         final reportUserEmail =
             (raw['user'] is Map
@@ -120,7 +135,7 @@ class _DashboardPageState extends State<DashboardPage> {
         }
 
         seenReportKeys.add(dedupKey);
-        combinedReports.add({
+        targetList.add({
           'id': idStr,
           'judul': title,
           'kategori':
@@ -141,10 +156,10 @@ class _DashboardPageState extends State<DashboardPage> {
       }
 
       try {
-        final localReports = await OfflineDatabase.instance
-            .getAllLocalReports();
+        final localReports =
+            await OfflineDatabase.instance.getAllLocalReports();
         for (final item in localReports) {
-          addReportItem(item);
+          addReportItemToList(item, localCombinedReports);
         }
       } catch (_) {}
 
@@ -154,32 +169,75 @@ class _DashboardPageState extends State<DashboardPage> {
           final List<dynamic> draftList = jsonDecode(rawDrafts);
           for (final d in draftList) {
             if (d is Map) {
-              addReportItem(Map<String, dynamic>.from(d));
+              addReportItemToList(
+                Map<String, dynamic>.from(d),
+                localCombinedReports,
+              );
             }
           }
         } catch (_) {}
       }
 
-      try {
-        final apiReports = await LaporanService.fetchReports(token);
-        for (final item in apiReports) {
-          addReportItem(item);
+      // Check if LaporanService already has cached reports in memory
+      final cachedApiReports = LaporanService.getCachedReports();
+      if (cachedApiReports != null) {
+        for (final item in cachedApiReports) {
+          addReportItemToList(item, localCombinedReports);
         }
-      } catch (_) {}
+      }
+
+      // RENDER FAST CACHE: Tampilkan data lokal/cache SEGERA tanpa menunggu request jaringan!
+      if (mounted &&
+          (localCombinedReports.isNotEmpty ||
+              localSchedules.isNotEmpty ||
+              _reports.isEmpty)) {
+        setState(() {
+          _userName = savedName;
+          if (localCombinedReports.isNotEmpty) {
+            _reports = List.from(localCombinedReports);
+          }
+          if (localSchedules.isNotEmpty) {
+            _schedules = List.from(localSchedules);
+          }
+          _isLoadingData = false;
+        });
+      }
+
+      // BACKGROUND SYNC PARALLEL: Ambil data terbaru dari server secara paralel (tidak serial)
+      final results = await Future.wait([
+        JadwalService.loadSchedules(),
+        LaporanService.fetchReports(token),
+      ]);
+
+      final loadedSchedules = results[0];
+      final apiReports = results[1];
+
+      for (final item in apiReports) {
+        addReportItemToList(item, localCombinedReports);
+      }
 
       if (!mounted) return;
       setState(() {
         _userName = savedName;
-        _reports = combinedReports;
+        _reports = localCombinedReports;
         _schedules = loadedSchedules;
         _isLoadingData = false;
+        _staticReports = localCombinedReports;
+        _staticSchedules = loadedSchedules;
+        _staticUserName = savedName;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isLoadingData = false;
-        _loadError = 'Gagal memuat ringkasan data: $e';
-      });
+      if (_reports.isEmpty && _schedules.isEmpty) {
+        setState(() {
+          _isLoadingData = false;
+          _loadError = 'Gagal memuat ringkasan data: $e';
+        });
+      } else {
+        setState(() {
+          _isLoadingData = false;
+        });
+      }
     }
   }
 

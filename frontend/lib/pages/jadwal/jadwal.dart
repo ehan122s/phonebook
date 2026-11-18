@@ -150,8 +150,22 @@ class _JadwalPageState extends State<JadwalPage> {
     );
   }
 
-  Future<void> _loadData() async {
-    setState(() => isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    // 1. FAST PATH: Ambil data jadwal dari local cache secara instan (<5ms)
+    final cached = await JadwalService.getLocalCachedSchedules();
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        schedules
+          ..clear()
+          ..addAll(cached);
+        isLoading = false;
+      });
+      _checkAndOpenInitialSchedule();
+    } else if (!silent && schedules.isEmpty) {
+      setState(() => isLoading = true);
+    }
+
+    // 2. BACKGROUND SYNC: Muat pembaruan data jadwal dari server
     try {
       final list = await JadwalService.loadSchedules();
       if (mounted) {

@@ -23,15 +23,43 @@ class UnauthorizedException implements Exception {
 
 /// Service class that handles all report-related API calls & offline persistence.
 class LaporanService {
+  static List<Map<String, dynamic>>? _cachedReports;
+  static DateTime? _lastFetchTime;
+  static const Duration cacheTtl = Duration(seconds: 45);
+
+  /// Invalidate report cache (e.g. after adding/editing/deleting a report)
+  static void clearCache() {
+    _cachedReports = null;
+    _lastFetchTime = null;
+  }
+
+  /// Get cached reports if available
+  static List<Map<String, dynamic>>? getCachedReports() {
+    if (_cachedReports != null &&
+        _lastFetchTime != null &&
+        DateTime.now().difference(_lastFetchTime!) < cacheTtl) {
+      return _cachedReports;
+    }
+    return null;
+  }
+
   /// Fetches all reports from the API and returns them as a
   /// list of mapped report data including attached photos and coordinates.
   static Future<List<Map<String, dynamic>>> fetchReports(
-    String token,
-  ) async {
+    String token, {
+    bool forceRefresh = false,
+  }) async {
     if (token.isEmpty ||
         token.startsWith('offline_') ||
         token.startsWith('google_session_')) {
       return [];
+    }
+
+    if (!forceRefresh) {
+      final cached = getCachedReports();
+      if (cached != null) {
+        return cached;
+      }
     }
 
     final response = await http
@@ -69,7 +97,7 @@ class LaporanService {
     final body = jsonDecode(response.body);
     final List<dynamic> data = body['data'] ?? [];
 
-    return data.map<Map<String, dynamic>>((report) {
+    final reportsList = data.map<Map<String, dynamic>>((report) {
       final String activityDate = report['activity_date']?.toString() ?? '';
       final String rawStatus = report['status']?.toString() ?? 'draft';
 
@@ -129,6 +157,11 @@ class LaporanService {
         'statusApi': rawStatus,
       };
     }).toList();
+
+    _cachedReports = reportsList;
+    _lastFetchTime = DateTime.now();
+
+    return reportsList;
   }
 
   /// Submits a report to the API. Creates a new report via
@@ -139,6 +172,7 @@ class LaporanService {
     required Map<String, dynamic> payload,
     int? existingId,
   }) async {
+    clearCache();
     final isEditing = existingId != null;
 
     final uri = isEditing
@@ -216,6 +250,7 @@ class LaporanService {
     }
 
     final streamedResponse = await request.send();
+    clearCache();
     return http.Response.fromStream(streamedResponse);
   }
 
@@ -224,6 +259,7 @@ class LaporanService {
     String token,
     dynamic id,
   ) async {
+    clearCache();
     final response = await http.delete(
       Uri.parse('$baseUrl/api/reports/$id'),
       headers: {

@@ -353,6 +353,33 @@ class JadwalService {
     };
   }
 
+  /// Ambil jadwal dari penyimpanan lokal (SharedPreferences) secara instan (<5ms) tanpa menunggu request jaringan
+  static Future<List<Map<String, dynamic>>> getLocalCachedSchedules() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userPrefsMap = await _loadUserPrefsMap();
+    final rawLocal = prefs.getString(storageKey);
+
+    if (rawLocal == null || rawLocal.isEmpty) return [];
+
+    try {
+      final List<dynamic> decoded = jsonDecode(rawLocal);
+      return decoded
+          .map((e) => Map<String, dynamic>.from(e))
+          .where((map) => !isDummyScheduleId(map['id']))
+          .map((map) {
+        final idKey = 'id_${map['id']}';
+        final tdKey = _buildTitleDateKey(
+          (map['judul'] ?? map['title'] ?? '').toString(),
+          (map['tanggalIso'] ?? map['date'] ?? '').toString().split('T').first,
+        );
+        final savedPref = userPrefsMap[idKey] ?? userPrefsMap[tdKey];
+        return normalizeItem(map, savedPref: savedPref);
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Load all schedules from local storage and sync with backend API (without dummy fallbacks)
   static Future<List<Map<String, dynamic>>> loadSchedules() async {
     final prefs = await SharedPreferences.getInstance();

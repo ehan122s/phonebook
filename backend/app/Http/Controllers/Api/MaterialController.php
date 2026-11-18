@@ -7,6 +7,7 @@ use App\Models\AppNotification;
 use App\Models\Material;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
@@ -18,15 +19,17 @@ class MaterialController extends Controller
      */
     public function index()
     {
-        $materials = Material::with(['user:id,name,email,role,nip,jabatan,wilayah', 'category'])
-            ->latest()
-            ->get();
+        $materials = Cache::remember('materials_index_v2', 300, function () {
+            return Material::with(['user:id,name,email,role,nip,jabatan,wilayah', 'category:id,name'])
+                ->latest()
+                ->get();
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Data materi edukasi berhasil diambil',
             'data' => $materials,
-        ]);
+        ])->header('Cache-Control', 'public, max-age=60, s-maxage=180, stale-while-revalidate=300');
     }
 
     /**
@@ -202,6 +205,8 @@ class MaterialController extends Controller
 
         $material->load(['user:id,name,email,role,nip,jabatan,wilayah', 'category']);
 
+        Cache::forget('materials_index_v2');
+
         return response()->json([
             'success' => true,
             'message' => 'Materi edukasi berhasil diupload oleh ' . $uploaderName,
@@ -272,6 +277,8 @@ class MaterialController extends Controller
         $material->save();
         $material->load(['user:id,name,email,role,nip,jabatan,wilayah', 'category']);
 
+        Cache::forget('materials_index_v2');
+
         return response()->json([
             'success' => true,
             'message' => 'Materi edukasi berhasil diperbarui',
@@ -309,6 +316,8 @@ class MaterialController extends Controller
         } catch (\Throwable $e) {}
 
         $material->delete();
+
+        Cache::forget('materials_index_v2');
 
         return response()->json([
             'success' => true,

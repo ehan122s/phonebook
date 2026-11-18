@@ -5,18 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class CategoryController extends Controller
 {
     public function index()
     {
-        $categories = Category::latest()->get();
+        $categories = Cache::remember('categories_all_v2', 600, function () {
+            return Category::latest()->get();
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Data kategori berhasil diambil',
             'data' => $categories,
-        ]);
+        ])->header('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
     }
 
     public function show($id)
@@ -44,6 +47,7 @@ class CategoryController extends Controller
         ]);
 
         $category = Category::create($validated);
+        Cache::forget('categories_all_v2');
 
         return response()->json([
             'success' => true,
@@ -69,6 +73,7 @@ class CategoryController extends Controller
         ]);
 
         $category->update($validated);
+        Cache::forget('categories_all_v2');
 
         return response()->json([
             'success' => true,
@@ -89,6 +94,7 @@ class CategoryController extends Controller
         }
 
         $category->delete();
+        Cache::forget('categories_all_v2');
 
         return response()->json([
             'success' => true,

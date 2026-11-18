@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ReportTemplate;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ReportTemplateController extends Controller
 {
@@ -277,23 +278,25 @@ class ReportTemplateController extends Controller
      */
     public function index()
     {
-        $count = ReportTemplate::query()->count();
-        if ($count === 0) {
-            foreach (self::getDefaultTemplates() as $tpl) {
-                ReportTemplate::create($tpl);
+        $templates = Cache::remember('report_templates_active_v2', 300, function () {
+            $count = ReportTemplate::query()->count();
+            if ($count === 0) {
+                foreach (self::getDefaultTemplates() as $tpl) {
+                    ReportTemplate::create($tpl);
+                }
             }
-        }
 
-        $templates = ReportTemplate::query()
-            ->where('is_active', true)
-            ->orderBy('id', 'asc')
-            ->get();
+            return ReportTemplate::query()
+                ->where('is_active', true)
+                ->orderBy('id', 'asc')
+                ->get();
+        });
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar template laporan berhasil diambil',
             'data' => $templates,
-        ]);
+        ])->header('Cache-Control', 'public, max-age=60, s-maxage=180, stale-while-revalidate=300');
     }
 
     /**
@@ -371,6 +374,8 @@ class ReportTemplateController extends Controller
             'is_active' => true,
             'uploaded_by' => $user ? $user->id : null,
         ]);
+
+        Cache::forget('report_templates_active_v2');
 
         return response()->json([
             'success' => true,
@@ -470,6 +475,8 @@ class ReportTemplateController extends Controller
 
         $template->save();
 
+        Cache::forget('report_templates_active_v2');
+
         return response()->json([
             'success' => true,
             'message' => 'Template laporan berhasil diperbarui di database Supabase',
@@ -495,6 +502,8 @@ class ReportTemplateController extends Controller
         }
 
         $template->update(['is_active' => false]);
+
+        Cache::forget('report_templates_active_v2');
 
         return response()->json([
             'success' => true,

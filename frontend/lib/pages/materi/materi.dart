@@ -86,7 +86,9 @@ class _MateriPageState extends State<MateriPage> {
         _currentUserName = name;
         _currentUserRole = role;
         _currentUserEmail = email;
-        _isLoading = true;
+        if (_materials.isEmpty) {
+          _isLoading = true;
+        }
         _errorMessage = null;
       });
     }
@@ -111,6 +113,9 @@ class _MateriPageState extends State<MateriPage> {
     if (mounted) {
       setState(() {
         _materials = loadedList;
+        if (loadedList.isNotEmpty) {
+          _isLoading = false;
+        }
       });
     }
 
