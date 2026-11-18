@@ -16,12 +16,6 @@ foreach ($storageDirs as $dir) {
     }
 }
 
-// Hapus cache lama di /tmp jika ada agar perubahan konfigurasi selalu termuat
-@unlink('/tmp/config.php');
-@unlink('/tmp/routes.php');
-@unlink('/tmp/services.php');
-@unlink('/tmp/packages.php');
-
 // Reset SCRIPT_NAME agar Symfony/Laravel tidak memotong prefix '/api' dari REQUEST_URI
 $_SERVER['SCRIPT_NAME'] = '/index.php';
 $_SERVER['PHP_SELF'] = '/index.php';
