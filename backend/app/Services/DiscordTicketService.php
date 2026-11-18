@@ -19,17 +19,19 @@ class DiscordTicketService
         
         // Forest green identitas Phonebook: #245C3A (2382906)
         $color = 2382906;
-        if ($statusUpper === 'DITOLAK') {
+        if (in_array($statusUpper, ['DITOLAK', 'REJECTED'])) {
             $color = 12986408; // Red
-        } elseif ($statusUpper === 'SELESAI') {
+        } elseif (in_array($statusUpper, ['SELESAI', 'RESOLVED'])) {
             $color = 1668818;  // Blue
-        } elseif ($statusUpper === 'DITERIMA') {
+        } elseif (in_array($statusUpper, ['DITERIMA', 'SEDANG DIPROSES', 'IN_PROGRESS'])) {
             $color = 3066993;  // Bright Green
         }
 
         $createdAtWib = $ticket->created_at
             ? Carbon::parse($ticket->created_at)->setTimezone('Asia/Jakarta')->format('d/m/Y H:i:s') . ' WIB'
             : Carbon::now('Asia/Jakarta')->format('d/m/Y H:i:s') . ' WIB';
+
+        $phoneDisplay = $ticket->reporter_phone ?: ($ticket->whatsapp ?: '-');
 
         $fields = [
             [
@@ -44,7 +46,7 @@ class DiscordTicketService
             ],
             [
                 'name' => 'Nomor WhatsApp',
-                'value' => $ticket->reporter_phone ?: '-',
+                'value' => $phoneDisplay,
                 'inline' => true,
             ],
             [
@@ -54,7 +56,7 @@ class DiscordTicketService
             ],
             [
                 'name' => 'ID Tiket Laporan',
-                'value' => $ticket->ticket_code ?: "PB-2026-{$ticket->id}",
+                'value' => $ticket->ticket_code ?: ($ticket->ticket_number ?: "PB-2026-{$ticket->id}"),
                 'inline' => true,
             ],
             [
@@ -64,12 +66,12 @@ class DiscordTicketService
             ],
             [
                 'name' => 'Judul Masalah',
-                'value' => $ticket->title,
+                'value' => $ticket->title ?: 'Laporan Masalah',
                 'inline' => true,
             ],
             [
                 'name' => 'Kategori Masalah',
-                'value' => $ticket->category,
+                'value' => $ticket->category ?: 'Bug / Error',
                 'inline' => true,
             ],
             [
@@ -79,9 +81,9 @@ class DiscordTicketService
             ],
             [
                 'name' => 'Deskripsi Masalah',
-                'value' => mb_strlen($ticket->description) > 1000
+                'value' => mb_strlen($ticket->description ?: '') > 1000
                     ? mb_substr($ticket->description, 0, 995) . ' ...'
-                    : $ticket->description,
+                    : ($ticket->description ?: 'Tidak ada deskripsi.'),
                 'inline' => false,
             ],
         ];
@@ -94,10 +96,11 @@ class DiscordTicketService
             ];
         }
 
-        if ($ticket->approved_at) {
+        if ($ticket->approved_at || $ticket->accepted_at) {
+            $approvedTime = $ticket->approved_at ?: $ticket->accepted_at;
             $fields[] = [
                 'name' => 'Waktu Disetujui',
-                'value' => Carbon::parse($ticket->approved_at)->setTimezone('Asia/Jakarta')->format('d/m/Y H:i:s') . ' WIB',
+                'value' => Carbon::parse($approvedTime)->setTimezone('Asia/Jakarta')->format('d/m/Y H:i:s') . ' WIB',
                 'inline' => true,
             ];
         }
@@ -127,12 +130,12 @@ class DiscordTicketService
         }
 
         $baseUrl = rtrim(config('app.url') ?: 'https://phonebook-five-umber.vercel.app', '/');
-        $code = $ticket->ticket_code ?: "PB-2026-{$ticket->id}";
+        $code = $ticket->ticket_code ?: ($ticket->ticket_number ?: "PB-2026-{$ticket->id}");
         $quickLinks = "[🟡 ACC TIKET]({$baseUrl}/api/tickets/{$code}/action?action=acc) • [🟢 SELESAIKAN TIKET]({$baseUrl}/api/tickets/{$code}/action?action=selesai)";
 
         return [
-            'title' => 'TIKET LAPORAN MASALAH PHONEBOOK',
-            'description' => "**" . $ticket->title . "**\n" . $ticket->category . "\n\n" . $quickLinks,
+            'title' => 'LAPORAN MASALAH PHONEBOOK',
+            'description' => "**" . ($ticket->title ?: 'Laporan Masalah') . "**\n" . ($ticket->category ?: 'Bug / Error') . "\n\n" . $quickLinks,
             'color' => $color,
             'fields' => $fields,
             'footer' => [
@@ -161,7 +164,7 @@ class DiscordTicketService
                     [
                         'type' => 2, // BUTTON
                         'style' => 3, // SUCCESS
-                        'label' => 'ACC / AMBIL TIKET',
+                        'label' => 'ACC / TERIMA LAPORAN',
                         'custom_id' => "ticket_acc_{$id}",
                         'disabled' => $isAccepted || $isClosed,
                         'emoji' => ['name' => '🟡'],
@@ -169,7 +172,7 @@ class DiscordTicketService
                     [
                         'type' => 2,
                         'style' => 1, // PRIMARY
-                        'label' => 'SELESAIKAN TIKET',
+                        'label' => 'SELESAIKAN LAPORAN',
                         'custom_id' => "ticket_selesai_{$id}",
                         'disabled' => $isClosed,
                         'emoji' => ['name' => '🟢'],
@@ -188,18 +191,45 @@ class DiscordTicketService
     }
 
     /**
+     * Resolusi otomatis Text Channel ID:
+     * Menangani kasus jika konfigurasi channel_id diisi dengan Guild/Server ID (misal: 1572092848747192350).
+     */
+    public static function resolveChannelId(?string $configuredChannelId, ?string $botToken): string
+    {
+        $knownGuildId = '1572092848747192350';
+        $defaultChannelId = '1572092849330065472'; // #general
+
+        // Jika channel_id sama dengan server ID atau kosong, gunakan text channel yang benar
+        if (empty($configuredChannelId) || $configuredChannelId === $knownGuildId) {
+            return $defaultChannelId;
+        }
+
+        return $configuredChannelId;
+    }
+
+    /**
      * Mengirimkan tiket ke Discord via Bot API (jika token ada) atau Webhook URL.
      */
     public static function sendTicketToDiscord(BugReport $ticket): array
     {
         $botToken = config('services.discord.bot_token');
-        $channelId = config('services.discord.channel_id');
-        $webhookUrl = config('services.discord.report_webhook_url') ?: env('DISCORD_BUG_WEBHOOK_URL');
+        $rawChannelId = config('services.discord.channel_id');
+        $webhookUrl = config('services.discord.report_webhook_url');
+
+        $channelId = self::resolveChannelId($rawChannelId, $botToken);
 
         $embed = self::buildEmbed($ticket);
         $components = self::buildComponents($ticket);
 
-        // 1. Jika Discord Bot Token & Channel ID tersedia, kirim via Discord Bot REST API resmi
+        Log::info("DiscordTicket [DISPATCH]: Mengirim tiket #{$ticket->ticket_code} (ID: {$ticket->id}) ke Discord", [
+            'ticket_code' => $ticket->ticket_code,
+            'title' => $ticket->title,
+            'has_bot_token' => !empty($botToken),
+            'channel_id' => $channelId,
+            'has_webhook' => !empty($webhookUrl),
+        ]);
+
+        // 1. Kirim via Discord Bot REST API resmi
         if (!empty($botToken) && !empty($channelId)) {
             try {
                 $response = Http::withHeaders([
@@ -218,14 +248,43 @@ class DiscordTicketService
                     $ticket->discord_error = null;
                     $ticket->save();
 
-                    return ['success' => true, 'message_id' => $json['id'] ?? null];
+                    Log::info("DiscordTicket [SUCCESS_BOT]: Tiket #{$ticket->ticket_code} berhasil diposting via Bot API. Message ID={$json['id']}");
+
+                    return ['success' => true, 'method' => 'bot', 'message_id' => $json['id'] ?? null];
                 }
+
+                // Jika error 404 Unknown Channel, coba fallback ke text channel default
+                if ($response->status() === 404 && $channelId !== '1572092849330065472') {
+                    Log::warning("DiscordTicket [RETRY_CHANNEL]: Channel {$channelId} tidak ditemukan (404). Mencoba fallback channel 1572092849330065472...");
+                    $retryRes = Http::withHeaders([
+                        'Authorization' => "Bot {$botToken}",
+                        'Content-Type' => 'application/json',
+                    ])->timeout(8)->post("https://discord.com/api/v10/channels/1572092849330065472/messages", [
+                        'embeds' => [$embed],
+                        'components' => $components,
+                    ]);
+
+                    if ($retryRes->successful()) {
+                        $json = $retryRes->json();
+                        $ticket->discord_sent = true;
+                        $ticket->discord_message_id = $json['id'] ?? null;
+                        $ticket->discord_channel_id = '1572092849330065472';
+                        $ticket->discord_error = null;
+                        $ticket->save();
+
+                        Log::info("DiscordTicket [SUCCESS_BOT_FALLBACK]: Tiket #{$ticket->ticket_code} berhasil diposting ke fallback channel. Message ID={$json['id']}");
+
+                        return ['success' => true, 'method' => 'bot_fallback', 'message_id' => $json['id'] ?? null];
+                    }
+                }
+
+                Log::warning("DiscordTicket [FAIL_BOT]: Bot API gagal dengan status HTTP {$response->status()}: " . mb_substr($response->body(), 0, 150));
             } catch (\Throwable $e) {
-                Log::warning('Discord Bot API error: ' . $e->getMessage());
+                Log::warning('DiscordTicket [EXCEPTION_BOT]: ' . $e->getMessage());
             }
         }
 
-        // 2. Kirim via Webhook URL
+        // 2. Fallback: Kirim via Webhook URL
         if (!empty($webhookUrl)) {
             try {
                 $trimmedUrl = trim($webhookUrl);
@@ -241,26 +300,40 @@ class DiscordTicketService
                     $json = $response->json();
                     $ticket->discord_sent = true;
                     $ticket->discord_message_id = $json['id'] ?? null;
-                    $ticket->discord_channel_id = $json['channel_id'] ?? null;
+                    $ticket->discord_channel_id = $json['channel_id'] ?? $channelId;
                     $ticket->discord_error = null;
                     $ticket->save();
 
-                    return ['success' => true, 'message_id' => $json['id'] ?? null];
+                    Log::info("DiscordTicket [SUCCESS_WEBHOOK]: Tiket #{$ticket->ticket_code} berhasil diposting via Webhook. Message ID={$json['id']}");
+
+                    return ['success' => true, 'method' => 'webhook', 'message_id' => $json['id'] ?? null];
                 } else {
+                    $err = 'Webhook HTTP ' . $response->status() . ' - ' . mb_substr($response->body(), 0, 150);
                     $ticket->discord_sent = false;
-                    $ticket->discord_error = 'HTTP ' . $response->status() . ' - ' . mb_substr($response->body(), 0, 150);
+                    $ticket->discord_error = $err;
                     $ticket->save();
-                    return ['success' => false, 'error' => $ticket->discord_error];
+
+                    Log::error("DiscordTicket [FAIL_WEBHOOK]: {$err}");
+                    return ['success' => false, 'error' => $err];
                 }
             } catch (\Throwable $e) {
+                $err = 'Webhook Exception: ' . mb_substr($e->getMessage(), 0, 150);
                 $ticket->discord_sent = false;
-                $ticket->discord_error = 'Exception: ' . mb_substr($e->getMessage(), 0, 150);
+                $ticket->discord_error = $err;
                 $ticket->save();
-                return ['success' => false, 'error' => $ticket->discord_error];
+
+                Log::error("DiscordTicket [FAIL_WEBHOOK_EXCEPTION]: {$err}");
+                return ['success' => false, 'error' => $err];
             }
         }
 
-        return ['success' => false, 'error' => 'Konfigurasi Discord belum tersedia.'];
+        $err = 'Konfigurasi Discord (Bot Token / Channel ID / Webhook URL) belum tersedia pada server.';
+        $ticket->discord_sent = false;
+        $ticket->discord_error = $err;
+        $ticket->save();
+
+        Log::error("DiscordTicket [FAIL_NO_CONFIG]: {$err}");
+        return ['success' => false, 'error' => $err];
     }
 
     /**
@@ -270,12 +343,14 @@ class DiscordTicketService
     {
         $messageId = $ticket->discord_message_id;
         if (empty($messageId)) {
+            Log::info("DiscordTicket [UPDATE_SKIP]: Tidak ada discord_message_id pada tiket #{$ticket->ticket_code}");
             return false;
         }
 
         $botToken = config('services.discord.bot_token');
-        $channelId = $ticket->discord_channel_id ?: config('services.discord.channel_id');
-        $webhookUrl = config('services.discord.report_webhook_url') ?: env('DISCORD_BUG_WEBHOOK_URL');
+        $rawChannelId = $ticket->discord_channel_id ?: config('services.discord.channel_id');
+        $channelId = self::resolveChannelId($rawChannelId, $botToken);
+        $webhookUrl = config('services.discord.report_webhook_url');
 
         $embed = self::buildEmbed($ticket);
         $components = self::buildComponents($ticket);
@@ -291,10 +366,11 @@ class DiscordTicketService
                     'components' => $components,
                 ]);
                 if ($res->successful()) {
+                    Log::info("DiscordTicket [UPDATE_SUCCESS_BOT]: Pesan {$messageId} berhasil diperbarui via Bot API.");
                     return true;
                 }
             } catch (\Throwable $e) {
-                Log::warning('Gagal update Discord message via Bot: ' . $e->getMessage());
+                Log::warning('DiscordTicket [UPDATE_FAIL_BOT]: ' . $e->getMessage());
             }
         }
 
@@ -307,10 +383,11 @@ class DiscordTicketService
                     'components' => $components,
                 ]);
                 if ($res->successful()) {
+                    Log::info("DiscordTicket [UPDATE_SUCCESS_WEBHOOK]: Pesan {$messageId} berhasil diperbarui via Webhook.");
                     return true;
                 }
             } catch (\Throwable $e) {
-                Log::warning('Gagal update Discord message via Webhook: ' . $e->getMessage());
+                Log::warning('DiscordTicket [UPDATE_FAIL_WEBHOOK]: ' . $e->getMessage());
             }
         }
 

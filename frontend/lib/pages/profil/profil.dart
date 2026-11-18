@@ -1853,10 +1853,14 @@ class _ProfilPageState extends State<ProfilPage> {
 
               if (response.statusCode >= 200 && response.statusCode < 300) {
                 String ticketCode = 'PB-2026';
+                bool discordSent = true;
                 try {
                   final resBody = jsonDecode(response.body);
                   if (resBody['data']?['ticket_code'] != null) {
                     ticketCode = resBody['data']['ticket_code'].toString();
+                  }
+                  if (resBody['data']?['discord_sent'] != null) {
+                    discordSent = resBody['data']['discord_sent'] == true;
                   }
                 } catch (_) {}
 
@@ -1882,6 +1886,7 @@ class _ProfilPageState extends State<ProfilPage> {
                     'email': reporterEmail,
                     'phone': cleanPhone,
                     'status': 'MENUNGGU PERSETUJUAN',
+                    'discord_sent': discordSent,
                     'createdAt': DateTime.now().toIso8601String(),
                   });
                   await prefs.setString(bugStorageKey, jsonEncode(bugList));
@@ -1890,14 +1895,16 @@ class _ProfilPageState extends State<ProfilPage> {
                 await NotificationService.instance.addNotification(
                   type: 'umum',
                   title: 'Tiket Laporan #$ticketCode Terdaftar',
-                  message:
-                      'Laporan "$title" telah diteruskan ke Discord developer. Notifikasi WhatsApp akan otomatis dikirimkan ke $cleanPhone.',
+                  message: discordSent
+                      ? 'Laporan "$title" telah berhasil diteruskan ke Discord developer. Notifikasi WhatsApp akan otomatis dikirimkan ke $cleanPhone.'
+                      : 'Laporan "$title" berhasil disimpan. Pengiriman ke Discord developer sedang diproses antrean server.',
                   referenceId: 'ticket_$ticketCode',
                   metadata: {
                     'targetPage': 'profil',
                     'ticket_code': ticketCode,
                     'category': category,
                     'title': title,
+                    'discord_sent': discordSent,
                   },
                 );
 
@@ -1905,11 +1912,12 @@ class _ProfilPageState extends State<ProfilPage> {
                 Navigator.pop(ctx);
 
                 if (!mounted) return;
+                final successMessage = discordSent
+                    ? 'Tiket #$ticketCode berhasil dikirim ke server Discord developer! Notifikasi persetujuan akan dikirimkan ke WhatsApp Anda.'
+                    : 'Tiket #$ticketCode berhasil disimpan! Sedang dalam antrean pengiriman ke Discord developer.';
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(
-                      'Tiket #$ticketCode berhasil dikirim! Notifikasi persetujuan akan dikirimkan ke WhatsApp Anda.',
-                    ),
+                    content: Text(successMessage),
                     backgroundColor: const Color(0xFF245C3A),
                     behavior: SnackBarBehavior.floating,
                     duration: const Duration(seconds: 5),
@@ -2591,6 +2599,67 @@ class _ProfilPageState extends State<ProfilPage> {
                                             ),
                                           ),
                                         ],
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              t['discord_sent'] == true
+                                                  ? Icons.check_circle_rounded
+                                                  : Icons.sync_problem_rounded,
+                                              size: 13,
+                                              color: t['discord_sent'] == true
+                                                  ? const Color(0xFF2E7D32)
+                                                  : const Color(0xFFE65100),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              t['discord_sent'] == true
+                                                  ? 'Discord: Terkirim'
+                                                  : 'Discord: Menunggu Kirim',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: t['discord_sent'] == true
+                                                    ? const Color(0xFF2E7D32)
+                                                    : const Color(0xFFE65100),
+                                              ),
+                                            ),
+                                            const Spacer(),
+                                            if (t['discord_sent'] != true)
+                                              TextButton.icon(
+                                                style: TextButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 8, vertical: 2),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                ),
+                                                icon: const Icon(Icons.refresh_rounded, size: 13),
+                                                label: const Text(
+                                                  'Kirim Ulang',
+                                                  style: TextStyle(fontSize: 11),
+                                                ),
+                                                onPressed: () async {
+                                                  try {
+                                                    final res = await http.post(
+                                                      Uri.parse('${ApiConstants.bugReportsUrl}/$ticketCode/retry-discord'),
+                                                      headers: {'Accept': 'application/json'},
+                                                    ).timeout(const Duration(seconds: 10));
+                                                    if (res.statusCode == 200) {
+                                                      setMState(() {});
+                                                      if (context.mounted) {
+                                                        ScaffoldMessenger.of(context).showSnackBar(
+                                                          const SnackBar(
+                                                            content: Text('Tiket berhasil dikirim ulang ke Discord!'),
+                                                            backgroundColor: Color(0xFF245C3A),
+                                                          ),
+                                                        );
+                                                      }
+                                                    }
+                                                  } catch (_) {}
+                                                },
+                                              ),
+                                          ],
+                                        ),
                                       ],
                                     ),
                                   );
@@ -2665,6 +2734,69 @@ class _ProfilPageState extends State<ProfilPage> {
                     height: 1.5,
                     color: bodyColor,
                   ),
+                ),
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 12),
+                Text(
+                  'Dokumen Kepatuhan & Kebijakan Daring:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: primaryGreen,
+                          side: BorderSide(color: primaryGreen),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.description_outlined, size: 16),
+                        label: const Text(
+                          'Ketentuan Layanan',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        onPressed: () async {
+                          final url = Uri.parse('${ApiConstants.baseUrl}/terms');
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.privacy_tip_outlined, size: 16),
+                        label: const Text(
+                          'Kebijakan Privasi',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        onPressed: () async {
+                          final url = Uri.parse('${ApiConstants.baseUrl}/privacy');
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
