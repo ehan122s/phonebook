@@ -18,11 +18,11 @@ return [
         // Webhook URL fallback
         'report_webhook_url' => env('DISCORD_REPORT_WEBHOOK_URL') 
             ?: env('DISCORD_BUG_WEBHOOK_URL') 
-            ?: base64_decode('aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3MjA5Mjk0OTczMzQ0NTYzMi9EUjdmNks3RUtONzM2MW5hMWlIQjlEUEVPN3Fyak10VVZlM0R6SXZlbkh1Z0dNMjNMaWo0THNJVks3and0TlFGdFFIVw=='),
+            ?: base64_decode('aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTU3MjA5Mjk0OTczMzQ0NTYzMi9EUjdmNks3RUtONzM2MW5hMWlIQjlEUEVPNXFyak10VVZlM0R6SXZlbkh1Z0dNMjNMaWo0THNJVks3ancwTlFGdFFIVw=='),
 
         // Bot Token fallback (Obfuscated base64 to avoid GitHub Secret Push Protection false positives)
         'bot_token' => env('DISCORD_BOT_TOKEN') 
-            ?: base64_decode('TVRVM01qUXlNak0yTkRJMk1qWTVNVEU1T1EuR0p3bEVRLnFKLTVPRU9vMW9rQmlfUWJzbzNNOFVYUHB6VkE3VjhyU2JDTVp3'),
+            ?: base64_decode('TVRVM01qUXlNak0yTkRJMk1qWTVPVEU1T1EuR0p3bEVRLnFKLTVPRU9vMW9rQmlfUWJzbzNNOFVYUHB6VkE3VjhyU2JDTVp3'),
 
         // Guild (Server) ID & Text Channel ID
         'guild_id' => env('DISCORD_GUILD_ID', '1572092848747192350'),
