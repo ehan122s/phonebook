@@ -16,9 +16,9 @@ return [
     'discord' => [
         'report_webhook_url' => env('DISCORD_REPORT_WEBHOOK_URL', env('DISCORD_BUG_WEBHOOK_URL')),
         'bot_token' => env('DISCORD_BOT_TOKEN'),
-        'channel_id' => env('DISCORD_CHANNEL_ID'),
-        'public_key' => env('DISCORD_PUBLIC_KEY'),
-        'allowed_developer_ids' => array_values(array_filter(array_map('trim', explode(',', env('DISCORD_ALLOWED_DEVELOPER_IDS', ''))))),
+        'channel_id' => env('DISCORD_CHANNEL_ID', '1572092848747192350'),
+        'public_key' => env('DISCORD_PUBLIC_KEY', 'd4424969314dc8ae0685801c163cf6e99650d4206312c9a859b7f7ae0546fe7f'),
+        'allowed_developer_ids' => array_values(array_filter(array_map('trim', explode(',', env('DISCORD_ALLOWED_DEVELOPER_IDS', '1384182134595653804'))))),
     ],
 
 

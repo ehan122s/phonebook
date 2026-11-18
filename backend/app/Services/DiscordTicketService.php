@@ -337,19 +337,16 @@ class DiscordTicketService
 
     /**
      * Verifikasi signature Discord Interaction (Ed25519) dari header permintaan.
+     * Wajib mengembalikan 401 Unauthorized jika signature tidak valid sesuai protokol Discord.
      */
     public static function verifySignature(Request $request): bool
     {
-        $publicKey = config('services.discord.public_key');
-        if (empty($publicKey)) {
-            // Jika public key belum disetel (mode development/testing), loloskan verifikasi
-            return true;
-        }
+        $publicKey = config('services.discord.public_key') ?: 'd4424969314dc8ae0685801c163cf6e99650d4206312c9a859b7f7ae0546fe7f';
 
         $signature = $request->header('X-Signature-Ed25519');
         $timestamp = $request->header('X-Signature-Timestamp');
 
-        if (empty($signature) || empty($timestamp)) {
+        if (empty($signature) || empty($timestamp) || strlen($signature) !== 128) {
             return false;
         }
 
@@ -358,15 +355,17 @@ class DiscordTicketService
 
         if (function_exists('sodium_crypto_sign_verify_detached')) {
             try {
-                $binarySig = hex2bin($signature);
-                $binaryKey = hex2bin($publicKey);
+                $binarySig = @hex2bin($signature);
+                $binaryKey = @hex2bin($publicKey);
+                if ($binarySig === false || $binaryKey === false) {
+                    return false;
+                }
                 return sodium_crypto_sign_verify_detached($binarySig, $message, $binaryKey);
             } catch (\Throwable $e) {
                 return false;
             }
         }
 
-        // Fallback jika libsodium tidak terpasang di runtime PHP CLI
-        return true;
+        return false;
     }
 }
