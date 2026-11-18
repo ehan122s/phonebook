@@ -13,6 +13,13 @@
       "dest": "/build/$1"
     },
     {
+      "src": "/api/(categories|report-templates|materials)",
+      "headers": {
+        "Cache-Control": "s-maxage=60, stale-while-revalidate=300"
+      },
+      "dest": "/api/index.php"
+    },
+    {
       "src": "/(.*)",
       "dest": "/api/index.php"
     }
