@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kebijakan Privasi (Privacy Policy) - Phonebook</title>
+    <meta name="description" content="Kebijakan Privasi data pengguna aplikasi Phonebook CDK Wilayah V Garut, pelaporan kehutanan, dan bot Discord.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #245C3A;
+            --primary-hover: #1b472c;
+            --primary-light: #eaf3ec;
+            --primary-glow: rgba(36, 92, 58, 0.15);
+            --accent: #2e7d4e;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-page: #f8faf8;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --border-highlight: #cbd5e1;
+            --code-bg: #f1f5f9;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+            --shadow-md: 0 4px 16px -2px rgba(36, 92, 58, 0.08), 0 2px 6px -1px rgba(0,0,0,0.04);
+            --shadow-lg: 0 12px 32px -4px rgba(36, 92, 58, 0.12);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 18px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #348a56;
+                --primary-hover: #40a568;
+                --primary-light: #162e20;
+                --primary-glow: rgba(52, 138, 86, 0.25);
+                --accent: #4ade80;
+                --text-main: #f1f5f9;
+                --text-muted: #94a3b8;
+                --bg-page: #0d1410;
+                --bg-card: #131c16;
+                --border: #1e2e24;
+                --border-highlight: #283e30;
+                --code-bg: #1a2820;
+                --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+                --shadow-md: 0 4px 16px -2px rgba(0,0,0,0.4);
+                --shadow-lg: 0 12px 32px -4px rgba(0,0,0,0.5);
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+        /* Top Banner & Header */
+        header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(12px);
+        }
+
+        .nav-container {
+            max-width: 1040px;
+            margin: 0 auto;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .brand-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-main);
+            font-weight: 700;
+            font-size: 1.15rem;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            background: linear-gradient(135deg, #245C3A 0%, #348a56 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            box-shadow: 0 4px 10px rgba(36, 92, 58, 0.3);
+            flex-shrink: 0;
+        }
+
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--text-main);
+        }
+
+        .brand-subtitle {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-tab {
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: all 0.2s ease;
+        }
+
+        .nav-tab:hover {
+            color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .nav-tab.active {
+            color: #ffffff;
+            background: var(--primary);
+            box-shadow: 0 2px 8px var(--primary-glow);
+        }
+
+        /* Hero Header */
+        .hero-section {
+            background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-page) 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 48px 24px 40px;
+            text-align: center;
+        }
+
+        .hero-inner {
+            max-width: 780px;
+            margin: 0 auto;
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 14px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            background: var(--primary-light);
+            color: var(--primary);
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+
+        .badge-dot {
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+        }
+
+        .hero-title {
+            font-size: 2.3rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--text-main);
+            line-height: 1.25;
+            margin-bottom: 12px;
+        }
+
+        .hero-desc {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .meta-chips {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+
+        .meta-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Main Content Container */
+        .main-wrapper {
+            max-width: 960px;
+            margin: -20px auto 60px;
+            padding: 0 24px;
+        }
+
+        .content-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 44px 48px;
+            box-shadow: var(--shadow-md);
+        }
+
+        @media (max-width: 680px) {
+            .content-card {
+                padding: 24px 20px;
+            }
+            .hero-title {
+                font-size: 1.8rem;
+            }
+            .nav-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .nav-links {
+                width: 100%;
+                justify-content: flex-start;
+                overflow-x: auto;
+            }
+        }
+
+        /* Typography & Legal Content Styles */
+        .legal-content h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-main);
+            margin-top: 36px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legal-content h2:first-of-type {
+            margin-top: 10px;
+        }
+
+        .section-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--primary-light);
+            color: var(--primary);
+            font-size: 0.85rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .legal-content h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-top: 22px;
+            margin-bottom: 8px;
+        }
+
+        .legal-content p {
+            font-size: 0.95rem;
+            color: var(--text-main);
+            margin-bottom: 14px;
+            line-height: 1.75;
+        }
+
+        .legal-content ul, .legal-content ol {
+            margin: 12px 0 18px 24px;
+            font-size: 0.94rem;
+            line-height: 1.7;
+        }
+
+        .legal-content li {
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        .legal-content strong {
+            color: var(--text-main);
+            font-weight: 700;
+        }
+
+        /* Callout / Notice Box */
+        .callout-box {
+            background: var(--primary-light);
+            border-left: 4px solid var(--primary);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 16px 20px;
+            margin: 20px 0;
+            font-size: 0.92rem;
+            color: var(--text-main);
+        }
+
+        .callout-box.info {
+            background: #eff6ff;
+            border-left-color: #3b82f6;
+            color: #1e3a8a;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .callout-box.info {
+                background: #172554;
+                border-left-color: #60a5fa;
+                color: #dbeafe;
+            }
+        }
+
+        .callout-title {
+            font-weight: 700;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Code & Pre */
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.86em;
+            color: var(--primary);
+        }
+
+        /* Table */
+        .table-responsive {
+            overflow-x: auto;
+            margin: 20px 0;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--bg-page);
+            font-weight: 700;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Quick Navigation / Table of Contents */
+        .toc-card {
+            background: var(--bg-page);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 20px 24px;
+            margin-bottom: 32px;
+        }
+
+        .toc-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .toc-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 8px 16px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .toc-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 500;
+            transition: color 0.15s ease;
+        }
+
+        .toc-link:hover {
+            text-decoration: underline;
+            color: var(--primary-hover);
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            background: var(--bg-card);
+            padding: 40px 24px;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            margin-top: 40px;
+        }
+
+        .footer-inner {
+            max-width: 960px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        .footer-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .footer-link:hover {
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="nav-container">
+            <a href="http://localhost" class="brand-link">
+                <div class="brand-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        <circle cx="12" cy="8" r="2"/>
+                        <path d="M10 13a2 2 0 0 1 4 0"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">Phonebook CDK V</span>
+                    <span class="brand-subtitle">Dinas Kehutanan Provinsi Jawa Barat</span>
+                </div>
+            </a>
+            <nav class="nav-links">
+                <a href="http://localhost/terms" class="nav-tab ">
+                    Ketentuan Layanan
+                </a>
+                <a href="http://localhost/privacy" class="nav-tab ">
+                    Kebijakan Privasi
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Header -->
+    <section class="hero-section">
+        <div class="hero-inner">
+            <div class="badge-pill">
+                <span class="badge-dot"></span>
+                Kebijakan Privasi Resmi            </div>
+            <h1 class="hero-title">Kebijakan Privasi</h1>
+            <p class="hero-desc">Komitmen perlindungan data pribadi pengguna aplikasi Phonebook, dokumentasi kehutanan, dan integrasi bot Discord.</p>
+            <div class="meta-chips">
+                <span class="meta-chip">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    Terakhir Diperbarui: <strong>18 November 2026</strong>
+                </span>
+                <span class="meta-chip">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    Versi Dokumen: <strong>2.4.0 (Discord Bot Ready)</strong>
+                </span>
+                <span class="meta-chip">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    Platform: <strong>Mobile App & Discord Bot</strong>
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content -->
+    <main class="main-wrapper">
+        <article class="content-card">
+            <div class="legal-content">
+
+    <!-- Table of Contents -->
+    <div class="toc-card">
+        <div class="toc-title">Daftar Isi Kebijakan Privasi</div>
+        <ul class="toc-list">
+            <li><a href="#komitmen" class="toc-link">1. Komitmen Privasi</a></li>
+            <li><a href="#data-dikumpulkan" class="toc-link">2. Data yang Kami Kumpulkan</a></li>
+            <li><a href="#tujuan-penggunaan" class="toc-link">3. Tujuan Penggunaan Data</a></li>
+            <li><a href="#discord-bot-data" class="toc-link">4. Privasi Integrasi Bot Discord</a></li>
+            <li><a href="#whatsapp-fonnte" class="toc-link">5. Komunikasi WhatsApp (Fonnte)</a></li>
+            <li><a href="#penyimpanan-keamanan" class="toc-link">6. Keamanan & Penyimpanan Data</a></li>
+            <li><a href="#pembagian-pihak-ketiga" class="toc-link">7. Keterlibatan Pihak Ketiga</a></li>
+            <li><a href="#hak-pengguna" class="toc-link">8. Hak & Akses Pengguna</a></li>
+            <li><a href="#retensi-penghapusan" class="toc-link">9. Retensi & Penghapusan Data</a></li>
+            <li><a href="#kontak-dpo" class="toc-link">10. Kontak Perlindungan Data</a></li>
+        </ul>
+    </div>
+
+    <!-- 1. Komitmen Privasi -->
+    <h2 id="komitmen">
+        <span class="section-number">1</span>
+        Komitmen Privasi
+    </h2>
+    <p>
+        <strong>Cabang Dinas Kehutanan (CDK) Wilayah V Garut</strong> ("kami") mengelola aplikasi <strong>Phonebook</strong> dengan prinsip penghormatan tinggi terhadap privasi data pribadi aparatur, penyuluh kehutanan, tenaga teknis, serta pengguna layanan. Kebijakan Privasi ini menjelaskan bagaimana kami mengumpulkan, menggunakan, menyimpan, dan melindungi informasi pribadi Anda saat menggunakan aplikasi mobile Phonebook, layanan backend API, bot Discord developer, dan sistem integrasi terkait.
+    </p>
+
+    <!-- 2. Data yang Kami Kumpulkan -->
+    <h2 id="data-dikumpulkan">
+        <span class="section-number">2</span>
+        Informasi yang Kami Kumpulkan
+    </h2>
+    <p>
+        Untuk menunjang operasional kedinasan dan pelaporan kegiatan, sistem kami memproses jenis data berikut:
+    </p>
+    <ul>
+        <li><strong>Informasi Profil & Akun:</strong> Nama lengkap, alamat email resmi, jabatan, unit kerja, foto profil (dari akun Google jika menggunakan SSO Google), dan nomor WhatsApp aktif.</li>
+        <li><strong>Data Laporan Kegiatan Lapangan:</strong> Judul kegiatan, kategori kegiatan kehutanan, tanggal pelaksanaan, deskripsi rinci, jumlah peserta/anggota masyarakat yang didampingi, serta lokasi koordinat geografis jika disematkan.</li>
+        <li><strong>Foto Dokumentasi Lapangan:</strong> Foto-foto dokumentasi kegiatan yang diunggah melalui kamera perangkat atau galeri ponsel, disimpan beserta metadata resolusi dan rasio aspek.</li>
+        <li><strong>Data Laporan Masalah & Tiket Pengaduan:</strong> Judul kendala teknis, kategori bug, deskripsi masalah, nomor WhatsApp kontak darurat pelapor, kode tiket unik (misal: <code>TKT-202611...</code>), dan tanggapan/solusi pengembang.</li>
+        <li><strong>Data Teknis Perangkat & Sesi:</strong> Model perangkat, versi sistem operasi (Android / iOS), alamat IP jaringan, status otentikasi sesi token, serta data cache luring yang tersimpan aman di database lokal SQLite perangkat.</li>
+    </ul>
+
+    <!-- 3. Tujuan Penggunaan Data -->
+    <h2 id="tujuan-penggunaan">
+        <span class="section-number">3</span>
+        Tujuan Penggunaan Informasi
+    </h2>
+    <p>
+        Data yang dikumpulkan dipergunakan semata-mata untuk kepentingan kedinasan dan keandalan sistem:
+    </p>
+    <ul>
+        <li>Memverifikasi identitas pengguna dan memberikan hak akses sesuai jabatan atau unit kerja.</li>
+        <li>Menyusun laporan kinerja kegiatan lapangan resmi yang dapat diekspor menjadi format dokumen cetak resmi instansi.</li>
+        <li>Melakukan sinkronisasi data dua arah antara penyimpanan lokal offline (SQLite) dengan cloud database server saat sinyal internet tersedia.</li>
+        <li>Menangani kendala operasional atau bug aplikasi yang dilaporkan pengguna secara langsung kepada tim developer.</li>
+    </ul>
+
+    <!-- 4. Privasi Integrasi Bot Discord -->
+    <h2 id="discord-bot-data">
+        <span class="section-number">4</span>
+        Privasi Integrasi Bot Discord Pengembang
+    </h2>
+    <div class="callout-box">
+        <div class="callout-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Kepatuhan Privasi Discord API (Discord Privacy Policy Compliance)
+        </div>
+        Bot Discord Phonebook hanya beroperasi di server internal pengembang yang telah ditentukan dan dibatasi aksesnya hanya untuk administrator dan tim pemeliharaan sistem resmi CDK Wilayah V Garut.
+    </div>
+    <p>
+        Terkait interaksi bot Discord:
+    </p>
+    <ul>
+        <li><strong>Informasi yang Diteruskan:</strong> Ketika pengguna mengirim "Laporkan Masalah", hanya ringkasan masalah (nama pelapor, email, nomor WhatsApp untuk konfirmasi tindak lanjut, judul bug, dan deskripsi) yang dikirimkan ke kanal Discord pengembang.</li>
+        <li><strong>Aksi Penyelesaian:</strong> Saat pengembang menekan tombol interaktif Discord (ACC / Tolak / Selesai) dan mengisi alasan penyelesaian, catatan tersebut dicatat ke database cloud Supabase dan dikirimkan kembali ke pengguna sebagai status penanganan resmi.</li>
+        <li><strong>Batas Akses Data:</strong> Bot Discord Phonebook <em>tidak</em> membaca riwayat obrolan pribadi pengguna di Discord, <em>tidak</em> mengumpulkan daftar anggota server di luar kebutuhan operasional, dan <em>tidak</em> menyimpan pesan Discord di luar konteks tiket pengaduan Phonebook.</li>
+    </ul>
+
+    <!-- 5. Komunikasi WhatsApp (Fonnte) -->
+    <h2 id="whatsapp-fonnte">
+        <span class="section-number">5</span>
+        Komunikasi Melalui WhatsApp Gateway (Fonnte)
+    </h2>
+    <p>
+        Aplikasi Phonebook mengintegrasikan gateway WhatsApp resmi pihak ketiga (Fonnte API) untuk pengiriman notifikasi instan:
+    </p>
+    <ul>
+        <li>Nomor WhatsApp hanya digunakan untuk mengirimkan notifikasi status tiket pengaduan (ketika tiket diterima, ditolak, atau selesai ditangani) dan pengingat jadwal tugas kehutanan.</li>
+        <li>Nomor WhatsApp pengguna dijaga kerahasiaannya dan tidak dipublikasikan ke publik atau dibagikan ke pihak ketiga lainnya.</li>
+        <li>Sistem tidak pernah mengirimkan pesan berantai, spam, atau promosi komersial.</li>
+    </ul>
+
+    <!-- 6. Keamanan & Penyimpanan Data -->
+    <h2 id="penyimpanan-keamanan">
+        <span class="section-number">6</span>
+        Keamanan & Lokasi Penyimpanan Data
+    </h2>
+    <p>
+        Kami menerapkan standar keamanan teknis berlapis guna melindungi integritas data Anda:
+    </p>
+    <ul>
+        <li><strong>PostgreSQL Supabase (Enterprise Cloud):</strong> Seluruh data pengguna, jadwal, laporan kegiatan, dan tiket disimpan di infrastruktur cloud database PostgreSQL terkelola Supabase dengan enkripsi saat istirahat (<em>encryption-at-rest</em>) dan enkripsi saat transit (SSL/TLS).</li>
+        <li><strong>Enkripsi Komunikasi:</strong> Seluruh pertukaran data antara aplikasi Flutter dan backend Laravel berjalan di atas protokol aman HTTPS dengan sertifikat TLS modern.</li>
+        <li><strong>Kriptografi Ed25519:</strong> Seluruh permintaan webhook dan interaksi Discord divalidasi keabsahannya dengan kunci kriptografis publik Ed25519.</li>
+        <li><strong>Keamanan Kredensial:</strong> Kata sandi di-hash menggunakan algoritma <code>bcrypt</code> modern berstandar industri. Bot token dan kunci API backend disimpan secara ketat di environment variable serverless yang terisolasi dan tidak pernah diekspos ke frontend.</li>
+    </ul>
+
+    <!-- 7. Keterlibatan Pihak Ketiga -->
+    <h2 id="pembagian-pihak-ketiga">
+        <span class="section-number">7</span>
+        Pihak Ketiga & Pemrosesan Layanan
+    </h2>
+    <p>
+        Data Anda tidak pernah dijual atau disewakan kepada pihak manapun. Sistem kami hanya berkomunikasi dengan penyedia infrastruktur terpercaya berikut:
+    </p>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>Layanan Pihak Ketiga</th>
+                    <th>Peran & Kegunaan</th>
+                    <th>Kebijakan Terkait</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>PostgreSQL Supabase</strong></td>
+                    <td>Penyimpanan cloud database utama dan relasi berkas</td>
+                    <td>Supabase Privacy & Security Standard</td>
+                </tr>
+                <tr>
+                    <td><strong>Discord Inc.</strong></td>
+                    <td>Kanal triase tiket laporan masalah bagi developer</td>
+                    <td>Discord Developer Terms & Privacy</td>
+                </tr>
+                <tr>
+                    <td><strong>Fonnte API</strong></td>
+                    <td>Gateway pengiriman notifikasi status tiket ke WhatsApp</td>
+                    <td>Fonnte API Service Agreement</td>
+                </tr>
+                <tr>
+                    <td><strong>Google Identity Services</strong></td>
+                    <td>Otentikasi aman Single Sign-On (Google OAuth)</td>
+                    <td>Google OAuth 2.0 User Data Policy</td>
+                </tr>
+                <tr>
+                    <td><strong>Vercel Cloud Platform</strong></td>
+                    <td>Infrastruktur hosting komputasi serverless backend</td>
+                    <td>Vercel Security & Privacy Policy</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 8. Hak & Akses Pengguna -->
+    <h2 id="hak-pengguna">
+        <span class="section-number">8</span>
+        Hak & Akses Pengguna
+    </h2>
+    <p>
+        Setiap pengguna memiliki hak penuh atas data pribadi mereka:
+    </p>
+    <ul>
+        <li><strong>Hak Akses & Pembaruan:</strong> Anda dapat memeriksa dan memperbarui informasi nama, foto profil, dan nomor WhatsApp kapan saja melalui menu Pengaturan Profil di aplikasi Flutter.</li>
+        <li><strong>Hak Ekspor Data:</strong> Pengguna berhak mengunduh seluruh arsip laporan kegiatan yang dibuat dalam format dokumen cetak resmi instansi.</li>
+        <li><strong>Hak Koreksi & Penghapusan:</strong> Pengguna dapat mengajukan permohonan perbaikan data yang keliru atau penghapusan akun dinas melalui administrator sistem CDK Wilayah V Garut.</li>
+    </ul>
+
+    <!-- 9. Retensi & Penghapusan Data -->
+    <h2 id="retensi-penghapusan">
+        <span class="section-number">9</span>
+        Retensi & Penghapusan Data
+    </h2>
+    <p>
+        Data laporan kegiatan lapangan disimpan sesuai kebutuhan arsip kinerja aparatur pemerintah daerah. Jika akun dinas dinonaktifkan atau dihapus atas instruksi instansi, data otentikasi pribadi akan dihapus secara permanen dari server aktif, sedangkan arsip laporan kegiatan yang telah disetujui akan diarsipkan sesuai regulasi kearsipan instansi kehutanan.
+    </p>
+
+    <!-- 10. Kontak DPO -->
+    <h2 id="kontak-dpo">
+        <span class="section-number">10</span>
+        Kontak Tim Perlindungan Data & Pengembang
+    </h2>
+    <p>
+        Apabila Anda memiliki pertanyaan, saran, atau kekhawatiran terkait Kebijakan Privasi ini atau pemrosesan data pribadi Anda di lingkungan aplikasi Phonebook, hubungi kami melalui:
+    </p>
+    <div class="callout-box info">
+        <div class="callout-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Cabang Dinas Kehutanan Wilayah V Garut
+        </div>
+        <p style="margin: 6px 0 0 0;">
+            Dinas Kehutanan Pemerintah Provinsi Jawa Barat<br>
+            Jl. Raya Garut - Bayongbong Km. 3, Garut, Jawa Barat<br>
+            Email Dukungan Privasi: <code>support@phonebook-five-umber.vercel.app</code> / <code>cdkwil5garut@gmail.com</code><br>
+            Situs Web Layanan: <code>https://phonebook-five-umber.vercel.app</code>
+        </p>
+    </div>
+
+</div>
+        </article>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-inner">
+            <div>
+                &copy; 2026 <strong>Phonebook CDK V Garut</strong> &bull; Cabang Dinas Kehutanan Wilayah V Jawa Barat.
+            </div>
+            <div class="footer-links">
+                <a href="http://localhost/terms" class="footer-link">Ketentuan Layanan</a>
+                <a href="http://localhost/privacy" class="footer-link">Kebijakan Privasi</a>
+                <a href="http://localhost" class="footer-link">Status Sistem</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
