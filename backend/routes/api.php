@@ -16,21 +16,9 @@ use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\ReportTemplateController;
 
 Route::get('/test', function () {
-    $botToken = config('services.discord.bot_token');
-    $rawChannelId = config('services.discord.channel_id');
-    $webhookUrl = config('services.discord.report_webhook_url');
-    $publicKey = config('services.discord.public_key');
-
     return response()->json([
         'success' => true,
         'message' => 'API Phonebook berhasil terhubung',
-        'has_bot_token' => !empty($botToken),
-        'bot_token_len' => strlen($botToken ?: ''),
-        'bot_token_prefix' => substr($botToken ?: '', 0, 8),
-        'channel_id' => $rawChannelId,
-        'has_webhook' => !empty($webhookUrl),
-        'webhook_prefix' => substr($webhookUrl ?: '', 0, 35),
-        'has_public_key' => !empty($publicKey),
     ]);
 });
 
