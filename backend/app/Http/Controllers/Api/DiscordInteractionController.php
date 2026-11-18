@@ -46,7 +46,7 @@ class DiscordInteractionController extends Controller
             return response()->json(['error' => 'Invalid request signature'], 401);
         }
 
-        $payload = $request->all();
+        $payload = $request->json()->all() ?: $request->all();
         $type = (int) ($payload['type'] ?? 0);
 
         // TYPE 1: Discord PING (Health check dari Discord Developer Portal)
@@ -54,11 +54,11 @@ class DiscordInteractionController extends Controller
             return response()->json(['type' => 1]);
         }
 
-        // Identifikasi Pengguna / Developer Discord
-        $member = $payload['member'] ?? null;
-        $user = $member['user'] ?? ($payload['user'] ?? []);
-        $devId = $user['id'] ?? null;
-        $devUsername = $user['username'] ?? ($member['nick'] ?? 'Developer');
+        // Identifikasi Pengguna / Developer Discord (bisa di payload.user atau payload.member.user)
+        $user = $payload['user'] ?? ($payload['member']['user'] ?? []);
+        $member = $payload['member'] ?? [];
+        $devId = (string) ($user['id'] ?? ($member['user']['id'] ?? ''));
+        $devUsername = $user['global_name'] ?? ($user['username'] ?? ($member['nick'] ?? 'Developer'));
         $devTag = "@{$devUsername} ({$devId})";
 
         // Periksa izin Developer
