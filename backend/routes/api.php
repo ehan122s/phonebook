@@ -131,6 +131,12 @@ Route::middleware('auth:sanctum')->group(function () {
 */
 
 Route::middleware(['throttle:30,1'])->group(function () {
+    Route::get('/discord-sodium-check', function () {
+        return response()->json([
+            'sodium' => function_exists('sodium_crypto_sign_verify_detached'),
+            'openssl' => extension_loaded('openssl'),
+        ]);
+    });
     Route::post('/bug-reports', [BugReportController::class, 'store']);
     Route::get('/bug-reports', [BugReportController::class, 'index']);
     Route::match(['GET', 'POST'], '/bug-reports/{id}/action', [DiscordInteractionController::class, 'triggerAction']);
