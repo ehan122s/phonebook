@@ -16,11 +16,13 @@ import '../../services/notification_service.dart';
 class MateriPage extends StatefulWidget {
   final String? initialMaterialId;
   final String? initialMaterialTitle;
+  final bool? hasBottomNav;
 
   const MateriPage({
     super.key,
     this.initialMaterialId,
     this.initialMaterialTitle,
+    this.hasBottomNav,
   });
 
   @override
@@ -2751,8 +2753,13 @@ class _MateriPageState extends State<MateriPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mediaQuery = MediaQuery.of(context);
     final isCompactWidth = mediaQuery.size.width < 360;
-    // Jarak aman dari floating BottomNav (tinggi 72 + margin 12 + safe area bottom)
-    final double bottomNavSafeOffset = mediaQuery.padding.bottom + 88;
+
+    // Deteksi apakah halaman berada di dalam tab dengan Bottom Navigation Bar
+    final bool hasBottomNav =
+        widget.hasBottomNav ?? !(ModalRoute.of(context)?.canPop ?? false);
+    // Jarak aman scrolling di bagian bawah agar konten tidak tertutup FAB dan BottomNav
+    final double bottomScrollPadding =
+        (hasBottomNav ? 88.0 : 16.0) + mediaQuery.padding.bottom + 76.0;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -2820,7 +2827,7 @@ class _MateriPageState extends State<MateriPage> {
               18,
               16,
               18,
-              bottomNavSafeOffset + 84,
+              bottomScrollPadding,
             ),
             children: [
               // Banner Edukasi Publik
@@ -3193,22 +3200,45 @@ class _MateriPageState extends State<MateriPage> {
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: bottomNavSafeOffset),
-        child: FloatingActionButton.extended(
-          onPressed: _showUploadMaterialModal,
-          backgroundColor: const Color(0xFFF57C00),
-          foregroundColor: Colors.white,
-          elevation: 4,
-          icon: const Icon(Icons.cloud_upload_outlined),
-          label: Text(
-            isCompactWidth ? 'Upload' : 'Upload Materi',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
+      floatingActionButtonLocation:
+          _MateriFabLocation(hasBottomNav: hasBottomNav),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showUploadMaterialModal,
+        backgroundColor: const Color(0xFFF57C00),
+        foregroundColor: Colors.white,
+        elevation: 4,
+        icon: const Icon(Icons.cloud_upload_outlined),
+        label: Text(
+          isCompactWidth ? 'Upload' : 'Upload Materi',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
     );
+  }
+}
+
+class _MateriFabLocation extends FloatingActionButtonLocation {
+  final bool hasBottomNav;
+
+  const _MateriFabLocation({required this.hasBottomNav});
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    final double fabX = scaffoldGeometry.scaffoldSize.width -
+        scaffoldGeometry.floatingActionButtonSize.width -
+        16.0;
+
+    // Jarak dari batas bawah: jika ada BottomNav, letakkan proporsional tepat di atas floating pill
+    // Jika tidak ada BottomNav (mode mandiri/notifikasi), gunakan margin standar 16.0
+    final double bottomMargin = hasBottomNav
+        ? (88.0 + scaffoldGeometry.minInsets.bottom)
+        : (16.0 + scaffoldGeometry.minInsets.bottom);
+
+    final double fabY = scaffoldGeometry.scaffoldSize.height -
+        scaffoldGeometry.floatingActionButtonSize.height -
+        bottomMargin;
+
+    return Offset(fabX, fabY);
   }
 }
 

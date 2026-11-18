@@ -195,6 +195,7 @@ class _NotificationPageState extends State<NotificationPage> {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => MateriPage(
+            hasBottomNav: false,
             initialMaterialId: (materialId != null &&
                     materialId != 'null' &&
                     materialId.isNotEmpty)

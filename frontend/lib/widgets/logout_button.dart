@@ -3,8 +3,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
+import '../pages/dashboard/dashboard.dart';
 import '../pages/login/login.dart';
 import '../services/google_auth_service.dart';
+import '../services/laporan_service.dart';
+import '../services/notification_service.dart';
 
 class LogoutButton extends StatelessWidget {
   final VoidCallback? onLoggedOut;
@@ -140,6 +143,12 @@ class LogoutButton extends StatelessWidget {
     await prefs.remove('email');
     await prefs.remove('role');
     await prefs.remove('whatsapp_number');
+
+    // Bersihkan seluruh cache in-memory dan isolasi data jadwal antar-akun
+    DashboardPage.clearStaticCache();
+    LaporanService.clearCache();
+    await NotificationService.instance.rescheduleAllFromList([]);
+    await prefs.remove('phonebook_jadwal_items_v1'); // Hapus legacy global cache yang tercampur
 
     onLoggedOut?.call();
 

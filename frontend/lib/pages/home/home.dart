@@ -115,7 +115,7 @@ class _HomePageState extends State<HomePage>
           onBack: _handleChildBackNavigation,
           onNavigate: changePage,
         ),
-      3 => const MateriPage(),
+      3 => const MateriPage(hasBottomNav: true),
       4 => const ProfilPage(),
       _ => throw RangeError.index(index, _pages, 'index'),
     };

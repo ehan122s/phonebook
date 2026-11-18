@@ -25,6 +25,11 @@ class DashboardPage extends StatefulWidget {
 
   const DashboardPage({super.key, this.onNavigate});
 
+  /// Bersihkan seluruh cache in-memory dashboard saat logout atau ganti akun
+  static void clearStaticCache() {
+    _DashboardPageState.clearStaticCache();
+  }
+
   // Palet Warna Modern Soft Green Forest
   static const Color kPrimary = Color(0xFF245C3A);
   static const Color kSecondary = Color(0xFF4F8A5B);
@@ -43,6 +48,14 @@ class _DashboardPageState extends State<DashboardPage> {
   static List<Map<String, dynamic>>? _staticReports;
   static List<Map<String, dynamic>>? _staticSchedules;
   static String? _staticUserName;
+  static String? _staticUserId;
+
+  static void clearStaticCache() {
+    _staticReports = null;
+    _staticSchedules = null;
+    _staticUserName = null;
+    _staticUserId = null;
+  }
 
   bool _isLoadingData = true;
   String? _loadError;
@@ -85,8 +98,24 @@ class _DashboardPageState extends State<DashboardPage> {
           .trim()
           .toLowerCase();
 
-      // FAST PATH 1: Muat jadwal dari cache lokal secara instan (<5ms)
-      final localSchedules = await JadwalService.getLocalCachedSchedules();
+      // Reset cache jika akun pengguna yang login berbeda dari sesi sebelumnya
+      if (currentUserId.isNotEmpty &&
+          _staticUserId != null &&
+          _staticUserId != currentUserId) {
+        clearStaticCache();
+        _reports = [];
+        _schedules = [];
+      }
+
+      // FAST PATH 1: Muat jadwal dari cache lokal secara instan (<5ms) khusus akun ini
+      final rawLocalSchedules = await JadwalService.getLocalCachedSchedules();
+      final localSchedules = rawLocalSchedules.where((s) {
+        final sUid = (s['user_id'] ?? s['userId'] ?? '').toString().trim();
+        if (currentUserId.isNotEmpty && sUid.isNotEmpty && sUid != currentUserId) {
+          return false;
+        }
+        return true;
+      }).toList();
 
       // FAST PATH 2: Muat laporan asli dari SQLite lokal & drafts
       final List<Map<String, dynamic>> localCombinedReports = [];
@@ -209,7 +238,14 @@ class _DashboardPageState extends State<DashboardPage> {
         LaporanService.fetchReports(token),
       ]);
 
-      final loadedSchedules = results[0];
+      final rawLoadedSchedules = results[0];
+      final loadedSchedules = rawLoadedSchedules.where((s) {
+        final sUid = (s['user_id'] ?? s['userId'] ?? '').toString().trim();
+        if (currentUserId.isNotEmpty && sUid.isNotEmpty && sUid != currentUserId) {
+          return false;
+        }
+        return true;
+      }).toList();
       final apiReports = results[1];
 
       for (final item in apiReports) {
@@ -225,6 +261,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _staticReports = localCombinedReports;
         _staticSchedules = loadedSchedules;
         _staticUserName = savedName;
+        _staticUserId = currentUserId;
       });
     } catch (e) {
       if (!mounted) return;

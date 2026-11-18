@@ -9,8 +9,30 @@ import 'notification_service.dart';
 import 'whatsapp_reminder_service.dart';
 
 class JadwalService {
-  static const String storageKey = 'phonebook_jadwal_items_v1';
-  static const String userPrefsKey = 'phonebook_jadwal_user_prefs_v3';
+  static const String legacyStorageKey = 'phonebook_jadwal_items_v1';
+  static const String legacyUserPrefsKey = 'phonebook_jadwal_user_prefs_v3';
+
+  /// Mendapatkan ID atau identitas pengguna yang sedang login untuk isolasi data antar-akun
+  static Future<String> getCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = (prefs.getString('user_id') ?? '').trim();
+    if (uid.isNotEmpty) return uid;
+    final email = (prefs.getString('email') ?? '').trim().toLowerCase();
+    if (email.isNotEmpty) return email;
+    return 'guest';
+  }
+
+  /// Kunci penyimpanan jadwal lokal terisolasi per akun pengguna
+  static Future<String> getScopedStorageKey() async {
+    final uid = await getCurrentUserId();
+    return 'phonebook_jadwal_items_u$uid';
+  }
+
+  /// Kunci preferensi jadwal lokal terisolasi per akun pengguna
+  static Future<String> getScopedUserPrefsKey() async {
+    final uid = await getCurrentUserId();
+    return 'phonebook_jadwal_prefs_u$uid';
+  }
 
   /// Daftar interval reminder yang valid (dalam menit)
   static const Set<int> validReminderIntervals = {5, 10, 15, 30, 60, 1440};
@@ -56,6 +78,7 @@ class JadwalService {
 
   static Future<Map<String, Map<String, dynamic>>> _loadUserPrefsMap() async {
     final prefs = await SharedPreferences.getInstance();
+    final userPrefsKey = await getScopedUserPrefsKey();
     final raw = prefs.getString(userPrefsKey);
     if (raw == null || raw.isEmpty) return {};
     try {
@@ -73,6 +96,7 @@ class JadwalService {
     Map<String, dynamic> item,
   ) async {
     final prefs = await SharedPreferences.getInstance();
+    final userPrefsKey = await getScopedUserPrefsKey();
     final map = await _loadUserPrefsMap();
 
     final idKey = 'id_${item['id']}';
@@ -82,6 +106,8 @@ class JadwalService {
     );
 
     final entry = <String, dynamic>{
+      'user_id': item['user_id'] ?? item['userId'],
+      'userId': item['user_id'] ?? item['userId'],
       'waktu': item['waktu'],
       'reminderMinutes': item['reminderMinutes'],
       'reminderTime': item['reminderTime'],
@@ -168,10 +194,22 @@ class JadwalService {
     Map<String, dynamic> raw, {
     Map<String, dynamic>? existingLocal,
     Map<String, dynamic>? savedPref,
+    String? currentUserId,
   }) {
     final id = raw['id'] ??
         existingLocal?['id'] ??
         'jadwal_${JadwalDateUtils.nowWib().millisecondsSinceEpoch}';
+
+    final ownerUserId = (raw['user_id'] ??
+            raw['userId'] ??
+            existingLocal?['user_id'] ??
+            existingLocal?['userId'] ??
+            savedPref?['user_id'] ??
+            savedPref?['userId'] ??
+            currentUserId ??
+            '')
+        .toString()
+        .trim();
     final judul = (raw['judul'] ??
             raw['title'] ??
             existingLocal?['judul'] ??
@@ -317,6 +355,8 @@ class JadwalService {
 
     return {
       'id': id,
+      'user_id': ownerUserId,
+      'userId': ownerUserId,
       'judul': judul,
       'title': judul,
       'kategori': kategori,
@@ -353,11 +393,13 @@ class JadwalService {
     };
   }
 
-  /// Ambil jadwal dari penyimpanan lokal (SharedPreferences) secara instan (<5ms) tanpa menunggu request jaringan
+  /// Ambil jadwal dari penyimpanan lokal (SharedPreferences) secara instan (<5ms) khusus akun yang aktif
   static Future<List<Map<String, dynamic>>> getLocalCachedSchedules() async {
     final prefs = await SharedPreferences.getInstance();
+    final currentUid = await getCurrentUserId();
+    final scopedKey = await getScopedStorageKey();
     final userPrefsMap = await _loadUserPrefsMap();
-    final rawLocal = prefs.getString(storageKey);
+    final rawLocal = prefs.getString(scopedKey);
 
     if (rawLocal == null || rawLocal.isEmpty) return [];
 
@@ -365,48 +407,46 @@ class JadwalService {
       final List<dynamic> decoded = jsonDecode(rawLocal);
       return decoded
           .map((e) => Map<String, dynamic>.from(e))
-          .where((map) => !isDummyScheduleId(map['id']))
+          .where((map) {
+            if (isDummyScheduleId(map['id'])) return false;
+            final itemUid =
+                (map['user_id'] ?? map['userId'] ?? '').toString().trim();
+            if (currentUid != 'guest' &&
+                itemUid.isNotEmpty &&
+                itemUid != currentUid) {
+              return false;
+            }
+            return true;
+          })
           .map((map) {
-        final idKey = 'id_${map['id']}';
-        final tdKey = _buildTitleDateKey(
-          (map['judul'] ?? map['title'] ?? '').toString(),
-          (map['tanggalIso'] ?? map['date'] ?? '').toString().split('T').first,
-        );
-        final savedPref = userPrefsMap[idKey] ?? userPrefsMap[tdKey];
-        return normalizeItem(map, savedPref: savedPref);
-      }).toList();
+            final idKey = 'id_${map['id']}';
+            final tdKey = _buildTitleDateKey(
+              (map['judul'] ?? map['title'] ?? '').toString(),
+              (map['tanggalIso'] ?? map['date'] ?? '').toString().split('T').first,
+            );
+            final savedPref = userPrefsMap[idKey] ?? userPrefsMap[tdKey];
+            return normalizeItem(
+              map,
+              savedPref: savedPref,
+              currentUserId: currentUid,
+            );
+          })
+          .toList();
     } catch (_) {
       return [];
     }
   }
 
-  /// Load all schedules from local storage and sync with backend API (without dummy fallbacks)
+  /// Load all schedules from local storage and sync with backend API strictly for current user
   static Future<List<Map<String, dynamic>>> loadSchedules() async {
     final prefs = await SharedPreferences.getInstance();
+    final currentUid = await getCurrentUserId();
     final userPrefsMap = await _loadUserPrefsMap();
-    final rawLocal = prefs.getString(storageKey);
 
-    List<Map<String, dynamic>> items = [];
+    // 1. Ambil data lokal milik akun pengguna yang aktif
+    List<Map<String, dynamic>> items = await getLocalCachedSchedules();
 
-    if (rawLocal != null && rawLocal.isNotEmpty) {
-      try {
-        final List<dynamic> decoded = jsonDecode(rawLocal);
-        items = decoded
-            .map((e) => Map<String, dynamic>.from(e))
-            .where((map) => !isDummyScheduleId(map['id']))
-            .map((map) {
-          final idKey = 'id_${map['id']}';
-          final tdKey = _buildTitleDateKey(
-            (map['judul'] ?? map['title'] ?? '').toString(),
-            (map['tanggalIso'] ?? map['date'] ?? '').toString().split('T').first,
-          );
-          final savedPref = userPrefsMap[idKey] ?? userPrefsMap[tdKey];
-          return normalizeItem(map, savedPref: savedPref);
-        }).toList();
-      } catch (_) {}
-    }
-
-    // Try fetching from backend if token exists and online
+    // 2. Fetch data jadwal terkini dari backend API
     final token = prefs.getString('token');
     final isOnline = await ConnectivityService.instance.isOnline();
     final isValidServerToken = token != null &&
@@ -428,6 +468,19 @@ class JadwalService {
           final body = jsonDecode(response.body);
           if (body['data'] is List) {
             final List<dynamic> apiList = body['data'];
+
+            // Filter item offline/lokal murni milik akun ini yang belum diunggah ke server
+            final pendingOfflineItems = items.where((e) {
+              final idStr = (e['id'] ?? '').toString();
+              final isLocal = e['isOffline'] == true ||
+                  e['syncStatus'] == 'pending' ||
+                  idStr.startsWith('local_') ||
+                  int.tryParse(idStr) == null;
+              return isLocal;
+            }).toList();
+
+            final List<Map<String, dynamic>> refreshed = [];
+
             for (final row in apiList) {
               final rowMap = Map<String, dynamic>.from(row);
               final rowId = (rowMap['id'] ?? '').toString();
@@ -460,14 +513,30 @@ class JadwalService {
                 rowMap,
                 existingLocal: existingLocal,
                 savedPref: savedPref,
+                currentUserId: currentUid,
               );
 
-              if (existingIndex >= 0) {
-                items[existingIndex] = norm;
-              } else {
-                items.add(norm);
+              refreshed.add(norm);
+            }
+
+            // Masukkan kembali draf offline lokal jika belum ada di server
+            for (final pending in pendingOfflineItems) {
+              final exists = refreshed.any((s) =>
+                  s['id'].toString() == pending['id'].toString() ||
+                  _buildTitleDateKey(
+                        (s['judul'] ?? '').toString(),
+                        (s['tanggalIso'] ?? '').toString(),
+                      ) ==
+                      _buildTitleDateKey(
+                        (pending['judul'] ?? '').toString(),
+                        (pending['tanggalIso'] ?? '').toString(),
+                      ));
+              if (!exists) {
+                refreshed.insert(0, pending);
               }
             }
+
+            items = refreshed;
           }
         }
       } catch (_) {}
@@ -475,32 +544,49 @@ class JadwalService {
 
     await saveLocalSchedules(items);
 
-    // Sinkronkan penjadwalan reminder otomatis untuk seluruh jadwal
+    // Sinkronkan penjadwalan reminder otomatis HANYA untuk jadwal akun ini
     await NotificationService.instance.rescheduleAllFromList(items);
 
     return items;
   }
 
-  /// Save list to local SharedPreferences
+  /// Save list to local SharedPreferences scoped to current user
   static Future<void> saveLocalSchedules(
     List<Map<String, dynamic>> items,
   ) async {
     final prefs = await SharedPreferences.getInstance();
+    final currentUid = await getCurrentUserId();
+    final scopedKey = await getScopedStorageKey();
+
     final serializable = items
         .where((e) => !isDummyScheduleId(e['id']))
+        .where((e) {
+          final itemUid =
+              (e['user_id'] ?? e['userId'] ?? '').toString().trim();
+          if (currentUid != 'guest' &&
+              itemUid.isNotEmpty &&
+              itemUid != currentUid) {
+            return false;
+          }
+          return true;
+        })
         .map((e) {
       final copy = Map<String, dynamic>.from(e);
       copy.remove('date');
+      copy['user_id'] = currentUid;
+      copy['userId'] = currentUid;
       return copy;
     }).toList();
-    await prefs.setString(storageKey, jsonEncode(serializable));
+
+    await prefs.setString(scopedKey, jsonEncode(serializable));
   }
 
   /// Add a new schedule locally and to the server
   static Future<Map<String, dynamic>> addSchedule(
     Map<String, dynamic> raw,
   ) async {
-    var item = normalizeItem(raw);
+    final currentUid = await getCurrentUserId();
+    var item = normalizeItem(raw, currentUserId: currentUid);
 
     await _saveUserPreferenceForItem(item);
 
@@ -564,17 +650,18 @@ class JadwalService {
       } catch (_) {}
     }
 
-    item = normalizeItem(item, savedPref: item);
+    item = normalizeItem(item, savedPref: item, currentUserId: currentUid);
     await _saveUserPreferenceForItem(item);
 
     final prefsNow = await SharedPreferences.getInstance();
-    final rawLocal = prefsNow.getString(storageKey);
+    final scopedKey = await getScopedStorageKey();
+    final rawLocal = prefsNow.getString(scopedKey);
     List<Map<String, dynamic>> current = [];
     if (rawLocal != null && rawLocal.isNotEmpty) {
       try {
         final List<dynamic> decoded = jsonDecode(rawLocal);
         current = decoded
-            .map((e) => normalizeItem(Map<String, dynamic>.from(e)))
+            .map((e) => normalizeItem(Map<String, dynamic>.from(e), currentUserId: currentUid))
             .where((e) => !isDummyScheduleId(e['id']))
             .toList();
       } catch (_) {}
@@ -629,6 +716,7 @@ class JadwalService {
 
     await NotificationService.instance.cancelReminderForScheduleId(id);
 
+    final currentUid = await getCurrentUserId();
     var item = normalizeItem(
       {
         ...updatedRaw,
@@ -638,6 +726,7 @@ class JadwalService {
       },
       existingLocal: existingLocal,
       savedPref: updatedRaw,
+      currentUserId: currentUid,
     );
 
     await _saveUserPreferenceForItem(item);

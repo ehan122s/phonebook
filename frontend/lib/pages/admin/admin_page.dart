@@ -1477,7 +1477,7 @@ class _AdminPageState extends State<AdminPage> {
           onBack: () => setState(() => _selectedMenu = 0),
           onNavigate: (idx) => setState(() => _selectedMenu = idx),
         ),
-      5 => const MateriPage(),
+      5 => const MateriPage(hasBottomNav: false),
       6 => const ProfilPage(),
       _ => _buildDashboardAdminView(isWideScreen: isWideScreen),
     };
