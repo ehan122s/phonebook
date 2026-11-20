@@ -128,6 +128,9 @@ class AppUpdateController extends Controller
         $update->published_at = Carbon::now('Asia/Jakarta');
         $update->save();
 
+        // Siarkan pengumuman ke channel khusus update (1572971111266910289)
+        \App\Services\DiscordAppUpdateService::broadcastPublishedUpdate($update, 'Administrator');
+
         return response()->json([
             'success' => true,
             'message' => "Pembaruan versi {$update->version} berhasil dipublikasikan.",

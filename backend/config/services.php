@@ -27,6 +27,7 @@ return [
         // Guild (Server) ID & Text Channel ID
         'guild_id' => env('DISCORD_GUILD_ID', '1572092848747192350'),
         'channel_id' => env('DISCORD_CHANNEL_ID', '1572092849330065472'),
+        'update_channel_id' => env('DISCORD_UPDATE_CHANNEL_ID', '1572971111266910289'),
 
         // Public Key for Ed25519 signature verification
         'public_key' => env('DISCORD_PUBLIC_KEY', 'd4424969314dc8ae0685801c163cf6e99650d4206312c9a859b7f7ae0546fe7f'),

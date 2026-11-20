@@ -313,13 +313,60 @@ class DiscordAppUpdateService
     }
 
     /**
-     * Mengirimkan pesan Panel Kontrol Pembaruan ke Text Channel Discord.
+     * Resolusi ID Text Channel khusus pembaruan Phonebook (Channel ID: 1572971111266910289).
      */
-    public static function sendControlPanelToChannel(): array
+    public static function getUpdateChannelId(): string
+    {
+        $configured = config('services.discord.update_channel_id')
+            ?: env('DISCORD_UPDATE_CHANNEL_ID');
+
+        return !empty($configured) ? (string) $configured : '1572971111266910289';
+    }
+
+    /**
+     * Mengirimkan pengumuman pembaruan resmi langsung ke channel khusus update (1572971111266910289).
+     */
+    public static function broadcastPublishedUpdate(AppUpdate $update, string $devTag = 'Tim Developer'): array
     {
         $botToken = config('services.discord.bot_token');
-        $rawChannelId = config('services.discord.channel_id');
-        $channelId = DiscordTicketService::resolveChannelId($rawChannelId, $botToken);
+        $channelId = self::getUpdateChannelId();
+
+        $embed = self::buildPublishedEmbed($update, $devTag);
+        $components = self::buildPublishedComponents($update);
+
+        if (!empty($botToken) && !empty($channelId)) {
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => "Bot {$botToken}",
+                    'Content-Type' => 'application/json',
+                ])->timeout(8)->post("https://discord.com/api/v10/channels/{$channelId}/messages", [
+                    'embeds' => [$embed],
+                    'components' => $components,
+                ]);
+
+                if ($response->successful()) {
+                    Log::info("AppUpdate [DISCORD_BROADCAST]: Pengumuman v{$update->version} berhasil disiarkan ke channel {$channelId}");
+                    return ['success' => true, 'message' => 'Pengumuman pembaruan berhasil disiarkan ke channel update.'];
+                }
+
+                Log::warning("AppUpdate [DISCORD_BROADCAST_FAILED]: " . $response->body());
+                return ['success' => false, 'message' => 'Gagal menyiarkan ke Discord: ' . $response->body()];
+            } catch (\Throwable $e) {
+                Log::warning("AppUpdate [DISCORD_BROADCAST_EXCEPTION]: " . $e->getMessage());
+                return ['success' => false, 'message' => 'Exception: ' . $e->getMessage()];
+            }
+        }
+
+        return ['success' => false, 'message' => 'Bot Token atau Channel ID belum terkonfigurasi.'];
+    }
+
+    /**
+     * Mengirimkan pesan Panel Kontrol Pembaruan ke Text Channel Discord (1572971111266910289).
+     */
+    public static function sendControlPanelToChannel(?string $targetChannelId = null): array
+    {
+        $botToken = config('services.discord.bot_token');
+        $channelId = $targetChannelId ?: self::getUpdateChannelId();
 
         $embed = [
             'title' => '📲 PANEL KONTROL PEMBARUAN PHONEBOOK',
@@ -328,7 +375,7 @@ class DiscordAppUpdateService
                 "• **Judul & Deskripsi**: Tuliskan catatan perubahan / fitur baru\n" .
                 "• **Link APK**: Tautan download aman HTTPS\n" .
                 "• **Jenis Update**: Pilih update biasa (opsional) atau update wajib (mandatory)\n\n" .
-                "Setiap pengumuman yang dipublikasikan akan memicu dialog pop-up otomatis di aplikasi pengguna.",
+                "Setiap pengumuman yang dipublikasikan akan disiarkan di channel ini dan memicu dialog pop-up otomatis di aplikasi pengguna.",
             'color' => 2382906, // Forest green
             'footer' => [
                 'text' => 'Phonebook Developer Panel • Discord Automation',
@@ -362,7 +409,7 @@ class DiscordAppUpdateService
                 ]);
 
                 if ($response->successful()) {
-                    return ['success' => true, 'message' => 'Panel pengumuman berhasil dikirim ke channel Discord.'];
+                    return ['success' => true, 'message' => "Panel pengumuman berhasil dikirim ke channel Discord {$channelId}."];
                 }
 
                 return ['success' => false, 'message' => 'Gagal mengirim panel ke Discord: ' . $response->body()];

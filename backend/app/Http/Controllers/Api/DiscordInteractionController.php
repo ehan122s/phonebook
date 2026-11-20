@@ -211,6 +211,9 @@ class DiscordInteractionController extends Controller
             $update->published_at = Carbon::now('Asia/Jakarta');
             $update->save();
 
+            // Siarkan ke channel khusus update (1572971111266910289)
+            DiscordAppUpdateService::broadcastPublishedUpdate($update, $devTag);
+
             Log::info("AppUpdate [PUBLISHED]: Versi {$update->version} dipublikasikan oleh {$devTag}");
 
             return response()->json([
