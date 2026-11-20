@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../constants/api_constants.dart';
+import '../../services/app_update_service.dart';
 import '../../services/google_auth_service.dart';
 import '../jadwal/jadwal.dart';
 import '../laporan/laporan.dart';
@@ -114,6 +115,11 @@ class _AdminPageState extends State<AdminPage> {
   void initState() {
     super.initState();
     _loadAdminAndUsers();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdateService.instance.checkAndShowUpdateDialog(context);
+      }
+    });
   }
 
   Future<void> _loadAdminAndUsers() async {

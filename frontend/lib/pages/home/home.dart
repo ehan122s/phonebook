@@ -7,6 +7,7 @@ import '../jadwal/jadwal.dart';
 import '../materi/materi.dart';
 import '../profil/profil.dart';
 
+import '../../services/app_update_service.dart';
 import '../../widgets/bottom_nav.dart';
 
 class HomePage extends StatefulWidget {
@@ -94,6 +95,13 @@ class _HomePageState extends State<HomePage>
             _previousIndex = null;
           });
         }
+      }
+    });
+
+    // Pengecekan pembaruan aplikasi secara otomatis dan non-blocking
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdateService.instance.checkAndShowUpdateDialog(context);
       }
     });
   }

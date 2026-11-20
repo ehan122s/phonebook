@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/app_update_service.dart';
 
 class ProfileAppSettings extends StatelessWidget {
   final String currentTheme;
@@ -461,6 +462,37 @@ class ProfileAppSettings extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   color: primaryGreen,
                 ),
+              ),
+            ),
+          ),
+          Divider(height: 1, indent: 48, color: dividerColor),
+
+          // Pembaruan Aplikasi
+          _buildItem(
+            context: context,
+            icon: Icons.system_update_rounded,
+            title: 'Pembaruan Aplikasi',
+            subtitle: 'Periksa versi terbaru Phonebook',
+            onTap: () {
+              AppUpdateService.instance.checkAndShowUpdateDialog(context, isManualCheck: true);
+            },
+            trailing: OutlinedButton.icon(
+              onPressed: () {
+                AppUpdateService.instance.checkAndShowUpdateDialog(context, isManualCheck: true);
+              },
+              icon: Icon(Icons.refresh_rounded, size: 14, color: primaryGreen),
+              label: Text(
+                'Periksa',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.bold,
+                  color: primaryGreen,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                side: BorderSide(color: primaryGreen),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ),

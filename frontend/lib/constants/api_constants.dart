@@ -25,6 +25,9 @@ abstract final class ApiConstants {
   static String get reportTemplatesUrl => '$baseUrl/api/report-templates';
   static String reportTemplateDetailUrl(dynamic id) =>
       '$baseUrl/api/report-templates/$id';
+  static String get latestAppUpdateUrl => '$baseUrl/api/app-update/latest';
+  static String get checkAppUpdateUrl => '$baseUrl/api/app-update/check';
+  static String get appUpdateHistoryUrl => '$baseUrl/api/app-update/history';
 
   /// Fonnte WhatsApp Gateway Token
   static const String fonnteToken = 'zN7n8bZVJE9N52ftjUuX';

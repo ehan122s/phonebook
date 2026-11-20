@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppUpdate;
 use App\Models\BugReport;
+use App\Services\DiscordAppUpdateService;
 use App\Services\DiscordTicketService;
 use App\Services\TicketNotificationService;
 use Carbon\Carbon;
@@ -72,13 +74,32 @@ class DiscordInteractionController extends Controller
             ]);
         }
 
-        // TYPE 3: MESSAGE_COMPONENT (Klik Tombol ACC, TOLAK, SELESAI)
+        // TYPE 2: APPLICATION_COMMAND (Slash command: /update, /app-update, /update-app, /publish-update)
+        if ($type === 2) {
+            $commandName = strtolower($payload['data']['name'] ?? '');
+            if (in_array($commandName, ['update', 'app-update', 'update-app', 'publish-update', 'update-aplikasi'])) {
+                return response()->json(DiscordAppUpdateService::buildUpdateModal());
+            }
+
+            if (in_array($commandName, ['panel-update', 'update-panel'])) {
+                $res = DiscordAppUpdateService::sendControlPanelToChannel();
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => $res['success'] ? '✅ Panel kontrol pembaruan aplikasi telah dikirim ke channel.' : '❌ Gagal: ' . $res['message'],
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+        }
+
+        // TYPE 3: MESSAGE_COMPONENT (Klik Tombol ACC, TOLAK, SELESAI, atau Tombol Update)
         if ($type === 3) {
             $customId = $payload['data']['custom_id'] ?? '';
             return $this->handleComponentInteraction($customId, $devTag);
         }
 
-        // TYPE 5: MODAL_SUBMIT (Submit Alasan Penolakan dari Modal Dialog)
+        // TYPE 5: MODAL_SUBMIT (Submit Alasan Penolakan, Penyelesaian, atau Pengumuman Update)
         if ($type === 5) {
             $customId = $payload['data']['custom_id'] ?? '';
             return $this->handleModalSubmitInteraction($customId, $payload['data'] ?? [], $devTag);
@@ -166,6 +187,67 @@ class DiscordInteractionController extends Controller
             ]);
         }
 
+        // 4. BUKA MODAL FORM PENGUMUMAN UPDATE APLIKASI (0ms)
+        if ($customId === 'btn_app_update_open') {
+            return response()->json(DiscordAppUpdateService::buildUpdateModal());
+        }
+
+        // 5. PUBLIKASIKAN UPDATE APLIKASI
+        if (str_starts_with($customId, 'app_update_publish_')) {
+            $updateId = substr($customId, strlen('app_update_publish_'));
+            $update = AppUpdate::find($updateId);
+
+            if (!$update) {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => '⚠️ Draft pembaruan aplikasi tidak ditemukan atau telah dihapus.',
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            $update->is_published = true;
+            $update->published_at = Carbon::now('Asia/Jakarta');
+            $update->save();
+
+            Log::info("AppUpdate [PUBLISHED]: Versi {$update->version} dipublikasikan oleh {$devTag}");
+
+            return response()->json([
+                'type' => 7, // UPDATE_MESSAGE
+                'data' => [
+                    'embeds' => [DiscordAppUpdateService::buildPublishedEmbed($update, $devTag)],
+                    'components' => DiscordAppUpdateService::buildPublishedComponents($update),
+                ],
+            ]);
+        }
+
+        // 6. BATALKAN PENGUMUMAN UPDATE APLIKASI
+        if (str_starts_with($customId, 'app_update_cancel_')) {
+            $updateId = substr($customId, strlen('app_update_cancel_'));
+            $update = AppUpdate::find($updateId);
+
+            if ($update) {
+                $canceledUpdate = clone $update;
+                $update->delete();
+                return response()->json([
+                    'type' => 7, // UPDATE_MESSAGE
+                    'data' => [
+                        'embeds' => [DiscordAppUpdateService::buildCanceledEmbed($canceledUpdate, $devTag)],
+                        'components' => [],
+                    ],
+                ]);
+            }
+
+            return response()->json([
+                'type' => 4,
+                'data' => [
+                    'content' => 'ℹ️ Draft pengumuman update sudah dibatalkan sebelumnya.',
+                    'flags' => 64,
+                ],
+            ]);
+        }
+
         return response()->json([
             'type' => 4,
             'data' => [
@@ -222,6 +304,79 @@ class DiscordInteractionController extends Controller
             }
 
             return $this->processTicketAction($ticketId, 'selesai', $reason, $devTag);
+        }
+
+        // 3. SUBMIT PENGUMUMAN UPDATE APLIKASI
+        if ($customId === 'modal_app_update') {
+            $version = '';
+            $title = '';
+            $description = '';
+            $apkUrl = '';
+            $type = 'optional';
+
+            foreach ($data['components'] ?? [] as $row) {
+                foreach ($row['components'] ?? [] as $field) {
+                    $cId = $field['custom_id'] ?? '';
+                    $val = trim($field['value'] ?? '');
+                    if ($cId === 'update_version') $version = $val;
+                    elseif ($cId === 'update_title') $title = $val;
+                    elseif ($cId === 'update_description') $description = $val;
+                    elseif ($cId === 'update_apk_url') $apkUrl = $val;
+                    elseif ($cId === 'update_type') $type = strtolower($val) === 'mandatory' ? 'mandatory' : 'optional';
+                }
+            }
+
+            // Validasi format versi semver
+            if (!preg_match('/^[0-9]+(\.[0-9]+)*(\+[0-9]+)?$/', $version)) {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => '⚠️ Format versi tidak valid! Gunakan format semantic versioning seperti `1.2.0`.',
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            // Validasi APK URL wajib HTTPS
+            if (!filter_var($apkUrl, FILTER_VALIDATE_URL) || !str_starts_with(strtolower($apkUrl), 'https://')) {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => '⚠️ Link download APK harus berupa URL valid dengan protokol aman HTTPS (`https://...`).',
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            if (empty($title) || empty($description)) {
+                return response()->json([
+                    'type' => 4,
+                    'data' => [
+                        'content' => '⚠️ Judul pembaruan dan deskripsi / catatan perubahan wajib diisi.',
+                        'flags' => 64,
+                    ],
+                ]);
+            }
+
+            // Simpan data draft pembaruan ke PostgreSQL Supabase
+            $update = AppUpdate::create([
+                'version' => $version,
+                'title' => $title,
+                'description' => $description,
+                'apk_url' => $apkUrl,
+                'type' => $type,
+                'is_published' => false,
+                'discord_user_id' => $devTag,
+                'discord_user_name' => $devTag,
+            ]);
+
+            return response()->json([
+                'type' => 4, // CHANNEL_MESSAGE_WITH_SOURCE
+                'data' => [
+                    'embeds' => [DiscordAppUpdateService::buildDraftEmbed($update, $devTag)],
+                    'components' => DiscordAppUpdateService::buildDraftComponents($update->id),
+                ],
+            ]);
         }
 
         return response()->json([

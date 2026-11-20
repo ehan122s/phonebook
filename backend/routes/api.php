@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\BugReportController;
 use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\ReportTemplateController;
+use App\Http\Controllers\Api\AppUpdateController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -139,6 +140,24 @@ Route::middleware(['throttle:30,1'])->group(function () {
     Route::match(['GET', 'POST'], '/bug-reports/{id}/action', [DiscordInteractionController::class, 'triggerAction']);
     Route::match(['GET', 'POST'], '/tickets/{ticketCode}/action', [DiscordInteractionController::class, 'triggerAction']);
     Route::post('/discord/interactions', [DiscordInteractionController::class, 'handle']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| App Updates (Sistem Pembaruan Aplikasi Phonebook)
+|--------------------------------------------------------------------------
+*/
+Route::get('/app-update/latest', [AppUpdateController::class, 'latest']);
+Route::get('/app-update/check', [AppUpdateController::class, 'check']);
+Route::post('/app-update/check', [AppUpdateController::class, 'check']);
+Route::get('/app-update/history', [AppUpdateController::class, 'history']);
+Route::post('/app-update', [AppUpdateController::class, 'store']);
+Route::post('/app-update/{id}/publish', [AppUpdateController::class, 'publish']);
+Route::post('/app-update/{id}/unpublish', [AppUpdateController::class, 'unpublish']);
+Route::delete('/app-update/{id}', [AppUpdateController::class, 'destroy']);
+Route::post('/discord/send-update-panel', function () {
+    $res = \App\Services\DiscordAppUpdateService::sendControlPanelToChannel();
+    return response()->json($res, $res['success'] ? 200 : 500);
 });
 
 /*
