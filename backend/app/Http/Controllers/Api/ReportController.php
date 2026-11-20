@@ -14,18 +14,35 @@ class ReportController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+
+        // Pilih hanya kolom yang benar-benar ada pada tabel report_photos.
+        // Accessor `url` ditambahkan otomatis oleh model ReportPhoto.
+        $photoColumns = ['id', 'report_id', 'photo', 'latitude', 'longitude', 'created_at'];
+        if (Schema::hasColumn('report_photos', 'address')) {
+            $photoColumns[] = 'address';
+        }
+
         $query = Report::with([
-            'user:id,name,email',
+            'user:id,name,email,role',
             'category:id,name',
-            'photos:id,report_id,url,address,latitude,longitude,created_at'
+            'photos:' . implode(',', $photoColumns),
         ]);
 
-        // Jika user bukan admin, HANYA ambil laporan milik user tersebut agar tidak tercampur
+        // Jika bukan admin, hanya tampilkan laporan milik user yang login.
         if (!$user || $user->role !== 'admin') {
             $query->where('user_id', $user->id);
-        } else if ($request->filled('user_id')) {
-            // Admin memiliki hak akses melihat seluruh laporan atau memfilter per user_id
+        } elseif ($request->filled('user_id')) {
             $query->where('user_id', $request->query('user_id'));
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->query('status'));
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('activity_date', '>=', $request->query('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('activity_date', '<=', $request->query('date_to'));
         }
 
         $reports = $query->latest()->get();
@@ -40,7 +57,7 @@ class ReportController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        $query = Report::with(['user', 'category', 'photos']);
+        $query = Report::with(['user:id,name,email,role', 'category:id,name', 'photos']);
         if (!$user || $user->role !== 'admin') {
             $query->where('user_id', $user->id);
         }
@@ -119,15 +136,22 @@ class ReportController extends Controller
                 $photoFile = $request->file('photo');
                 $path = $photoFile->store('reports', 'public');
                 $photoBytes = file_get_contents($photoFile->getRealPath());
-                $base64 = base64_encode($photoBytes);
+                $base64 = $photoBytes !== false ? base64_encode($photoBytes) : null;
 
-                ReportPhoto::create([
+                $photoData = [
                     'report_id' => $report->id,
                     'photo' => $path,
-                    'photo_base64' => $base64,
                     'latitude' => $validated['latitude'] ?? null,
                     'longitude' => $validated['longitude'] ?? null,
-                ]);
+                ];
+                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                    $photoData['photo_base64'] = $base64;
+                }
+                if (Schema::hasColumn('report_photos', 'address')) {
+                    $photoData['address'] = $request->input('address', $report->location);
+                }
+
+                ReportPhoto::create($photoData);
             } catch (\Throwable $e) {}
         }
 
@@ -142,8 +166,14 @@ class ReportController extends Controller
 
     public function update(Request $request, $id)
     {
-        $report = Report::where('user_id', $request->user()->id)
-            ->find($id);
+        $user = $request->user();
+        $query = Report::query();
+
+        if (!$user || $user->role !== 'admin') {
+            $query->where('user_id', $user->id);
+        }
+
+        $report = $query->find($id);
 
         if (!$report) {
             return response()->json([
@@ -153,41 +183,39 @@ class ReportController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'nullable|exists:categories,id',
-            'title' => 'required|string|max:255',
-            'activity_date' => 'required|date',
-            'location' => 'required|string|max:255',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'description' => 'nullable|string',
-            'status' => 'nullable|in:draft,terkirim,diperiksa,disetujui,ditolak',
+            'category_id' => 'sometimes|nullable|exists:categories,id',
+            'title' => 'sometimes|required|string|max:255',
+            'activity_date' => 'sometimes|required|date',
+            'location' => 'sometimes|required|string|max:255',
+            'latitude' => 'sometimes|nullable|numeric',
+            'longitude' => 'sometimes|nullable|numeric',
+            'description' => 'sometimes|nullable|string',
+            'status' => 'sometimes|required|in:draft,terkirim,diperiksa,disetujui,ditolak',
         ]);
 
-        $report->update([
-            'category_id' => $validated['category_id'] ?? null,
-            'title' => $validated['title'],
-            'activity_date' => $validated['activity_date'],
-            'location' => $validated['location'],
-            'latitude' => $validated['latitude'] ?? null,
-            'longitude' => $validated['longitude'] ?? null,
-            'description' => $validated['description'] ?? null,
-            'status' => $validated['status'] ?? $report->status,
-        ]);
+        $report->update($validated);
 
         if ($request->hasFile('photo')) {
             try {
                 $photoFile = $request->file('photo');
                 $path = $photoFile->store('reports', 'public');
                 $photoBytes = file_get_contents($photoFile->getRealPath());
-                $base64 = base64_encode($photoBytes);
+                $base64 = $photoBytes !== false ? base64_encode($photoBytes) : null;
 
-                ReportPhoto::create([
+                $photoData = [
                     'report_id' => $report->id,
                     'photo' => $path,
-                    'photo_base64' => $base64,
-                    'latitude' => $validated['latitude'] ?? null,
-                    'longitude' => $validated['longitude'] ?? null,
-                ]);
+                    'latitude' => $validated['latitude'] ?? $report->latitude,
+                    'longitude' => $validated['longitude'] ?? $report->longitude,
+                ];
+                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                    $photoData['photo_base64'] = $base64;
+                }
+                if (Schema::hasColumn('report_photos', 'address')) {
+                    $photoData['address'] = $request->input('address', $report->location);
+                }
+
+                ReportPhoto::create($photoData);
             } catch (\Throwable $e) {}
         }
 
@@ -202,8 +230,14 @@ class ReportController extends Controller
 
     public function destroy(Request $request, $id)
     {
-        $report = Report::where('user_id', $request->user()->id)
-            ->find($id);
+        $user = $request->user();
+        $query = Report::query();
+
+        if (!$user || $user->role !== 'admin') {
+            $query->where('user_id', $user->id);
+        }
+
+        $report = $query->find($id);
 
         if (!$report) {
             return response()->json([

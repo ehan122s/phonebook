@@ -335,16 +335,21 @@ Future<void> showReportForm(
   final template = await ReportTemplateManager.findByTitle(jenisLaporan);
   if (!context.mounted) return;
 
-  final List<Map<String, dynamic>> configuredFields = (template['fields_config'] is List)
+  final List<Map<String, dynamic>> configuredFields =
+      (template['fields_config'] is List)
       ? (template['fields_config'] as List)
-          .whereType<Map>()
-          .map((m) => Map<String, dynamic>.from(m))
-          .toList()
+            .whereType<Map>()
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList()
       : <Map<String, dynamic>>[];
 
   final List<String> templateFields = configuredFields.isNotEmpty
-      ? configuredFields.map((e) => (e['label'] ?? '').toString()).where((s) => s.isNotEmpty).toList()
-      : ((template['fields'] as List?)?.map((e) => e.toString()).toList() ?? []);
+      ? configuredFields
+            .map((e) => (e['label'] ?? '').toString())
+            .where((s) => s.isNotEmpty)
+            .toList()
+      : ((template['fields'] as List?)?.map((e) => e.toString()).toList() ??
+            []);
   final String defaultTitle = (template['defaultTitle'] ?? '').toString();
   final String templateDescription =
       (template['description'] ??
@@ -1221,67 +1226,129 @@ Future<void> showReportForm(
                                             (c) => c['label'] == fieldLabel,
                                             orElse: () => {
                                               'type': 'text',
-                                              'placeholder': 'Tuliskan ${fieldLabel.toLowerCase()}...',
+                                              'placeholder':
+                                                  'Tuliskan ${fieldLabel.toLowerCase()}...',
                                               'required': true,
                                               'description': '',
                                               'options': <String>[],
                                             },
                                           );
-                                          final fType = cfg['type']?.toString() ?? 'text';
-                                          final placeholder = (cfg['placeholder']?.toString().isNotEmpty ?? false)
+                                          final fType =
+                                              cfg['type']?.toString() ?? 'text';
+                                          final placeholder =
+                                              (cfg['placeholder']
+                                                      ?.toString()
+                                                      .isNotEmpty ??
+                                                  false)
                                               ? cfg['placeholder'].toString()
                                               : 'Tuliskan ${fieldLabel.toLowerCase()}...';
-                                          final isReq = cfg['required'] != false;
-                                          final desc = (cfg['description'] ?? '').toString();
-                                          final options = (cfg['options'] is List)
-                                              ? (cfg['options'] as List).map((o) => o.toString()).toList()
+                                          final isReq =
+                                              cfg['required'] != false;
+                                          final desc =
+                                              (cfg['description'] ?? '')
+                                                  .toString();
+                                          final options =
+                                              (cfg['options'] is List)
+                                              ? (cfg['options'] as List)
+                                                    .map((o) => o.toString())
+                                                    .toList()
                                               : <String>[];
 
-                                          final displayLabel = '${index + 1}. $fieldLabel${isReq ? ' *' : ''}';
+                                          final displayLabel =
+                                              '${index + 1}. $fieldLabel${isReq ? ' *' : ''}';
 
                                           Widget fieldWidget;
-                                          if (fType == 'dropdown' && options.isNotEmpty) {
+                                          if (fType == 'dropdown' &&
+                                              options.isNotEmpty) {
                                             fieldWidget = Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   displayLabel,
                                                   style: TextStyle(
                                                     fontSize: 13,
                                                     fontWeight: FontWeight.w700,
-                                                    color: isDark ? Colors.white : const Color(0xFF24352A),
+                                                    color: isDark
+                                                        ? Colors.white
+                                                        : const Color(
+                                                            0xFF24352A,
+                                                          ),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 7),
                                                 DropdownButtonFormField<String>(
-                                                  value: ctrl.text.isNotEmpty && options.contains(ctrl.text) ? ctrl.text : null,
-                                                  dropdownColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+                                                  value:
+                                                      ctrl.text.isNotEmpty &&
+                                                          options.contains(
+                                                            ctrl.text,
+                                                          )
+                                                      ? ctrl.text
+                                                      : null,
+                                                  dropdownColor: isDark
+                                                      ? const Color(0xFF1E2822)
+                                                      : Colors.white,
                                                   style: TextStyle(
                                                     fontSize: 14,
-                                                    color: isDark ? Colors.white : Colors.black87,
+                                                    color: isDark
+                                                        ? Colors.white
+                                                        : Colors.black87,
                                                   ),
                                                   decoration: InputDecoration(
-                                                    hintText: placeholder.isNotEmpty ? placeholder : 'Pilih opsi...',
-                                                    helperText: desc.isNotEmpty ? desc : null,
+                                                    hintText:
+                                                        placeholder.isNotEmpty
+                                                        ? placeholder
+                                                        : 'Pilih opsi...',
+                                                    helperText: desc.isNotEmpty
+                                                        ? desc
+                                                        : null,
                                                     helperMaxLines: 2,
                                                     filled: true,
-                                                    fillColor: isDark ? const Color(0xFF18221B) : const Color(0xFFF7FAF7),
+                                                    fillColor: isDark
+                                                        ? const Color(
+                                                            0xFF18221B,
+                                                          )
+                                                        : const Color(
+                                                            0xFFF7FAF7,
+                                                          ),
                                                     prefixIcon: Icon(
-                                                      Icons.arrow_drop_down_circle_outlined,
-                                                      color: isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A),
+                                                      Icons
+                                                          .arrow_drop_down_circle_outlined,
+                                                      color: isDark
+                                                          ? const Color(
+                                                              0xFF81C784,
+                                                            )
+                                                          : const Color(
+                                                              0xFF245C3A,
+                                                            ),
                                                       size: 20,
                                                     ),
                                                     border: OutlineInputBorder(
-                                                      borderRadius: BorderRadius.circular(13),
-                                                      borderSide: BorderSide(color: borderCol),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            13,
+                                                          ),
+                                                      borderSide: BorderSide(
+                                                        color: borderCol,
+                                                      ),
                                                     ),
-                                                    enabledBorder: OutlineInputBorder(
-                                                      borderRadius: BorderRadius.circular(13),
-                                                      borderSide: BorderSide(color: borderCol),
-                                                    ),
+                                                    enabledBorder:
+                                                        OutlineInputBorder(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                13,
+                                                              ),
+                                                          borderSide:
+                                                              BorderSide(
+                                                                color:
+                                                                    borderCol,
+                                                              ),
+                                                        ),
                                                   ),
                                                   items: options.map((opt) {
-                                                    return DropdownMenuItem<String>(
+                                                    return DropdownMenuItem<
+                                                      String
+                                                    >(
                                                       value: opt,
                                                       child: Text(opt),
                                                     );
@@ -1298,14 +1365,17 @@ Future<void> showReportForm(
                                           } else if (fType == 'date') {
                                             fieldWidget = InkWell(
                                               onTap: () async {
-                                                final picked = await showDatePicker(
-                                                  context: sheetContext,
-                                                  initialDate: DateTime.now(),
-                                                  firstDate: DateTime(2020),
-                                                  lastDate: DateTime(2035),
-                                                );
+                                                final picked =
+                                                    await showDatePicker(
+                                                      context: sheetContext,
+                                                      initialDate:
+                                                          DateTime.now(),
+                                                      firstDate: DateTime(2020),
+                                                      lastDate: DateTime(2035),
+                                                    );
                                                 if (picked != null) {
-                                                  ctrl.text = '${picked.day.toString().padLeft(2, "0")}-${picked.month.toString().padLeft(2, "0")}-${picked.year}';
+                                                  ctrl.text =
+                                                      '${picked.day.toString().padLeft(2, "0")}-${picked.month.toString().padLeft(2, "0")}-${picked.year}';
                                                   syncTemplateFieldsToIsi();
                                                 }
                                               },
@@ -1313,9 +1383,14 @@ Future<void> showReportForm(
                                                 child: _SpaciousLabeledField(
                                                   controller: ctrl,
                                                   label: displayLabel,
-                                                  hint: placeholder.isNotEmpty ? placeholder : 'Pilih tanggal...',
-                                                  icon: Icons.calendar_today_rounded,
-                                                  helperText: desc.isNotEmpty ? desc : null,
+                                                  hint: placeholder.isNotEmpty
+                                                      ? placeholder
+                                                      : 'Pilih tanggal...',
+                                                  icon: Icons
+                                                      .calendar_today_rounded,
+                                                  helperText: desc.isNotEmpty
+                                                      ? desc
+                                                      : null,
                                                   maxLines: 1,
                                                 ),
                                               ),
@@ -1326,10 +1401,14 @@ Future<void> showReportForm(
                                               label: displayLabel,
                                               hint: placeholder,
                                               icon: Icons.pin_outlined,
-                                              keyboardType: TextInputType.number,
-                                              helperText: desc.isNotEmpty ? desc : null,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              helperText: desc.isNotEmpty
+                                                  ? desc
+                                                  : null,
                                               maxLines: 1,
-                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                              onChanged: (_) =>
+                                                  syncTemplateFieldsToIsi(),
                                             );
                                           } else if (fType == 'textarea') {
                                             fieldWidget = _SpaciousLabeledField(
@@ -1337,9 +1416,12 @@ Future<void> showReportForm(
                                               label: displayLabel,
                                               hint: placeholder,
                                               icon: Icons.notes_rounded,
-                                              helperText: desc.isNotEmpty ? desc : null,
+                                              helperText: desc.isNotEmpty
+                                                  ? desc
+                                                  : null,
                                               maxLines: 4,
-                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                              onChanged: (_) =>
+                                                  syncTemplateFieldsToIsi(),
                                             );
                                           } else {
                                             fieldWidget = _SpaciousLabeledField(
@@ -1347,15 +1429,22 @@ Future<void> showReportForm(
                                               label: displayLabel,
                                               hint: placeholder,
                                               icon: Icons.edit_note_rounded,
-                                              helperText: desc.isNotEmpty ? desc : null,
+                                              helperText: desc.isNotEmpty
+                                                  ? desc
+                                                  : null,
                                               maxLines: 1,
-                                              onChanged: (_) => syncTemplateFieldsToIsi(),
+                                              onChanged: (_) =>
+                                                  syncTemplateFieldsToIsi(),
                                             );
                                           }
 
                                           return Padding(
                                             padding: EdgeInsets.only(
-                                              bottom: index == templateFields.length - 1 ? 8 : 14,
+                                              bottom:
+                                                  index ==
+                                                      templateFields.length - 1
+                                                  ? 8
+                                                  : 14,
                                             ),
                                             child: fieldWidget,
                                           );
@@ -2167,9 +2256,15 @@ Future<void> _showFieldConfigModal(
   required void Function(Map<String, dynamic> config) onSave,
 }) async {
   final isEdit = initialConfig != null;
-  final labelCtrl = TextEditingController(text: initialConfig?['label']?.toString() ?? '');
-  final placeholderCtrl = TextEditingController(text: initialConfig?['placeholder']?.toString() ?? '');
-  final descCtrl = TextEditingController(text: initialConfig?['description']?.toString() ?? '');
+  final labelCtrl = TextEditingController(
+    text: initialConfig?['label']?.toString() ?? '',
+  );
+  final placeholderCtrl = TextEditingController(
+    text: initialConfig?['placeholder']?.toString() ?? '',
+  );
+  final descCtrl = TextEditingController(
+    text: initialConfig?['description']?.toString() ?? '',
+  );
   final newOptionCtrl = TextEditingController();
 
   String selectedType = initialConfig?['type']?.toString() ?? 'text';
@@ -2189,11 +2284,19 @@ Future<void> _showFieldConfigModal(
       return StatefulBuilder(
         builder: (modalCtx, setModalState) {
           final isDark = Theme.of(modalCtx).brightness == Brightness.dark;
-          final primaryGreen = isDark ? const Color(0xFF81C784) : const Color(0xFF245C3A);
+          final primaryGreen = isDark
+              ? const Color(0xFF81C784)
+              : const Color(0xFF245C3A);
           final textPrimary = isDark ? Colors.white : const Color(0xFF24352A);
-          final textSecondary = isDark ? Colors.white70 : const Color(0xFF6E7A72);
-          final softBg = isDark ? const Color(0xFF18221B) : const Color(0xFFF2F7F0);
-          final borderCol = isDark ? const Color(0xFF2E3D34) : const Color(0xFFE2EAE3);
+          final textSecondary = isDark
+              ? Colors.white70
+              : const Color(0xFF6E7A72);
+          final softBg = isDark
+              ? const Color(0xFF18221B)
+              : const Color(0xFFF2F7F0);
+          final borderCol = isDark
+              ? const Color(0xFF2E3D34)
+              : const Color(0xFFE2EAE3);
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
@@ -2219,7 +2322,9 @@ Future<void> _showFieldConfigModal(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
-                          isEdit ? Icons.edit_note_rounded : Icons.add_circle_outline_rounded,
+                          isEdit
+                              ? Icons.edit_note_rounded
+                              : Icons.add_circle_outline_rounded,
                           color: primaryGreen,
                           size: 22,
                         ),
@@ -2227,7 +2332,9 @@ Future<void> _showFieldConfigModal(
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          isEdit ? 'Ubah Kolom Isian' : 'Tambah Kolom Isian Baru',
+                          isEdit
+                              ? 'Ubah Kolom Isian'
+                              : 'Tambah Kolom Isian Baru',
                           style: TextStyle(
                             fontSize: 16.5,
                             fontWeight: FontWeight.w800,
@@ -2250,28 +2357,57 @@ Future<void> _showFieldConfigModal(
                       hintText: 'Misal: Luas Area Tanam (Ha)',
                       filled: true,
                       fillColor: softBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: selectedType,
-                    dropdownColor: isDark ? const Color(0xFF1E2822) : Colors.white,
+                    dropdownColor: isDark
+                        ? const Color(0xFF1E2822)
+                        : Colors.white,
                     style: TextStyle(color: textPrimary, fontSize: 13.5),
                     decoration: InputDecoration(
                       labelText: 'Tipe Input',
                       filled: true,
                       fillColor: softBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'text', child: Text('Teks Singkat (1 baris)')),
-                      DropdownMenuItem(value: 'textarea', child: Text('Area Teks / Paragraf (Multi-baris)')),
-                      DropdownMenuItem(value: 'number', child: Text('Angka / Numerik (Jumlah / Luas)')),
-                      DropdownMenuItem(value: 'date', child: Text('Tanggal (Pilihan Kalender)')),
-                      DropdownMenuItem(value: 'dropdown', child: Text('Pilihan Dropdown (Daftar Opsi)')),
+                      DropdownMenuItem(
+                        value: 'text',
+                        child: Text('Teks Singkat (1 baris)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'textarea',
+                        child: Text('Area Teks / Paragraf (Multi-baris)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'number',
+                        child: Text('Angka / Numerik (Jumlah / Luas)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'date',
+                        child: Text('Tanggal (Pilihan Kalender)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'dropdown',
+                        child: Text('Pilihan Dropdown (Daftar Opsi)'),
+                      ),
                     ],
                     onChanged: (val) {
                       if (val != null) {
@@ -2288,8 +2424,14 @@ Future<void> _showFieldConfigModal(
                       hintText: 'Misal: Contoh: 2.5 Ha / Blok Pasir Angin',
                       filled: true,
                       fillColor: softBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -2298,11 +2440,18 @@ Future<void> _showFieldConfigModal(
                     style: TextStyle(color: textPrimary, fontSize: 13.5),
                     decoration: InputDecoration(
                       labelText: 'Deskripsi / Petunjuk untuk Pegawai',
-                      hintText: 'Misal: Tuliskan nama blok lokasi penanaman bibit',
+                      hintText:
+                          'Misal: Tuliskan nama blok lokasi penanaman bibit',
                       filled: true,
                       fillColor: softBg,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: borderCol)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderCol),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -2311,7 +2460,11 @@ Future<void> _showFieldConfigModal(
                     activeTrackColor: const Color(0xFF245C3A),
                     title: Text(
                       'Wajib Diisi (Required)',
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: textPrimary),
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
                     ),
                     subtitle: Text(
                       'Pegawai harus mengisi kolom ini sebelum dapat mengirim laporan',
@@ -2324,7 +2477,11 @@ Future<void> _showFieldConfigModal(
                     const Divider(),
                     Text(
                       'Daftar Pilihan Opsi Dropdown:',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: textPrimary),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -2337,9 +2494,18 @@ Future<void> _showFieldConfigModal(
                               hintText: 'Ketik nama opsi pilihan...',
                               filled: true,
                               fillColor: softBg,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderCol)),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderCol)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: borderCol),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: borderCol),
+                              ),
                             ),
                           ),
                         ),
@@ -2348,7 +2514,9 @@ Future<void> _showFieldConfigModal(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF245C3A),
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           onPressed: () {
                             final opt = newOptionCtrl.text.trim();
@@ -2369,7 +2537,10 @@ Future<void> _showFieldConfigModal(
                       runSpacing: 6,
                       children: options.map((opt) {
                         return Chip(
-                          label: Text(opt, style: TextStyle(fontSize: 12, color: textPrimary)),
+                          label: Text(
+                            opt,
+                            style: TextStyle(fontSize: 12, color: textPrimary),
+                          ),
                           backgroundColor: softBg,
                           deleteIcon: const Icon(Icons.close_rounded, size: 16),
                           onDeleted: () {
@@ -2387,7 +2558,9 @@ Future<void> _showFieldConfigModal(
                           onPressed: () => Navigator.pop(modalCtx),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           child: const Text('Batal'),
                         ),
@@ -2399,18 +2572,24 @@ Future<void> _showFieldConfigModal(
                             backgroundColor: const Color(0xFF245C3A),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           onPressed: () {
                             final label = labelCtrl.text.trim();
                             if (label.isEmpty) {
                               ScaffoldMessenger.of(modalCtx).showSnackBar(
-                                const SnackBar(content: Text('Nama kolom wajib diisi.')),
+                                const SnackBar(
+                                  content: Text('Nama kolom wajib diisi.'),
+                                ),
                               );
                               return;
                             }
                             final config = {
-                              'id': initialConfig?['id'] ?? 'f_${DateTime.now().microsecondsSinceEpoch}',
+                              'id':
+                                  initialConfig?['id'] ??
+                                  'f_${DateTime.now().microsecondsSinceEpoch}',
                               'label': label,
                               'type': selectedType,
                               'placeholder': placeholderCtrl.text.trim(),
@@ -2472,7 +2651,8 @@ Future<void> showAdminTemplateEditor(
     for (final item in (existingTemplate!['fields_config'] as List)) {
       if (item is Map) {
         fieldsConfig.add({
-          'id': (item['id'] ?? 'f_${DateTime.now().microsecondsSinceEpoch}').toString(),
+          'id': (item['id'] ?? 'f_${DateTime.now().microsecondsSinceEpoch}')
+              .toString(),
           'label': (item['label'] ?? item['name'] ?? '').toString(),
           'type': (item['type'] ?? 'text').toString(),
           'placeholder': (item['placeholder'] ?? '').toString(),
@@ -2487,7 +2667,8 @@ Future<void> showAdminTemplateEditor(
   }
 
   if (fieldsConfig.isEmpty) {
-    final rawFields = (existingTemplate?['fields'] as List?)
+    final rawFields =
+        (existingTemplate?['fields'] as List?)
             ?.map((e) => e.toString())
             .toList() ??
         <String>[
@@ -2497,11 +2678,13 @@ Future<void> showAdminTemplateEditor(
           'Hasil & Tindak Lanjut',
         ];
     for (final f in rawFields) {
-      final isLong = f.toLowerCase().contains('hasil') ||
+      final isLong =
+          f.toLowerCase().contains('hasil') ||
           f.toLowerCase().contains('uraian') ||
           f.toLowerCase().contains('kondisi') ||
           f.toLowerCase().contains('tindak');
-      final isNum = f.toLowerCase().contains('jumlah') ||
+      final isNum =
+          f.toLowerCase().contains('jumlah') ||
           f.toLowerCase().contains('luas');
       fieldsConfig.add({
         'id': 'f_${f.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
@@ -2608,15 +2791,20 @@ Future<void> showAdminTemplateEditor(
                   if (extFields.isNotEmpty) {
                     fieldsConfig
                       ..clear()
-                      ..addAll(extFields.map((f) => {
-                            'id': 'f_${f.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
+                      ..addAll(
+                        extFields.map(
+                          (f) => {
+                            'id':
+                                'f_${f.replaceAll(RegExp(r'\W+'), '_').toLowerCase()}',
                             'label': f,
                             'type': 'text',
                             'placeholder': 'Isi $f...',
                             'description': '',
                             'required': true,
                             'options': <String>[],
-                          }));
+                          },
+                        ),
+                      );
                   }
                   bodyCtrl.text = (extracted['templateBody'] ?? '').toString();
                 });
@@ -2757,7 +2945,8 @@ Future<void> showAdminTemplateEditor(
                                 ),
                                 Expanded(
                                   child: _StepTabButton(
-                                    label: '2. Form User (${fieldsConfig.length})',
+                                    label:
+                                        '2. Form User (${fieldsConfig.length})',
                                     icon: Icons.fact_check_outlined,
                                     isSelected: activeStepTab == 1,
                                     onTap: () =>
@@ -3134,13 +3323,24 @@ Future<void> showAdminTemplateEditor(
                                               },
                                             );
                                           },
-                                          icon: const Icon(Icons.add_rounded, size: 18),
+                                          icon: const Icon(
+                                            Icons.add_rounded,
+                                            size: 18,
+                                          ),
                                           label: const Text('Tambah'),
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF245C3A),
+                                            backgroundColor: const Color(
+                                              0xFF245C3A,
+                                            ),
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -3148,12 +3348,15 @@ Future<void> showAdminTemplateEditor(
                                     const SizedBox(height: 14),
                                     ReorderableListView.builder(
                                       shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
                                       itemCount: fieldsConfig.length,
                                       onReorder: (oldIdx, newIdx) {
                                         setModalState(() {
                                           if (newIdx > oldIdx) newIdx -= 1;
-                                          final item = fieldsConfig.removeAt(oldIdx);
+                                          final item = fieldsConfig.removeAt(
+                                            oldIdx,
+                                          );
                                           fieldsConfig.insert(newIdx, item);
                                           regenerateTemplateBodyFromFields();
                                         });
@@ -3161,37 +3364,56 @@ Future<void> showAdminTemplateEditor(
                                       itemBuilder: (context, idx) {
                                         final f = fieldsConfig[idx];
                                         final fId = f['id'] ?? 'col_$idx';
-                                        final fLabel = f['label']?.toString() ?? 'Kolom';
-                                        final fType = f['type']?.toString() ?? 'text';
+                                        final fLabel =
+                                            f['label']?.toString() ?? 'Kolom';
+                                        final fType =
+                                            f['type']?.toString() ?? 'text';
                                         final fReq = f['required'] != false;
-                                        final fDesc = (f['description'] ?? '').toString();
-                                        final fOpts = (f['options'] is List) ? (f['options'] as List) : [];
+                                        final fDesc = (f['description'] ?? '')
+                                            .toString();
+                                        final fOpts = (f['options'] is List)
+                                            ? (f['options'] as List)
+                                            : [];
 
                                         final typeLabel = switch (fType) {
                                           'textarea' => 'Paragraf',
                                           'number' => 'Angka',
                                           'date' => 'Tanggal',
-                                          'dropdown' => 'Pilihan (${fOpts.length})',
+                                          'dropdown' =>
+                                            'Pilihan (${fOpts.length})',
                                           _ => 'Teks',
                                         };
 
                                         return Container(
                                           key: ValueKey(fId),
-                                          margin: const EdgeInsets.only(bottom: 8),
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          margin: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: softBg,
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: borderCol),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
                                           ),
                                           child: Row(
                                             children: [
                                               ReorderableDragStartListener(
                                                 index: idx,
                                                 child: Padding(
-                                                  padding: const EdgeInsets.only(right: 6),
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 6,
+                                                      ),
                                                   child: Icon(
-                                                    Icons.drag_indicator_rounded,
+                                                    Icons
+                                                        .drag_indicator_rounded,
                                                     color: textSecondary,
                                                     size: 20,
                                                   ),
@@ -3202,7 +3424,8 @@ Future<void> showAdminTemplateEditor(
                                                 height: 24,
                                                 alignment: Alignment.center,
                                                 decoration: BoxDecoration(
-                                                  color: primaryGreen.withValues(alpha: 0.15),
+                                                  color: primaryGreen
+                                                      .withValues(alpha: 0.15),
                                                   shape: BoxShape.circle,
                                                 ),
                                                 child: Text(
@@ -3217,13 +3440,15 @@ Future<void> showAdminTemplateEditor(
                                               const SizedBox(width: 8),
                                               Expanded(
                                                 child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
                                                   children: [
                                                     Text(
                                                       fLabel,
                                                       style: TextStyle(
                                                         fontSize: 13,
-                                                        fontWeight: FontWeight.w700,
+                                                        fontWeight:
+                                                            FontWeight.w700,
                                                         color: textPrimary,
                                                       ),
                                                     ),
@@ -3231,46 +3456,91 @@ Future<void> showAdminTemplateEditor(
                                                     Row(
                                                       children: [
                                                         Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 5,
+                                                                vertical: 1.5,
+                                                              ),
                                                           decoration: BoxDecoration(
-                                                            color: primaryGreen.withValues(alpha: 0.12),
-                                                            borderRadius: BorderRadius.circular(5),
+                                                            color: primaryGreen
+                                                                .withValues(
+                                                                  alpha: 0.12,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  5,
+                                                                ),
                                                           ),
                                                           child: Text(
                                                             typeLabel,
                                                             style: TextStyle(
                                                               fontSize: 10,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: primaryGreen,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color:
+                                                                  primaryGreen,
                                                             ),
                                                           ),
                                                         ),
-                                                        const SizedBox(width: 5),
+                                                        const SizedBox(
+                                                          width: 5,
+                                                        ),
                                                         Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 5,
+                                                                vertical: 1.5,
+                                                              ),
                                                           decoration: BoxDecoration(
                                                             color: fReq
-                                                                ? Colors.red.withValues(alpha: 0.12)
-                                                                : textSecondary.withValues(alpha: 0.12),
-                                                            borderRadius: BorderRadius.circular(5),
+                                                                ? Colors.red
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.12,
+                                                                      )
+                                                                : textSecondary
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.12,
+                                                                      ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  5,
+                                                                ),
                                                           ),
                                                           child: Text(
-                                                            fReq ? 'Wajib' : 'Opsional',
+                                                            fReq
+                                                                ? 'Wajib'
+                                                                : 'Opsional',
                                                             style: TextStyle(
                                                               fontSize: 10,
-                                                              fontWeight: FontWeight.w600,
-                                                              color: fReq ? Colors.red : textSecondary,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600,
+                                                              color: fReq
+                                                                  ? Colors.red
+                                                                  : textSecondary,
                                                             ),
                                                           ),
                                                         ),
-                                                        if (fDesc.isNotEmpty) ...[
-                                                          const SizedBox(width: 6),
+                                                        if (fDesc
+                                                            .isNotEmpty) ...[
+                                                          const SizedBox(
+                                                            width: 6,
+                                                          ),
                                                           Expanded(
                                                             child: Text(
                                                               fDesc,
                                                               maxLines: 1,
-                                                              overflow: TextOverflow.ellipsis,
-                                                              style: TextStyle(fontSize: 10.5, color: textSecondary),
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              style: TextStyle(
+                                                                fontSize: 10.5,
+                                                                color:
+                                                                    textSecondary,
+                                                              ),
                                                             ),
                                                           ),
                                                         ],
@@ -3280,15 +3550,18 @@ Future<void> showAdminTemplateEditor(
                                                 ),
                                               ),
                                               IconButton(
-                                                tooltip: 'Ubah Pengaturan Kolom',
-                                                visualDensity: VisualDensity.compact,
+                                                tooltip:
+                                                    'Ubah Pengaturan Kolom',
+                                                visualDensity:
+                                                    VisualDensity.compact,
                                                 onPressed: () {
                                                   _showFieldConfigModal(
                                                     sheetCtx,
                                                     initialConfig: f,
                                                     onSave: (updated) {
                                                       setModalState(() {
-                                                        fieldsConfig[idx] = updated;
+                                                        fieldsConfig[idx] =
+                                                            updated;
                                                         regenerateTemplateBodyFromFields();
                                                       });
                                                     },
@@ -3302,7 +3575,8 @@ Future<void> showAdminTemplateEditor(
                                               ),
                                               IconButton(
                                                 tooltip: 'Hapus Kolom',
-                                                visualDensity: VisualDensity.compact,
+                                                visualDensity:
+                                                    VisualDensity.compact,
                                                 onPressed: () {
                                                   setModalState(() {
                                                     fieldsConfig.removeAt(idx);
@@ -3411,7 +3685,8 @@ Future<void> showAdminTemplateEditor(
                                     spacing: 6,
                                     runSpacing: 6,
                                     children: fieldsConfig.map((item) {
-                                      final f = (item['label'] ?? '').toString();
+                                      final f = (item['label'] ?? '')
+                                          .toString();
                                       return ActionChip(
                                         label: Text(
                                           '+ {{$f}}',
@@ -3653,25 +3928,26 @@ Future<void> showReportDownloadSheet(
 
             ReportExportResult res;
             try {
-              res = await ReportDocumentExporter.exportReport(
-                laporan,
-                format: format,
-                openInNewTabOnWeb: openInNewTab,
-                onProgress: (status) {
-                  if (sheetCtx.mounted) {
-                    setSheetState(() {
-                      progressStatus = status;
-                    });
-                  }
-                },
-              ).timeout(
-                const Duration(seconds: 18),
-                onTimeout: () => const ReportExportResult(
-                  success: false,
-                  fileName: '',
-                  message: 'Proses unduh dokumen melebihi batas waktu (timeout). Silakan periksa koneksi dan coba lagi.',
-                ),
-              );
+              res =
+                  await ReportDocumentExporter.exportReport(
+                    laporan,
+                    format: format,
+                    openInNewTabOnWeb: openInNewTab,
+                    onProgress: (status) {
+                      if (sheetCtx.mounted) {
+                        setSheetState(() {
+                          progressStatus = status;
+                        });
+                      }
+                    },
+                  ).timeout(
+                    const Duration(seconds: 18),
+                    onTimeout: () => const ReportExportResult(
+                      success: false,
+                      fileName: '',
+                      message: 'Proses unduh dokumen melebihi batas waktu (timeout). Silakan periksa koneksi dan coba lagi.',
+                    ),
+                  );
             } catch (e) {
               res = ReportExportResult(
                 success: false,
@@ -3909,11 +4185,16 @@ Future<void> showReportDownloadSheet(
                       if (progressStatus != null) ...[
                         const SizedBox(height: 14),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
                             color: primaryGreen.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: primaryGreen.withValues(alpha: 0.3)),
+                            border: Border.all(
+                              color: primaryGreen.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: Row(
                             children: [
@@ -4747,8 +5028,6 @@ Future<void> _handleSubmit({
         ? null
         : double.tryParse(lngCtrl.text.trim()),
     'status': apiStatus,
-    if (photoBytes != null && photoBytes.isNotEmpty)
-      'photo_base64': base64Encode(photoBytes),
   };
 
   Future<void> syncToLocalMonitoringStorage(
@@ -4967,32 +5246,11 @@ Future<void> _handleSubmit({
         isError: photoError != null,
       );
     } else {
-      final insertedId = await LaporanService.saveOffline(
-        payload: payload,
-        jenisLaporan: jenisLaporan,
-        photoBytes: photoBytes,
-        photoFilename: photoFilename,
-      );
-      final recordId = 'local_$insertedId';
-      await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
-      await NotificationService.instance.addReportCreatedNotification(
-        title: title,
-        jenisLaporan: jenisLaporan,
-        location: location,
-        status: status,
-        reportId: recordId,
-      );
-      final localMsg = status == 'Draft'
-          ? 'Draft laporan disimpan lokal di perangkat.'
-          : 'Laporan disimpan lokal di perangkat dan siap diunduh.';
-      onStatusFeedback?.call(localMsg, false);
-      if (closeOnSuccess && context.mounted) {
-        Navigator.pop(context);
-      }
-      await onReportSaved();
-
+      final serverError = LaporanService.extractErrorMessage(response);
+      final errMsg = 'Gagal menyimpan laporan ke server: $serverError';
+      onStatusFeedback?.call(errMsg, true);
       if (!parentContext.mounted) return;
-      showTopFrontNotification(parentContext, message: localMsg);
+      showTopFrontNotification(parentContext, message: errMsg, isError: true);
     }
   } catch (e) {
     try {

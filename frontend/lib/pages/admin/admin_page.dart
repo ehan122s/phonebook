@@ -21,11 +21,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/api_constants.dart';
 import '../../services/app_update_service.dart';
 import '../../services/google_auth_service.dart';
-import '../jadwal/jadwal.dart';
 import '../laporan/laporan.dart';
 import '../login/login.dart';
 import '../materi/materi.dart';
-import '../profil/profil.dart';
 import 'admin_folder_page.dart';
 
 class AdminPage extends StatefulWidget {
@@ -57,9 +55,8 @@ class _AdminPageState extends State<AdminPage> {
   /// 1 = Kelola Pengguna
   /// 2 = Folder Seluruh User (AdminFolderPage)
   /// 3 = Laporan Kegiatan (LaporanPage)
-  /// 4 = Jadwal Lapangan (JadwalPage)
+  /// 4 = Monitoring Aktivitas Pengguna
   /// 5 = Materi Penyuluhan (MateriPage)
-  /// 6 = Profil & Pengaturan (ProfilPage)
   int _selectedMenu = 0;
 
   String _adminName = 'Administrator';
@@ -68,6 +65,14 @@ class _AdminPageState extends State<AdminPage> {
   String _userFilterStatus = 'Semua';
   String _reportFilterStatus = 'Semua';
   bool _isSyncingUsers = false;
+  Map<String, dynamic> _monitoringSummary = const {};
+  List<dynamic> _monitoringReports = [];
+  List<dynamic> _monitoringPeriodStats = [];
+  List<dynamic> _lastActiveUsers = [];
+  String _monitoringStatusFilter = 'Semua';
+  DateTime? _monitoringDateFrom;
+  DateTime? _monitoringDateTo;
+  bool _isLoadingMonitoring = false;
 
   int _totalJadwalCount = 0;
   int _totalMateriCount = 0;
@@ -101,15 +106,22 @@ class _AdminPageState extends State<AdminPage> {
 
   // Helpers untuk tema terang / gelap
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
-  Color get _bgColor => _isDark ? const Color(0xFF121814) : AdminPage.kBackground;
+  Color get _bgColor =>
+      _isDark ? const Color(0xFF121814) : AdminPage.kBackground;
   Color get _cardBg => _isDark ? const Color(0xFF1E2822) : AdminPage.kWhite;
-  Color get _surfaceBg => _isDark ? const Color(0xFF18221B) : const Color(0xFFF2F6F2);
-  Color get _borderColor => _isDark ? const Color(0xFF2E3D34) : AdminPage.kBorder;
+  Color get _surfaceBg =>
+      _isDark ? const Color(0xFF18221B) : const Color(0xFFF2F6F2);
+  Color get _borderColor =>
+      _isDark ? const Color(0xFF2E3D34) : AdminPage.kBorder;
   Color get _textPrimary => _isDark ? AdminPage.kWhite : AdminPage.kTextPrimary;
-  Color get _textSecondary => _isDark ? Colors.white70 : AdminPage.kTextSecondary;
-  Color get _primaryAccent => _isDark ? const Color(0xFF81C784) : AdminPage.kPrimary;
-  Color get _lightGreenBg => _isDark ? const Color(0xFF233829) : AdminPage.kLightGreen;
-  Color get _softGreenBg => _isDark ? const Color(0xFF1B2B20) : AdminPage.kSoftGreen;
+  Color get _textSecondary =>
+      _isDark ? Colors.white70 : AdminPage.kTextSecondary;
+  Color get _primaryAccent =>
+      _isDark ? const Color(0xFF81C784) : AdminPage.kPrimary;
+  Color get _lightGreenBg =>
+      _isDark ? const Color(0xFF233829) : AdminPage.kLightGreen;
+  Color get _softGreenBg =>
+      _isDark ? const Color(0xFF1B2B20) : AdminPage.kSoftGreen;
 
   @override
   void initState() {
@@ -159,7 +171,8 @@ class _AdminPageState extends State<AdminPage> {
             loadedReports.insert(0, {
               'id': id,
               'judul': (map['judul'] ?? 'Laporan Kegiatan').toString(),
-              'pelapor': (map['pelapor'] ?? map['userName'] ?? userName).toString(),
+              'pelapor': (map['pelapor'] ?? map['userName'] ?? userName)
+                  .toString(),
               'lokasi': (map['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
               'kategori': (map['jenis'] ?? 'Penyuluhan').toString(),
               'tanggal': (map['tanggal'] ?? 'Baru saja').toString(),
@@ -200,8 +213,18 @@ class _AdminPageState extends State<AdminPage> {
       try {
         final List<dynamic> list = jsonDecode(rawJadwal);
         final validJadwal = list.where((j) {
-          final jid = (j is Map ? (j['id'] ?? '') : '').toString().trim().toLowerCase();
-          return !{'jadwal_1', 'jadwal_2', 'jadwal_3', 'jadwal_4', 'jadwal_5', 'jadwal_6'}.contains(jid);
+          final jid = (j is Map ? (j['id'] ?? '') : '')
+              .toString()
+              .trim()
+              .toLowerCase();
+          return !{
+            'jadwal_1',
+            'jadwal_2',
+            'jadwal_3',
+            'jadwal_4',
+            'jadwal_5',
+            'jadwal_6',
+          }.contains(jid);
         }).toList();
         jadwalCount = validJadwal.length;
       } catch (_) {}
@@ -213,8 +236,17 @@ class _AdminPageState extends State<AdminPage> {
       try {
         final List<dynamic> list = jsonDecode(rawMateri);
         final validMateri = list.where((m) {
-          final mid = (m is Map ? (m['id'] ?? '') : '').toString().trim().toUpperCase();
-          return !{'MAT-001', 'MAT-002', 'MAT-003', 'MAT-004', 'MAT-005'}.contains(mid);
+          final mid = (m is Map ? (m['id'] ?? '') : '')
+              .toString()
+              .trim()
+              .toUpperCase();
+          return !{
+            'MAT-001',
+            'MAT-002',
+            'MAT-003',
+            'MAT-004',
+            'MAT-005',
+          }.contains(mid);
         }).toList();
         materiCount = validMateri.length;
       } catch (_) {}
@@ -242,87 +274,61 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Future<void> _fetchUsersFromBackend({bool showFeedback = false}) async {
-    if (mounted) {
-      setState(() => _isSyncingUsers = true);
-    }
+    if (mounted) setState(() => _isSyncingUsers = true);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
       final response = await http
           .get(
-            Uri.parse('${ApiConstants.baseUrl}/api/users'),
-            headers: {'Accept': 'application/json'},
+            Uri.parse('${ApiConstants.baseUrl}/api/users?per_page=100'),
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true && data['data'] != null) {
+        if (data['success'] == true && data['data'] is List && mounted) {
           final List<dynamic> serverUsers = data['data'];
-          if (serverUsers.isNotEmpty && mounted) {
-            setState(() {
-              final existingEmails = <String>{};
-              final merged = <Map<String, String>>[];
-
-              for (final su in serverUsers) {
-                final email =
-                    (su['email'] ?? '').toString().trim().toLowerCase();
-                final id = (su['id'] ?? '').toString().trim();
-                if (email.isNotEmpty &&
-                    !_isDummyUser(email, id) &&
-                    !existingEmails.contains(email)) {
-                  existingEmails.add(email);
-                  merged.add({
-                    'id': (su['id'] ??
-                            'USR-${DateTime.now().millisecondsSinceEpoch}')
-                        .toString(),
+          setState(() {
+            _users
+              ..clear()
+              ..addAll(
+                serverUsers.map(
+                  (su) => {
+                    'id': (su['id'] ?? '').toString(),
                     'nip': (su['nip'] ?? '').toString(),
                     'name': (su['name'] ?? '').toString(),
-                    'email': email,
+                    'email': (su['email'] ?? '').toString(),
                     'whatsapp': (su['whatsapp'] ?? '').toString(),
-                    'wilayah':
-                        (su['wilayah'] ?? 'CDK Wilayah Garut').toString(),
-                    'role': (su['role'] ?? 'Penyuluh').toString(),
+                    'wilayah': (su['wilayah'] ?? 'CDK Wilayah Garut')
+                        .toString(),
+                    'role': (su['role'] ?? 'user').toString(),
                     'status': (su['status'] ?? 'Aktif').toString(),
-                  });
-                }
-              }
-
-              for (final lu in _users) {
-                final email =
-                    (lu['email'] ?? '').toString().trim().toLowerCase();
-                final id = (lu['id'] ?? '').toString().trim();
-                if (email.isNotEmpty &&
-                    !_isDummyUser(email, id) &&
-                    !existingEmails.contains(email)) {
-                  existingEmails.add(email);
-                  merged.add(lu);
-                }
-              }
-
-              _users
-                ..clear()
-                ..addAll(merged);
-            });
-            await _persistUsers();
-          }
+                  },
+                ),
+              );
+          });
+          await _persistUsers();
         }
       }
+      await _fetchMonitoringData();
       if (showFeedback && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Data panel admin berhasil diperbarui.'),
-            duration: Duration(seconds: 2),
+            content: Text(
+              'Data panel admin berhasil diperbarui dari database.',
+            ),
           ),
         );
       }
     } catch (e) {
-      debugPrint('Sync users from backend error: $e');
       if (showFeedback && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Menampilkan data tersimpan (mode lokal/offline).'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memuat data server: $e')));
       }
     } finally {
       if (mounted) {
@@ -336,28 +342,150 @@ class _AdminPageState extends State<AdminPage> {
     await prefs.setString(_usersStorageKey, jsonEncode(_users));
   }
 
-  Future<void> _syncUserToBackend(Map<String, String> user) async {
+  Future<String> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('token') ?? '';
+  }
+
+  Future<void> _fetchMonitoringData() async {
+    if (mounted) setState(() => _isLoadingMonitoring = true);
     try {
-      await http
-          .post(
-            Uri.parse('${ApiConstants.baseUrl}/api/users'),
+      final token = await _getToken();
+      final params = <String, String>{};
+      if (_monitoringDateFrom != null) {
+        params['date_from'] =
+            '${_monitoringDateFrom!.year}-${_monitoringDateFrom!.month.toString().padLeft(2, '0')}-${_monitoringDateFrom!.day.toString().padLeft(2, '0')}';
+      }
+      if (_monitoringDateTo != null) {
+        params['date_to'] =
+            '${_monitoringDateTo!.year}-${_monitoringDateTo!.month.toString().padLeft(2, '0')}-${_monitoringDateTo!.day.toString().padLeft(2, '0')}';
+      }
+      if (_monitoringStatusFilter != 'Semua') {
+        params['status'] = _monitoringStatusFilter;
+      }
+
+      final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/monitoring')
+          .replace(queryParameters: params);
+      final response = await http
+          .get(
+            uri,
             headers: {
               'Accept': 'application/json',
-              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
             },
-            body: jsonEncode({
-              'name': user['name'],
-              'email': user['email'],
-              'nip': user['nip'],
-              'whatsapp': user['whatsapp'],
-              'wilayah': user['wilayah'],
-              'role': user['role'],
-              'status': user['status'],
-            }),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final data = decoded['data'] is Map
+            ? Map<String, dynamic>.from(decoded['data'])
+            : <String, dynamic>{};
+        if (mounted) {
+          setState(() {
+            _monitoringSummary = data['summary'] is Map
+                ? Map<String, dynamic>.from(data['summary'])
+                : const {};
+            _monitoringReports = data['recent_reports'] is List
+                ? data['recent_reports']
+                : [];
+            _monitoringPeriodStats = data['stats_by_period'] is List
+                ? data['stats_by_period']
+                : [];
+            _lastActiveUsers = data['last_active_users'] is List
+                ? data['last_active_users']
+                : [];
+          });
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoadingMonitoring = false);
+    }
+  }
+
+  Future<bool> _syncUserToBackend(
+    Map<String, String> user, {
+    bool isEditing = false,
+  }) async {
+    try {
+      final token = await _getToken();
+      final uri = isEditing
+          ? Uri.parse('${ApiConstants.baseUrl}/api/users/${user['id']}')
+          : Uri.parse('${ApiConstants.baseUrl}/api/users');
+      final response = isEditing
+          ? await http
+                .put(
+                  uri,
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: jsonEncode({
+                    'name': user['name'],
+                    'email': user['email'],
+                    'nip': user['nip'],
+                    'whatsapp': user['whatsapp'],
+                    'wilayah': user['wilayah'],
+                    'role': user['role'],
+                    'status': user['status'],
+                  }),
+                )
+                .timeout(const Duration(seconds: 10))
+          : await http
+                .post(
+                  uri,
+                  headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer $token',
+                  },
+                  body: jsonEncode({
+                    'name': user['name'],
+                    'email': user['email'],
+                    'nip': user['nip'],
+                    'whatsapp': user['whatsapp'],
+                    'wilayah': user['wilayah'],
+                    'role': user['role'],
+                    'status': user['status'],
+                  }),
+                )
+                .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['data'] is Map && mounted) {
+          final serverUser = Map<String, dynamic>.from(decoded['data']);
+          setState(() {
+            final serverItem = {
+              'id': (serverUser['id'] ?? '').toString(),
+              'nip': (serverUser['nip'] ?? '').toString(),
+              'name': (serverUser['name'] ?? '').toString(),
+              'email': (serverUser['email'] ?? '').toString(),
+              'whatsapp': (serverUser['whatsapp'] ?? '').toString(),
+              'wilayah': (serverUser['wilayah'] ?? 'CDK Wilayah Garut')
+                  .toString(),
+              'role': (serverUser['role'] ?? 'user').toString(),
+              'status': (serverUser['status'] ?? 'Aktif').toString(),
+            };
+            if (isEditing) {
+              final idx = _users.indexWhere(
+                (u) => u['id'] == user['id'] || u['email'] == user['email'],
+              );
+              if (idx >= 0) _users[idx] = serverItem;
+            } else {
+              _users.insert(0, serverItem);
+            }
+          });
+          await _persistUsers();
+          await _fetchMonitoringData();
+        }
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('Sync user to backend error: $e');
+      return false;
     }
   }
 
@@ -702,22 +830,24 @@ class _AdminPageState extends State<AdminPage> {
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              onPressed: () {
-                                if (name.trim().isEmpty || email.trim().isEmpty) {
+                              onPressed: () async {
+                                if (name.trim().isEmpty ||
+                                    email.trim().isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Nama lengkap dan alamat email wajib diisi.'),
+                                      content: Text(
+                                        'Nama lengkap dan alamat email wajib diisi.',
+                                      ),
                                     ),
                                   );
                                   return;
                                 }
 
                                 final item = <String, String>{
-                                  'id': existing?['id'] ??
+                                  'id':
+                                      existing?['id'] ??
                                       'USR-${DateTime.now().millisecondsSinceEpoch}',
-                                  'nip': nip.trim().isEmpty
-                                      ? '-'
-                                      : nip.trim(),
+                                  'nip': nip.trim().isEmpty ? '-' : nip.trim(),
                                   'name': name.trim(),
                                   'email': email.trim(),
                                   'whatsapp': whatsapp.trim().isEmpty
@@ -731,28 +861,19 @@ class _AdminPageState extends State<AdminPage> {
                                 };
 
                                 Navigator.pop(sheetCtx);
-                                setState(() {
-                                  if (isEditing) {
-                                    final idx = _users.indexWhere(
-                                      (u) => u['id'] == existing['id'],
-                                    );
-                                    if (idx >= 0) _users[idx] = item;
-                                  } else {
-                                    _users.insert(0, item);
-                                  }
-                                });
-                                _persistUsers();
-                                _syncUserToBackend(item);
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      isEditing
-                                          ? 'Data ${item['name']} berhasil diperbarui.'
-                                          : 'Pengguna ${item['name']} berhasil ditambahkan.',
-                                    ),
-                                  ),
+                                final success = await _syncUserToBackend(
+                                  item,
+                                  isEditing: isEditing,
                                 );
+                                if (!success && mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Gagal menyimpan pengguna ke server.',
+                                      ),
+                                    ),
+                                  );
+                                }
                               },
                               icon: const Icon(Icons.save_outlined, size: 18),
                               label: const Text(
@@ -813,32 +934,48 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   void _deleteUser(Map<String, String> user) {
-    setState(() {
-      _users.removeWhere(
-        (u) => u['id'] == user['id'] || u['email'] == user['email'],
-      );
-    });
-    _persistUsers();
     _deleteUserFromBackend(user);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Pengguna ${user['name'] ?? ''} telah dihapus.'),
-        ),
-      );
-    }
   }
 
   Future<void> _deleteUserFromBackend(Map<String, String> user) async {
     try {
       final identifier = user['id'] ?? user['email'] ?? '';
       if (identifier.isNotEmpty) {
-        await http
+        final token = await _getToken();
+        final response = await http
             .delete(
               Uri.parse('${ApiConstants.baseUrl}/api/users/$identifier'),
-              headers: {'Accept': 'application/json'},
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
             )
-            .timeout(const Duration(seconds: 6));
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          if (mounted) {
+            setState(() {
+              if (decoded['deactivated'] == true) {
+                final idx = _users.indexWhere((u) => u['id'] == user['id']);
+                if (idx >= 0) _users[idx]['status'] = 'Nonaktif';
+              } else {
+                _users.removeWhere(
+                  (u) => u['id'] == user['id'] || u['email'] == user['email'],
+                );
+              }
+            });
+            await _persistUsers();
+            await _fetchMonitoringData();
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  decoded['message']?.toString() ?? 'Pengguna diperbarui.',
+                ),
+              ),
+            );
+          }
+        }
       }
     } catch (e) {
       debugPrint('Delete user from backend error: $e');
@@ -927,9 +1064,8 @@ class _AdminPageState extends State<AdminPage> {
     1 => 'Manajemen Pengguna',
     2 => 'Folder Seluruh User',
     3 => 'Laporan Kegiatan',
-    4 => 'Jadwal Lapangan',
+    4 => 'Monitoring Aktivitas Pengguna',
     5 => 'Materi Penyuluhan',
-    6 => 'Profil & Pengaturan',
     _ => 'Panel Admin',
   };
 
@@ -966,9 +1102,7 @@ class _AdminPageState extends State<AdminPage> {
                 // dengan ilustrasi hutan seperti DashboardPage.
                 if (isWideScreen || _selectedMenu != 0)
                   _buildTopProfileHeader(isWideScreen: isWideScreen),
-                Expanded(
-                  child: _buildMainContent(isWideScreen: isWideScreen),
-                ),
+                Expanded(child: _buildMainContent(isWideScreen: isWideScreen)),
               ],
             ),
           ),
@@ -989,11 +1123,7 @@ class _AdminPageState extends State<AdminPage> {
 
   Widget _buildSidebar({required bool isDrawer}) {
     final menuItems = [
-      (
-        icon: Icons.dashboard_rounded,
-        label: 'Beranda Admin',
-        badge: null,
-      ),
+      (icon: Icons.dashboard_rounded, label: 'Beranda Admin', badge: null),
       (
         icon: Icons.people_alt_rounded,
         label: 'Kelola Pengguna',
@@ -1004,34 +1134,19 @@ class _AdminPageState extends State<AdminPage> {
         label: 'Folder Seluruh User',
         badge: null,
       ),
+      (icon: Icons.description_rounded, label: 'Laporan Kegiatan', badge: null),
       (
-        icon: Icons.description_rounded,
-        label: 'Laporan Kegiatan',
+        icon: Icons.bar_chart_rounded,
+        label: 'Monitoring Aktivitas',
         badge: null,
       ),
-      (
-        icon: Icons.calendar_month_rounded,
-        label: 'Jadwal Lapangan',
-        badge: null,
-      ),
-      (
-        icon: Icons.menu_book_rounded,
-        label: 'Materi Penyuluhan',
-        badge: null,
-      ),
-      (
-        icon: Icons.person_rounded,
-        label: 'Profil & Pengaturan',
-        badge: null,
-      ),
+      (icon: Icons.menu_book_rounded, label: 'Materi Penyuluhan', badge: null),
     ];
 
     return Container(
       decoration: BoxDecoration(
         color: _surfaceBg,
-        border: Border(
-          right: BorderSide(color: _borderColor, width: 1),
-        ),
+        border: Border(right: BorderSide(color: _borderColor, width: 1)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: Column(
@@ -1153,9 +1268,7 @@ class _AdminPageState extends State<AdminPage> {
                             Icon(
                               item.icon,
                               size: 20,
-                              color: isSelected
-                                  ? Colors.white
-                                  : _textSecondary,
+                              color: isSelected ? Colors.white : _textSecondary,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -1251,10 +1364,12 @@ class _AdminPageState extends State<AdminPage> {
 
   Widget _buildMobileBottomNav() {
     final barBg = _isDark ? const Color(0xFF18221B) : const Color(0xFFF1F3EA);
-    final activeGreen =
-        _isDark ? const Color(0xFF81C784) : const Color(0xFF2E7D32);
-    final inactiveCenterBg =
-        _isDark ? const Color(0xFF26352B) : const Color(0xFFDCE8D8);
+    final activeGreen = _isDark
+        ? const Color(0xFF81C784)
+        : const Color(0xFF2E7D32);
+    final inactiveCenterBg = _isDark
+        ? const Color(0xFF26352B)
+        : const Color(0xFFDCE8D8);
     final inactiveColor = _isDark ? Colors.white60 : Colors.grey.shade600;
 
     Widget navItem(int menuIndex, IconData icon, String label) {
@@ -1293,9 +1408,7 @@ class _AdminPageState extends State<AdminPage> {
     return Container(
       decoration: BoxDecoration(
         color: barBg,
-        border: Border(
-          top: BorderSide(color: _borderColor, width: 0.8),
-        ),
+        border: Border(top: BorderSide(color: _borderColor, width: 0.8)),
       ),
       child: SafeArea(
         top: false,
@@ -1340,7 +1453,7 @@ class _AdminPageState extends State<AdminPage> {
                 ),
               ),
               navItem(3, Icons.description_outlined, 'Laporan'),
-              navItem(6, Icons.person_outline_rounded, 'Profil'),
+              navItem(4, Icons.bar_chart_rounded, 'Monitoring'),
             ],
           ),
         ),
@@ -1360,9 +1473,7 @@ class _AdminPageState extends State<AdminPage> {
         padding: EdgeInsets.symmetric(horizontal: isWideScreen ? 26 : 14),
         decoration: BoxDecoration(
           color: _cardBg,
-          border: Border(
-            bottom: BorderSide(color: _borderColor, width: 1),
-          ),
+          border: Border(bottom: BorderSide(color: _borderColor, width: 1)),
         ),
         child: Row(
           children: [
@@ -1421,7 +1532,6 @@ class _AdminPageState extends State<AdminPage> {
               const SizedBox(width: 6),
               InkWell(
                 borderRadius: BorderRadius.circular(30),
-                onTap: () => setState(() => _selectedMenu = 6),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -1479,12 +1589,8 @@ class _AdminPageState extends State<AdminPage> {
       1 => _buildPenggunaView(isWideScreen: isWideScreen),
       2 => const AdminFolderPage(),
       3 => const LaporanPage(isAdminMode: true),
-      4 => JadwalPage(
-          onBack: () => setState(() => _selectedMenu = 0),
-          onNavigate: (idx) => setState(() => _selectedMenu = idx),
-        ),
+      4 => _buildMonitoringView(isWideScreen: isWideScreen),
       5 => const MateriPage(hasBottomNav: false),
-      6 => const ProfilPage(),
       _ => _buildDashboardAdminView(isWideScreen: isWideScreen),
     };
   }
@@ -1542,12 +1648,14 @@ class _AdminPageState extends State<AdminPage> {
                     const SizedBox(height: 12),
                     _buildReportStatusFilterChips(),
                     const SizedBox(height: 12),
-                    ..._filteredRecentReports.take(4).map(
-                      (lap) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildLaporanTerbaruCard(lap),
-                      ),
-                    ),
+                    ..._filteredRecentReports
+                        .take(4)
+                        .map(
+                          (lap) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildLaporanTerbaruCard(lap),
+                          ),
+                        ),
 
                     const SizedBox(height: 16),
 
@@ -1566,8 +1674,7 @@ class _AdminPageState extends State<AdminPage> {
                               _AdminArchiveActionCard(
                                 icon: Icons.folder_special_rounded,
                                 title: 'Folder Seluruh User',
-                                description:
-                                    'Pantau seluruh folder laporan dan arsip kegiatan penyuluh',
+                                description: 'Pantau seluruh folder laporan dan arsip kegiatan penyuluh',
                                 buttonText: 'Buka Direktori',
                                 isPrimary: true,
                                 onTap: () => setState(() => _selectedMenu = 2),
@@ -1576,8 +1683,7 @@ class _AdminPageState extends State<AdminPage> {
                               _AdminArchiveActionCard(
                                 icon: Icons.manage_accounts_rounded,
                                 title: 'Manajemen Pengguna',
-                                description:
-                                    'Kelola akun, NIP, wilayah tugas, dan status aktif penyuluh',
+                                description: 'Kelola akun, NIP, wilayah tugas, dan status aktif penyuluh',
                                 buttonText: 'Kelola Akun',
                                 isPrimary: false,
                                 onTap: () => setState(() => _selectedMenu = 1),
@@ -1591,8 +1697,7 @@ class _AdminPageState extends State<AdminPage> {
                               child: _AdminArchiveActionCard(
                                 icon: Icons.folder_special_rounded,
                                 title: 'Folder Seluruh User',
-                                description:
-                                    'Pantau seluruh folder laporan dan arsip kegiatan penyuluh',
+                                description: 'Pantau seluruh folder laporan dan arsip kegiatan penyuluh',
                                 buttonText: 'Buka Direktori',
                                 isPrimary: true,
                                 onTap: () => setState(() => _selectedMenu = 2),
@@ -1603,8 +1708,7 @@ class _AdminPageState extends State<AdminPage> {
                               child: _AdminArchiveActionCard(
                                 icon: Icons.manage_accounts_rounded,
                                 title: 'Manajemen Pengguna',
-                                description:
-                                    'Kelola akun, NIP, wilayah tugas, dan status aktif penyuluh',
+                                description: 'Kelola akun, NIP, wilayah tugas, dan status aktif penyuluh',
                                 buttonText: 'Kelola Akun',
                                 isPrimary: false,
                                 onTap: () => setState(() => _selectedMenu = 1),
@@ -1637,11 +1741,7 @@ class _AdminPageState extends State<AdminPage> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1B462B),
-            AdminPage.kPrimary,
-            AdminPage.kSecondary,
-          ],
+          colors: [Color(0xFF1B462B), AdminPage.kPrimary, AdminPage.kSecondary],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(30),
@@ -1663,9 +1763,7 @@ class _AdminPageState extends State<AdminPage> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: CustomPaint(
-                painter: _AdminForestHeaderPainter(),
-              ),
+              child: CustomPaint(painter: _AdminForestHeaderPainter()),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -2044,9 +2142,9 @@ class _AdminPageState extends State<AdminPage> {
             onTap: () => setState(() => _selectedMenu = 3),
           ),
           _AdminMainMenuCard(
-            icon: Icons.calendar_month_rounded,
-            title: 'Jadwal',
-            subtitle: 'Agenda kegiatan lapangan',
+            icon: Icons.bar_chart_rounded,
+            title: 'Monitoring',
+            subtitle: 'Pantau aktivitas & statistik pengguna',
             isPrimaryVariant: false,
             onTap: () => setState(() => _selectedMenu = 4),
           ),
@@ -2056,13 +2154,6 @@ class _AdminPageState extends State<AdminPage> {
             subtitle: 'Unggah modul penyuluhan',
             isPrimaryVariant: true,
             onTap: () => setState(() => _selectedMenu = 5),
-          ),
-          _AdminMainMenuCard(
-            icon: Icons.person_rounded,
-            title: 'Profil Admin',
-            subtitle: 'Pengaturan akun & tema',
-            isPrimaryVariant: false,
-            onTap: () => setState(() => _selectedMenu = 6),
           ),
         ];
 
@@ -2085,7 +2176,7 @@ class _AdminPageState extends State<AdminPage> {
                   const SizedBox(width: 14),
                   Expanded(child: cards[4]),
                   const SizedBox(width: 14),
-                  Expanded(child: cards[5]),
+                  const Expanded(child: SizedBox()),
                 ],
               ),
             ],
@@ -2110,13 +2201,7 @@ class _AdminPageState extends State<AdminPage> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: cards[4]),
-                const SizedBox(width: 12),
-                Expanded(child: cards[5]),
-              ],
-            ),
+            Row(children: [Expanded(child: cards[4])]),
           ],
         );
       },
@@ -2405,6 +2490,339 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   // ===========================================================================
+  // 4. MONITORING AKTIVITAS PENGGUNA
+  // ===========================================================================
+
+  Future<void> _updateReportStatus(Map<String, dynamic> report) async {
+    final statuses = const [
+      'draft',
+      'terkirim',
+      'diperiksa',
+      'disetujui',
+      'ditolak',
+    ];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Verifikasi Status Laporan'),
+        children: statuses
+            .map(
+              (status) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, status),
+                child: Text(status[0].toUpperCase() + status.substring(1)),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (selected == null) return;
+
+    try {
+      final token = await _getToken();
+      final response = await http
+          .put(
+            Uri.parse('${ApiConstants.baseUrl}/api/reports/${report['id']}'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'status': selected}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        await _fetchMonitoringData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Status laporan diubah menjadi $selected.')),
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
+  Widget _monitoringStatCard(
+    String title,
+    dynamic value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 112),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 10),
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: _textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(title, style: TextStyle(fontSize: 12, color: _textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonitoringView({required bool isWideScreen}) {
+    final summary = _monitoringSummary;
+    final statusOptions = const [
+      'Semua',
+      'draft',
+      'terkirim',
+      'diperiksa',
+      'disetujui',
+      'ditolak',
+    ];
+    final dateLabel = (DateTime? date) => date == null
+        ? '-'
+        : '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+    return RefreshIndicator(
+      onRefresh: _fetchMonitoringData,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          isWideScreen ? 28 : 18,
+          20,
+          isWideScreen ? 28 : 18,
+          40,
+        ),
+        children: [
+          if (_isLoadingMonitoring) const LinearProgressIndicator(minHeight: 2),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: _monitoringDateFrom ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (date != null) {
+                    setState(() => _monitoringDateFrom = date);
+                    await _fetchMonitoringData();
+                  }
+                },
+                icon: const Icon(Icons.date_range_rounded),
+                label: Text('Dari ${dateLabel(_monitoringDateFrom)}'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: _monitoringDateTo ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (date != null) {
+                    setState(() => _monitoringDateTo = date);
+                    await _fetchMonitoringData();
+                  }
+                },
+                icon: const Icon(Icons.event_rounded),
+                label: Text('Sampai ${dateLabel(_monitoringDateTo)}'),
+              ),
+              DropdownButton<String>(
+                value: _monitoringStatusFilter,
+                items: statusOptions
+                    .map(
+                      (status) => DropdownMenuItem(
+                        value: status,
+                        child: Text(
+                          status == 'Semua' ? 'Semua Status' : status,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) async {
+                  if (value != null) {
+                    setState(() => _monitoringStatusFilter = value);
+                    await _fetchMonitoringData();
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final crossAxisCount = width >= 900
+                  ? 3
+                  : width >= 520
+                  ? 2
+                  : 1;
+              final cards = [
+                _monitoringStatCard(
+                  'Total Pengguna',
+                  summary['total_users'] ?? 0,
+                  Icons.people_alt_rounded,
+                  AdminPage.kPrimary,
+                ),
+                _monitoringStatCard(
+                  'Aktif / Nonaktif',
+                  '${summary['active_users'] ?? 0} / ${summary['inactive_users'] ?? 0}',
+                  Icons.person_rounded,
+                  const Color(0xFF4F8A5B),
+                ),
+                _monitoringStatCard(
+                  'Total Laporan',
+                  summary['total_reports'] ?? 0,
+                  Icons.description_rounded,
+                  Colors.blue,
+                ),
+                _monitoringStatCard(
+                  'Menunggu',
+                  summary['pending_reports'] ?? 0,
+                  Icons.pending_actions_rounded,
+                  Colors.orange,
+                ),
+                _monitoringStatCard(
+                  'Diproses',
+                  summary['processed_reports'] ?? 0,
+                  Icons.check_circle_rounded,
+                  Colors.green,
+                ),
+              ];
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: crossAxisCount == 1 ? 3.4 : 2.5,
+                children: cards,
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Aktivitas Laporan Terbaru',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: _textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_monitoringReports.isEmpty)
+            const Card(
+              child: ListTile(title: Text('Belum ada aktivitas laporan.')),
+            )
+          else
+            ..._monitoringReports.map((raw) {
+              final report = Map<String, dynamic>.from(raw as Map);
+              final user = report['user'] is Map
+                  ? Map<String, dynamic>.from(report['user'])
+                  : <String, dynamic>{};
+              final photos = report['photos'] is List
+                  ? List<dynamic>.from(report['photos'])
+                  : <dynamic>[];
+              final latitude =
+                  report['latitude']?.toString() ??
+                  (photos.isNotEmpty && photos.first is Map
+                      ? photos.first['latitude']?.toString()
+                      : null);
+              final longitude =
+                  report['longitude']?.toString() ??
+                  (photos.isNotEmpty && photos.first is Map
+                      ? photos.first['longitude']?.toString()
+                      : null);
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  title: Text(report['title']?.toString() ?? 'Laporan'),
+                  subtitle: Text(
+                    '${user['name'] ?? 'Pengguna'} • ${report['location'] ?? '-'}\n'
+                    'Koordinat: ${latitude ?? '-'}, ${longitude ?? '-'}',
+                  ),
+                  trailing: TextButton(
+                    onPressed: () => _updateReportStatus(report),
+                    child: Text(report['status']?.toString() ?? 'draft'),
+                  ),
+                ),
+              );
+            }),
+          const SizedBox(height: 18),
+          Text(
+            'Pengguna Terakhir Aktif',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: _textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (_lastActiveUsers.isEmpty)
+            const Card(
+              child: ListTile(
+                title: Text('Belum ada data aktivitas pengguna.'),
+              ),
+            )
+          else
+            ..._lastActiveUsers.map((raw) {
+              final user = Map<String, dynamic>.from(raw as Map);
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AdminPage.kLightGreen,
+                    child: Text(
+                      (user['name']?.toString().isNotEmpty == true)
+                          ? user['name'].toString()[0].toUpperCase()
+                          : '?',
+                    ),
+                  ),
+                  title: Text(user['name']?.toString() ?? '-'),
+                  subtitle: Text(
+                    '${user['wilayah'] ?? '-'} • ${user['reports_count'] ?? 0} laporan',
+                  ),
+                  trailing: Text(user['status']?.toString() ?? 'Aktif'),
+                ),
+              );
+            }),
+          const SizedBox(height: 18),
+          Text(
+            'Statistik Periode',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: _textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ..._monitoringPeriodStats.map((raw) {
+            final stat = Map<String, dynamic>.from(raw as Map);
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.bar_chart_rounded),
+                title: Text(stat['periode']?.toString() ?? '-'),
+                trailing: Text('${stat['total'] ?? 0} laporan'),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ===========================================================================
   // 1. MANAJEMEN PENGGUNA (RESPONSIF: KARTU DI MOBILE & TABEL DI DESKTOP)
   // ===========================================================================
 
@@ -2524,10 +2942,7 @@ class _AdminPageState extends State<AdminPage> {
                   hintText:
                       'Cari nama penyuluh, NIP, email, atau wilayah tugas...',
                   hintStyle: TextStyle(fontSize: 13, color: _textSecondary),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: _primaryAccent,
-                  ),
+                  prefixIcon: Icon(Icons.search_rounded, color: _primaryAccent),
                   suffixIcon: _searchUserQuery.isNotEmpty
                       ? IconButton(
                           onPressed: () =>
@@ -2608,31 +3023,32 @@ class _AdminPageState extends State<AdminPage> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: ['Semua', 'Aktif', 'Nonaktif', 'Penyuluh', 'Koordinator']
-                  .map((filter) {
-                    final selected = _userFilterStatus == filter;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(filter),
-                        selected: selected,
-                        showCheckmark: false,
-                        selectedColor: AdminPage.kPrimary,
-                        backgroundColor: _cardBg,
-                        side: BorderSide(
-                          color: selected ? AdminPage.kPrimary : _borderColor,
+              children:
+                  ['Semua', 'Aktif', 'Nonaktif', 'Penyuluh', 'Koordinator'].map(
+                    (filter) {
+                      final selected = _userFilterStatus == filter;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(filter),
+                          selected: selected,
+                          showCheckmark: false,
+                          selectedColor: AdminPage.kPrimary,
+                          backgroundColor: _cardBg,
+                          side: BorderSide(
+                            color: selected ? AdminPage.kPrimary : _borderColor,
+                          ),
+                          labelStyle: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: selected ? Colors.white : _textPrimary,
+                          ),
+                          onSelected: (_) =>
+                              setState(() => _userFilterStatus = filter),
                         ),
-                        labelStyle: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: selected ? Colors.white : _textPrimary,
-                        ),
-                        onSelected: (_) =>
-                            setState(() => _userFilterStatus = filter),
-                      ),
-                    );
-                  })
-                  .toList(),
+                      );
+                    },
+                  ).toList(),
             ),
           ),
 
@@ -2746,10 +3162,7 @@ class _AdminPageState extends State<AdminPage> {
                     const SizedBox(height: 3),
                     Text(
                       'NIP: ${u['nip'] ?? '-'}',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: _textSecondary,
-                      ),
+                      style: TextStyle(fontSize: 12.5, color: _textSecondary),
                     ),
                   ],
                 ),
@@ -3201,10 +3614,7 @@ class _AdminStatCard extends StatelessWidget {
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: subColor,
-                      ),
+                      style: TextStyle(fontSize: 11, color: subColor),
                     ),
                   ],
                 ),
@@ -3295,11 +3705,7 @@ class _AdminMainMenuCard extends StatelessWidget {
                               : AdminPage.kSecondary,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: Icon(
-                          icon,
-                          color: AdminPage.kWhite,
-                          size: 23,
-                        ),
+                        child: Icon(icon, color: AdminPage.kWhite, size: 23),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -3402,9 +3808,7 @@ class _AdminArchiveActionCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: isDark
                   ? const Color(0xFF24382B)
-                  : (isPrimary
-                        ? AdminPage.kLightGreen
-                        : AdminPage.kSoftGreen),
+                  : (isPrimary ? AdminPage.kLightGreen : AdminPage.kSoftGreen),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -3427,11 +3831,7 @@ class _AdminArchiveActionCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             description,
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              color: subColor,
-            ),
+            style: TextStyle(fontSize: 13, height: 1.35, color: subColor),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -3480,10 +3880,7 @@ class _HeaderPillBadge extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _HeaderPillBadge({
-    required this.icon,
-    required this.label,
-  });
+  const _HeaderPillBadge({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -3533,10 +3930,7 @@ class _UserMetaItem extends StatelessWidget {
         Icon(icon, size: 15, color: iconColor),
         const SizedBox(width: 5),
         Flexible(
-          child: Text(
-            text,
-            style: TextStyle(fontSize: 12.5, color: textColor),
-          ),
+          child: Text(text, style: TextStyle(fontSize: 12.5, color: textColor)),
         ),
       ],
     );
@@ -3551,18 +3945,10 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color bg, Color fg) = switch (status) {
-      'Selesai' || 'Aktif' => (
-        AdminPage.kLightGreen,
-        AdminPage.kPrimary,
-      ),
-      'Diproses' || 'Terjadwal' => (
-        const Color(0xFFFFF4E5),
-        const Color(0xFFB26A00),
-      ),
-      _ => (
-        const Color(0xFFECEFF1),
-        const Color(0xFF546E7A),
-      ),
+      'Selesai' || 'Aktif' => (AdminPage.kLightGreen, AdminPage.kPrimary),
+      'Diproses' ||
+      'Terjadwal' => (const Color(0xFFFFF4E5), const Color(0xFFB26A00)),
+      _ => (const Color(0xFFECEFF1), const Color(0xFF546E7A)),
     };
 
     return Container(

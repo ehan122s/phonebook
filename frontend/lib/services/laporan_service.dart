@@ -27,6 +27,36 @@ class LaporanService {
   static DateTime? _lastFetchTime;
   static const Duration cacheTtl = Duration(seconds: 45);
 
+  /// Mengekstrak pesan error yang jelas dari response JSON Laravel.
+  static String extractErrorMessage(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['errors'] is Map) {
+          final errors = decoded['errors'] as Map;
+          if (errors.isNotEmpty) {
+            final firstVal = errors.values.first;
+            if (firstVal is List && firstVal.isNotEmpty) {
+              return firstVal.first.toString();
+            }
+            return firstVal.toString();
+          }
+        }
+        if (decoded['message'] != null &&
+            decoded['message'].toString().trim().isNotEmpty) {
+          return decoded['message'].toString();
+        }
+      }
+    } catch (_) {}
+    if (response.statusCode == 401) {
+      return 'Sesi login telah berakhir. Silakan login kembali.';
+    }
+    if (response.statusCode == 413) {
+      return 'Ukuran data/foto terlalu besar untuk dikirim ke server.';
+    }
+    return 'Server menolak permintaan (HTTP ${response.statusCode}).';
+  }
+
   /// Invalidate report cache (e.g. after adding/editing/deleting a report)
   static void clearCache() {
     _cachedReports = null;
@@ -101,8 +131,9 @@ class LaporanService {
       final String activityDate = report['activity_date']?.toString() ?? '';
       final String rawStatus = report['status']?.toString() ?? 'draft';
 
-      final List<dynamic> rawPhotos =
-          (report['photos'] is List) ? report['photos'] : [];
+      final List<dynamic> rawPhotos = (report['photos'] is List)
+          ? report['photos']
+          : [];
       String photoUrl = '';
       String photoBase64 = '';
       String photoAddress = '';
@@ -185,17 +216,16 @@ class LaporanService {
       'Authorization': 'Bearer $token',
     };
 
+    final cleanPayload = Map<String, dynamic>.from(payload)
+      ..remove('photo_base64');
+
     final response = isEditing
-        ? await http.put(
-            uri,
-            headers: headers,
-            body: jsonEncode(payload),
-          )
-        : await http.post(
-            uri,
-            headers: headers,
-            body: jsonEncode(payload),
-          );
+        ? await http
+              .put(uri, headers: headers, body: jsonEncode(cleanPayload))
+              .timeout(const Duration(seconds: 20))
+        : await http
+              .post(uri, headers: headers, body: jsonEncode(cleanPayload))
+              .timeout(const Duration(seconds: 20));
 
     return response;
   }
@@ -223,10 +253,10 @@ class LaporanService {
     final mimeType = lower.endsWith('.png')
         ? MediaType('image', 'png')
         : lower.endsWith('.webp')
-            ? MediaType('image', 'webp')
-            : lower.endsWith('.gif')
-                ? MediaType('image', 'gif')
-                : MediaType('image', 'jpeg');
+        ? MediaType('image', 'webp')
+        : lower.endsWith('.gif')
+        ? MediaType('image', 'gif')
+        : MediaType('image', 'jpeg');
 
     request.files.add(
       http.MultipartFile.fromBytes(
@@ -249,23 +279,19 @@ class LaporanService {
       request.fields['address'] = address.trim();
     }
 
-    final streamedResponse = await request.send();
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 30),
+    );
     clearCache();
     return http.Response.fromStream(streamedResponse);
   }
 
   /// Deletes a report from the API by its [id].
-  static Future<void> deleteReport(
-    String token,
-    dynamic id,
-  ) async {
+  static Future<void> deleteReport(String token, dynamic id) async {
     clearCache();
     final response = await http.delete(
       Uri.parse('$baseUrl/api/reports/$id'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
     );
 
     if (response.statusCode != 200 && response.statusCode != 204) {
@@ -273,13 +299,9 @@ class LaporanService {
       if (body.contains('SQLSTATE') ||
           body.contains('FATAL') ||
           body.contains('pooler.supabase')) {
-        throw Exception(
-          'Database Supabase sedang tidak aktif (Paused).',
-        );
+        throw Exception('Database Supabase sedang tidak aktif (Paused).');
       }
-      throw Exception(
-        'Gagal menghapus laporan (${response.statusCode})',
-      );
+      throw Exception('Gagal menghapus laporan (${response.statusCode})');
     }
   }
 
