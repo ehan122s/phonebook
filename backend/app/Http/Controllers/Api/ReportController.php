@@ -8,6 +8,7 @@ use App\Models\Report;
 use App\Models\ReportPhoto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -18,7 +19,7 @@ class ReportController extends Controller
         // Pilih hanya kolom yang benar-benar ada pada tabel report_photos.
         // Accessor `url` ditambahkan otomatis oleh model ReportPhoto.
         $photoColumns = ['id', 'report_id', 'photo', 'latitude', 'longitude', 'created_at'];
-        if (Schema::hasColumn('report_photos', 'address')) {
+        if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
             $photoColumns[] = 'address';
         }
 
@@ -85,7 +86,7 @@ class ReportController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:mysql,categories,id',
             'title' => 'required|string|max:255',
             'activity_date' => 'required|date',
             'location' => 'required|string|max:255',
@@ -144,10 +145,10 @@ class ReportController extends Controller
                     'latitude' => $validated['latitude'] ?? null,
                     'longitude' => $validated['longitude'] ?? null,
                 ];
-                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                if (Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
                     $photoData['photo_base64'] = $base64;
                 }
-                if (Schema::hasColumn('report_photos', 'address')) {
+                if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
                     $photoData['address'] = $request->input('address', $report->location);
                 }
 
@@ -183,7 +184,7 @@ class ReportController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'sometimes|nullable|exists:categories,id',
+            'category_id' => 'sometimes|nullable|exists:mysql,categories,id',
             'title' => 'sometimes|required|string|max:255',
             'activity_date' => 'sometimes|required|date',
             'location' => 'sometimes|required|string|max:255',
@@ -208,10 +209,10 @@ class ReportController extends Controller
                     'latitude' => $validated['latitude'] ?? $report->latitude,
                     'longitude' => $validated['longitude'] ?? $report->longitude,
                 ];
-                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                if (Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
                     $photoData['photo_base64'] = $base64;
                 }
-                if (Schema::hasColumn('report_photos', 'address')) {
+                if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
                     $photoData['address'] = $request->input('address', $report->location);
                 }
 

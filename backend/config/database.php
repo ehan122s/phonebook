@@ -114,6 +114,48 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'db_laporan' => [
+    'driver' => env('DB_LAPORAN_CONNECTION', env('DB_CONNECTION', 'mysql')),
+    'url' => env('DB_LAPORAN_URL'),
+    'host' => env('DB_LAPORAN_HOST', env('DB_HOST', '127.0.0.1')),
+    'port' => env('DB_LAPORAN_PORT', env('DB_PORT', '3306')),
+    'database' => env('DB_LAPORAN_DATABASE', 'phonebook_laporan'),
+    'username' => env('DB_LAPORAN_USERNAME', env('DB_USERNAME', 'root')),
+    'password' => env('DB_LAPORAN_PASSWORD', env('DB_PASSWORD', '')),
+    'charset' => 'utf8mb4',
+    'collation' => 'utf8mb4_unicode_ci',
+    'prefix' => '',
+    'strict' => true,
+],
+
+'db_foto' => [
+    'driver' => env('DB_FOTO_CONNECTION', env('DB_CONNECTION', 'mysql')),
+    'url' => env('DB_FOTO_URL'),
+    'host' => env('DB_FOTO_HOST', env('DB_HOST', '127.0.0.1')),
+    'port' => env('DB_FOTO_PORT', env('DB_PORT', '3306')),
+    'database' => env('DB_FOTO_DATABASE', 'phonebook_foto'),
+    'username' => env('DB_FOTO_USERNAME', env('DB_USERNAME', 'root')),
+    'password' => env('DB_FOTO_PASSWORD', env('DB_PASSWORD', '')),
+    'charset' => 'utf8mb4',
+    'collation' => 'utf8mb4_unicode_ci',
+    'prefix' => '',
+    'strict' => true,
+],
+
+'db_materi' => [
+    'driver' => env('DB_MATERI_CONNECTION', env('DB_CONNECTION', 'mysql')),
+    'url' => env('DB_MATERI_URL'),
+    'host' => env('DB_MATERI_HOST', env('DB_HOST', '127.0.0.1')),
+    'port' => env('DB_MATERI_PORT', env('DB_PORT', '3306')),
+    'database' => env('DB_MATERI_DATABASE', 'phonebook_materi'),
+    'username' => env('DB_MATERI_USERNAME', env('DB_USERNAME', 'root')),
+    'password' => env('DB_MATERI_PASSWORD', env('DB_PASSWORD', '')),
+    'charset' => 'utf8mb4',
+    'collation' => 'utf8mb4_unicode_ci',
+    'prefix' => '',
+    'strict' => true,
+],
+
     ],
 
     /*

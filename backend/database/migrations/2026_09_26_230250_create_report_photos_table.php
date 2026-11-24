@@ -8,12 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('report_photos', function (Blueprint $table) {
+        Schema::connection('db_foto')->create('report_photos', function (Blueprint $table) {
             $table->id();
 
-            $table->foreignId('report_id')
-                ->constrained('reports')
-                ->cascadeOnDelete();
+            $table->unsignedBigInteger('report_id')->index();
 
             $table->string('photo');
 
@@ -26,6 +24,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('report_photos');
+        Schema::connection('db_foto')->dropIfExists('report_photos');
     }
 };

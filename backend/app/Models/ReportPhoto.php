@@ -18,6 +18,8 @@ class ReportPhoto extends Model
         'address',
     ];
 
+    protected $connection = 'db_foto';
+
     protected $hidden = [
         'photo_base64', // Wajib disembunyikan agar query list laporan tidak meledak hingga 7MB+ yang menyebabkan HTTP 500 FUNCTION_RESPONSE_PAYLOAD_TOO_LARGE di Vercel
     ];
@@ -30,6 +32,7 @@ class ReportPhoto extends Model
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
     ];
+
 
     public function getUrlAttribute()
     {
@@ -48,6 +51,9 @@ class ReportPhoto extends Model
         return rtrim($base, '/') . '/api/report-photos/' . $this->id . '/file';
     }
 
+    /**
+     * Relasi cross-database: reports ada di db_laporan.
+     */
     public function report()
     {
         return $this->belongsTo(Report::class);

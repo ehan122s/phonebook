@@ -22,16 +22,27 @@ class Material extends Model
         'uploader_role',
     ];
 
+    protected $connection = 'db_materi';
+
     protected $appends = [
         'uploader',
         'download_url',
+
     ];
 
+    /**
+     * Relasi cross-database: users ada di database utama (mysql).
+     * Laravel otomatis menggunakan connection dari model User.
+     */
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * Relasi cross-database: categories ada di database utama (mysql).
+     * Laravel otomatis menggunakan connection dari model Category.
+     */
     public function category()
     {
         return $this->belongsTo(Category::class);

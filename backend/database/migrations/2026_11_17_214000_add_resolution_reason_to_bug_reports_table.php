@@ -32,8 +32,9 @@ return new class extends Migration
             }
         });
 
-        Schema::table('report_photos', function (Blueprint $table) {
-            if (!Schema::hasColumn('report_photos', 'address')) {
+        // report_photos berada di db_foto
+        Schema::connection('db_foto')->table('report_photos', function (Blueprint $table) {
+            if (!Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
                 $table->text('address')->nullable()->after('longitude');
             }
         });
@@ -53,8 +54,8 @@ return new class extends Migration
             }
         });
 
-        Schema::table('report_photos', function (Blueprint $table) {
-            if (Schema::hasColumn('report_photos', 'address')) {
+        Schema::connection('db_foto')->table('report_photos', function (Blueprint $table) {
+            if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
                 $table->dropColumn('address');
             }
         });
