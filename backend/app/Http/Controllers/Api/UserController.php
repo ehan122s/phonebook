@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -34,12 +33,27 @@ class UserController extends Controller
             'name' => (string) $user->name,
             'email' => (string) $user->email,
             'whatsapp' => (string) ($user->whatsapp_number ?? ''),
+            'jabatan' => (string) ($user->jabatan ?? ''),
             'wilayah' => (string) ($user->wilayah ?? 'CDK Wilayah Garut'),
             'role' => (string) ($user->role ?? 'user'),
             'status' => (string) ($user->status ?? 'Aktif'),
             'avatar' => (string) ($user->avatar ?? ''),
             'created_at' => $user->created_at?->toIso8601String(),
             'updated_at' => $user->updated_at?->toIso8601String(),
+        ];
+    }
+
+    private function validationMessages(): array
+    {
+        return [
+            'name.required' => 'Nama lengkap wajib diisi.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
+            'email.unique' => 'Email sudah terdaftar pada akun lain.',
+            'password.required' => 'Password wajib diisi.',
+            'password.min' => 'Password minimal terdiri dari 6 karakter.',
+            'password.confirmed' => 'Konfirmasi password tidak cocok.',
+            'status.in' => 'Status hanya boleh bernilai Aktif atau Nonaktif.',
         ];
     }
 
@@ -51,18 +65,19 @@ class UserController extends Controller
 
         $query = User::query();
         if ($request->filled('search')) {
-            $search = trim($request->query('search'));
-            $query->where(function ($sub) use ($search) {
-                $sub->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('nip', 'like', "%{$search}%")
-                    ->orWhere('wilayah', 'like', "%{$search}%");
+            $search = strtolower(trim((string) $request->query('search')));
+            $pattern = "%{$search}%";
+            $query->where(function ($sub) use ($pattern) {
+                $sub->whereRaw('LOWER(name) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(COALESCE(nip, \'\')) LIKE ?', [$pattern])
+                    ->orWhereRaw('LOWER(COALESCE(wilayah, \'\')) LIKE ?', [$pattern]);
             });
         }
-        if ($request->filled('role') && strtolower($request->query('role')) !== 'semua') {
-            $query->where('role', $request->query('role'));
+        if ($request->filled('role') && strtolower((string) $request->query('role')) !== 'semua') {
+            $query->whereRaw('LOWER(role) = ?', [strtolower((string) $request->query('role'))]);
         }
-        if ($request->filled('status') && strtolower($request->query('status')) !== 'semua') {
+        if ($request->filled('status') && strtolower((string) $request->query('status')) !== 'semua') {
             $query->where('status', $request->query('status'));
         }
 
@@ -91,19 +106,21 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'nullable|string|min:6|max:100',
+            'password' => 'required|string|min:6|max:100|confirmed',
             'nip' => 'nullable|string|max:50',
+            'jabatan' => 'nullable|string|max:150',
             'whatsapp' => 'nullable|string|max:25',
             'wilayah' => 'nullable|string|max:150',
             'role' => 'nullable|string|max:50',
             'status' => 'nullable|in:Aktif,Nonaktif',
-        ]);
+        ], $this->validationMessages());
 
         $user = User::create([
             'name' => trim($validated['name']),
             'email' => strtolower(trim($validated['email'])),
-            'password' => Hash::make(!empty($validated['password']) ? $validated['password'] : Str::random(12)),
+            'password' => Hash::make($validated['password']),
             'nip' => trim((string) ($validated['nip'] ?? '')),
+            'jabatan' => trim((string) ($validated['jabatan'] ?? '')),
             'whatsapp_number' => trim((string) ($validated['whatsapp'] ?? '')),
             'wilayah' => trim((string) ($validated['wilayah'] ?? 'CDK Wilayah Garut')),
             'role' => trim((string) ($validated['role'] ?? 'user')),
@@ -134,13 +151,14 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => 'nullable|string|min:6|max:100',
+            'password' => 'nullable|string|min:6|max:100|confirmed',
             'nip' => 'nullable|string|max:50',
+            'jabatan' => 'nullable|string|max:150',
             'whatsapp' => 'nullable|string|max:25',
             'wilayah' => 'nullable|string|max:150',
             'role' => 'nullable|string|max:50',
             'status' => 'nullable|in:Aktif,Nonaktif',
-        ]);
+        ], $this->validationMessages());
 
         if ($user->id === $request->user()->id) {
             if (isset($validated['status']) && $validated['status'] !== 'Aktif') {
@@ -161,19 +179,28 @@ class UserController extends Controller
             'name' => array_key_exists('name', $validated) ? trim($validated['name']) : $user->name,
             'email' => array_key_exists('email', $validated) ? strtolower(trim($validated['email'])) : $user->email,
             'nip' => array_key_exists('nip', $validated) ? trim((string) $validated['nip']) : $user->nip,
+            'jabatan' => array_key_exists('jabatan', $validated) ? trim((string) $validated['jabatan']) : $user->jabatan,
             'whatsapp_number' => array_key_exists('whatsapp', $validated) ? trim((string) $validated['whatsapp']) : $user->whatsapp_number,
             'wilayah' => array_key_exists('wilayah', $validated) ? trim((string) $validated['wilayah']) : $user->wilayah,
             'role' => array_key_exists('role', $validated) ? trim((string) $validated['role']) : $user->role,
             'status' => $validated['status'] ?? $user->status,
         ];
+
         if (!empty($validated['password'])) {
             $updateData['password'] = Hash::make($validated['password']);
         }
+
         $user->update($updateData);
+
+        if (($updateData['status'] ?? $user->status) === 'Nonaktif') {
+            $user->tokens()->delete();
+        }
 
         return response()->json([
             'success' => true,
-            'message' => 'Data pengguna berhasil diperbarui',
+            'message' => !empty($validated['password'])
+                ? 'Data dan password pengguna berhasil diperbarui'
+                : 'Data pengguna berhasil diperbarui',
             'data' => $this->formatUser($user->fresh()),
         ]);
     }
@@ -195,16 +222,34 @@ class UserController extends Controller
             ], 422);
         }
 
-        $reportCount = Report::where('user_id', $user->id)->count();
-        if ($reportCount > 0) {
+        $reportCount = $user->reports()->count();
+        $scheduleCount = $user->schedules()->count();
+        $materialCount = $user->materials()->count();
+
+        if ($reportCount > 0 || $scheduleCount > 0 || $materialCount > 0) {
+            $relations = [];
+            if ($reportCount > 0) {
+                $relations[] = "{$reportCount} laporan";
+            }
+            if ($scheduleCount > 0) {
+                $relations[] = "{$scheduleCount} jadwal";
+            }
+            if ($materialCount > 0) {
+                $relations[] = "{$materialCount} materi";
+            }
+
             $user->update(['status' => 'Nonaktif']);
+            $user->tokens()->delete();
+
             return response()->json([
                 'success' => true,
                 'deactivated' => true,
-                'message' => "Akun memiliki {$reportCount} laporan di database. Status akun diubah menjadi Nonaktif agar data laporan tetap aman.",
+                'message' => 'Akun memiliki relasi data (' . implode(', ', $relations) . '). Status akun diubah menjadi Nonaktif agar data tetap aman.',
                 'data' => $this->formatUser($user->fresh()),
             ]);
         }
+
+        $user->tokens()->delete();
         $user->delete();
 
         return response()->json([
@@ -229,7 +274,7 @@ class UserController extends Controller
         if ($request->filled('date_to')) {
             $reportBaseQuery->whereDate('activity_date', '<=', $request->query('date_to'));
         }
-        if ($request->filled('status') && strtolower($request->query('status')) !== 'semua') {
+        if ($request->filled('status') && strtolower((string) $request->query('status')) !== 'semua') {
             $reportBaseQuery->where('status', $request->query('status'));
         }
 
