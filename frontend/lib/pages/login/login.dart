@@ -3,7 +3,9 @@
 // File: lib/pages/login/login.dart
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../constants/api_constants.dart';
 import '../../services/google_auth_service.dart';
+import '../../services/laporan_service.dart';
 import '../admin/admin_page.dart';
 import '../home/home.dart';
 
@@ -47,6 +50,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      LaporanService.clearCache();
       await GoogleAuthService.signInWithGoogle(context);
     } catch (e) {
       if (mounted) {
@@ -71,6 +75,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loadRememberedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
+    await _clearPreviousSession(prefs);
     bool isRemember = false;
     try {
       isRemember = prefs.getBool('remember_me') ?? false;
@@ -102,6 +107,33 @@ class _LoginPageState extends State<LoginPage> {
         lowerEmail.startsWith('admin@');
   }
 
+  Future<void> _clearPreviousSession(SharedPreferences prefs) async {
+    LaporanService.clearCache();
+    const staleKeys = [
+      'token',
+      'user_id',
+      'name',
+      'email',
+      'role',
+      'login_method',
+      'nip',
+      'jabatan',
+      'wilayah',
+      'whatsapp_number',
+      'avatar',
+      'profil_nama',
+      'profil_email',
+      'profil_nip',
+      'profil_jabatan',
+      'profil_wilayah',
+      'profil_whatsapp',
+      'profil_avatar',
+    ];
+    for (final key in staleKeys) {
+      await prefs.remove(key);
+    }
+  }
+
   Future<void> login() async {
     final inputEmail = emailController.text.trim();
     final inputPassword = passwordController.text;
@@ -118,14 +150,16 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/login'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'email': inputEmail, 'password': inputPassword}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/login'),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'email': inputEmail, 'password': inputPassword}),
+          )
+          .timeout(const Duration(seconds: 25));
 
       final data = jsonDecode(response.body);
 
@@ -280,12 +314,13 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (!mounted) return;
+      final errorMsg = e is TimeoutException
+          ? 'Server terlalu lama merespons. Silakan coba login kembali.'
+          : e is SocketException
+              ? 'Tidak ada koneksi internet. Periksa jaringan Anda.'
+              : 'Gagal terhubung ke server. Silakan coba beberapa saat lagi.';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Gagal terhubung ke server. Periksa koneksi internet Anda ($e)',
-          ),
-        ),
+        SnackBar(content: Text(errorMsg)),
       );
     } finally {
       if (mounted) {

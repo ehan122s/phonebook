@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -171,21 +173,88 @@ class _MateriPageState extends State<MateriPage> {
     }
   }
 
-  Future<void> _fetchLiveMaterialsFromServer(SharedPreferences prefs) async {
+  String _extractServerError(http.Response response) {
     try {
-      final response = await http
-          .get(
-            Uri.parse('${ApiConstants.baseUrl}/api/materials'),
-            headers: {'Accept': 'application/json'},
-          )
-          .timeout(const Duration(seconds: 7));
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map &&
+          decoded['message'] != null &&
+          decoded['message'].toString().trim().isNotEmpty) {
+        return decoded['message'].toString();
+      }
+    } catch (_) {}
+    if (response.statusCode == 401) {
+      return 'Sesi login Anda telah berakhir. Silakan login kembali.';
+    }
+    if (response.statusCode == 403) {
+      return 'Anda tidak memiliki hak akses untuk memuat materi.';
+    }
+    return 'Gagal memuat materi dari server (HTTP ${response.statusCode}).';
+  }
 
-      if (response.statusCode == 200) {
+  Future<void> _fetchLiveMaterialsFromServer(SharedPreferences prefs) async {
+    final token = prefs.getString('token') ?? '';
+    final headers = <String, String>{'Accept': 'application/json'};
+    if (token.isNotEmpty &&
+        !token.startsWith('offline_') &&
+        !token.startsWith('google_session_')) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    http.Response? response;
+
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      try {
+        response = await http
+            .get(Uri.parse(ApiConstants.materialsUrl), headers: headers)
+            .timeout(const Duration(seconds: 25));
+        break;
+      } on TimeoutException catch (e) {
+        debugPrint('Fetch materials timeout (attempt $attempt): $e');
+        if (attempt == 2 && _materials.isEmpty && mounted) {
+          setState(() {
+            _errorMessage =
+                'Server membutuhkan waktu terlalu lama untuk merespons. Silakan ketuk Coba Lagi.';
+          });
+          return;
+        }
+      } on SocketException catch (e) {
+        debugPrint('Fetch materials socket error: $e');
+        if (_materials.isEmpty && mounted) {
+          setState(() {
+            _errorMessage =
+                'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.';
+          });
+        }
+        return;
+      } on http.ClientException catch (e) {
+        debugPrint('Fetch materials client error: $e');
+        if (_materials.isEmpty && mounted) {
+          setState(() {
+            _errorMessage =
+                'Koneksi ke server terganggu. Periksa jaringan Anda lalu coba lagi.';
+          });
+        }
+        return;
+      } catch (e) {
+        debugPrint('Fetch materials unexpected error: $e');
+        if (_materials.isEmpty && mounted) {
+          setState(() {
+            _errorMessage = 'Terjadi kendala saat memuat materi. Coba lagi.';
+          });
+        }
+        return;
+      }
+    }
+
+    if (response == null) return;
+
+    if (response.statusCode == 200) {
+      try {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['data'] != null) {
           final List<dynamic> serverList = data['data'];
-
           final List<Map<String, dynamic>> merged = [];
+
           for (final item in serverList) {
             final mapItem = Map<String, dynamic>.from(item);
             if (_isDummyMaterial(mapItem)) continue;
@@ -196,12 +265,10 @@ class _MateriPageState extends State<MateriPage> {
                     userObj?['name'] ??
                     'Penyuluh Kehutanan')
                 .toString();
-
             final uploaderRole = (mapItem['uploader_role'] ??
                     userObj?['role'] ??
                     'user')
                 .toString();
-
             final rawFilePath = (mapItem['file_path'] ?? '').toString();
             final rawDriveUrl = (mapItem['drive_url'] ?? '').toString();
 
@@ -237,15 +304,12 @@ class _MateriPageState extends State<MateriPage> {
             });
           }
 
-          // Gabungkan dengan materi lokal asli (bukan dummy) yang belum ada di server
           for (final local in _materials) {
             if (_isDummyMaterial(local)) continue;
             final exists = merged.any((m) =>
                 m['title'].toString().toLowerCase() ==
                 local['title'].toString().toLowerCase());
-            if (!exists) {
-              merged.add(local);
-            }
+            if (!exists) merged.add(local);
           }
 
           if (mounted) {
@@ -256,20 +320,22 @@ class _MateriPageState extends State<MateriPage> {
           }
           await prefs.setString(_storageKey, jsonEncode(merged));
         }
-      } else if (_materials.isEmpty && mounted) {
-        setState(() {
-          _errorMessage =
-              'Gagal memuat materi dari server (Status ${response.statusCode}).';
-        });
+      } catch (e) {
+        debugPrint('Error parsing materials JSON: $e');
+        if (_materials.isEmpty && mounted) {
+          setState(() {
+            _errorMessage = 'Format data materi dari server tidak valid.';
+          });
+        }
       }
-    } catch (e) {
-      debugPrint('Background fetch materials error: $e');
-      if (_materials.isEmpty && mounted) {
-        setState(() {
-          _errorMessage =
-              'Tidak dapat terhubung ke server untuk memuat materi. Periksa koneksi internet Anda.';
-        });
-      }
+    } else if (_materials.isEmpty && mounted) {
+      debugPrint(
+        'Fetch materials HTTP ${response.statusCode}: '
+        '${response.body.length > 300 ? response.body.substring(0, 300) : response.body}',
+      );
+      setState(() {
+        _errorMessage = _extractServerError(response!);
+      });
     }
   }
 

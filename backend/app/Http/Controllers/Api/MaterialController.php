@@ -13,17 +13,35 @@ use Illuminate\Support\Facades\Storage;
 
 class MaterialController extends Controller
 {
+    private function isAdmin($user): bool
+    {
+        return $user && strtolower((string) $user->role) === 'admin';
+    }
+
+    private function forgetMaterialsCache(): void
+    {
+        try {
+            $this->forgetMaterialsCache();
+        } catch (\Throwable $e) {
+        }
+    }
+
     /**
      * Display a listing of educational materials.
      * Accessible by ALL users (publicly or authenticated).
      */
     public function index()
     {
-        $materials = Cache::remember('materials_index_v2', 300, function () {
-            return Material::with(['user:id,name,email,role,nip,jabatan,wilayah', 'category:id,name'])
-                ->latest()
-                ->get();
-        });
+        $fetchQuery = static fn () => Material::with([
+            'user:id,name,email,role,nip,jabatan,wilayah',
+            'category:id,name',
+        ])->latest()->get();
+
+        try {
+            $materials = Cache::remember('materials_index_v2', 180, $fetchQuery);
+        } catch (\Throwable $e) {
+            $materials = $fetchQuery();
+        }
 
         return response()->json([
             'success' => true,
@@ -205,7 +223,7 @@ class MaterialController extends Controller
 
         $material->load(['user:id,name,email,role,nip,jabatan,wilayah', 'category']);
 
-        Cache::forget('materials_index_v2');
+        $this->forgetMaterialsCache();
 
         return response()->json([
             'success' => true,
@@ -230,7 +248,7 @@ class MaterialController extends Controller
         }
 
         // Authorization check: Admin or creator can edit
-        if ($user && $user->role !== 'admin' && $material->user_id && $material->user_id !== $user->id) {
+        if ($user && !$this->isAdmin($user) && $material->user_id && $material->user_id !== $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak akses untuk mengedit materi ini',
@@ -277,7 +295,7 @@ class MaterialController extends Controller
         $material->save();
         $material->load(['user:id,name,email,role,nip,jabatan,wilayah', 'category']);
 
-        Cache::forget('materials_index_v2');
+        $this->forgetMaterialsCache();
 
         return response()->json([
             'success' => true,
@@ -302,7 +320,7 @@ class MaterialController extends Controller
         }
 
         // Authorization check: Admin or creator can delete
-        if ($user && $user->role !== 'admin' && $material->user_id && $material->user_id !== $user->id) {
+        if ($user && !$this->isAdmin($user) && $material->user_id && $material->user_id !== $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak untuk menghapus materi ini',

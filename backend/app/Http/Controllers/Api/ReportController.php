@@ -11,14 +11,52 @@ use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
 {
+    private static ?bool $hasPhotoAddressColumn = null;
+    private static ?bool $hasPhotoBase64Column = null;
+
+    private function isAdmin($user): bool
+    {
+        return $user && strtolower((string) $user->role) === 'admin';
+    }
+
+    private function hasPhotoAddressColumn(): bool
+    {
+        if (self::$hasPhotoAddressColumn === null) {
+            try {
+                self::$hasPhotoAddressColumn = Schema::hasColumn('report_photos', 'address');
+            } catch (\Throwable $e) {
+                self::$hasPhotoAddressColumn = false;
+            }
+        }
+        return self::$hasPhotoAddressColumn;
+    }
+
+    private function hasPhotoBase64Column(): bool
+    {
+        if (self::$hasPhotoBase64Column === null) {
+            try {
+                self::$hasPhotoBase64Column = Schema::hasColumn('report_photos', 'photo_base64');
+            } catch (\Throwable $e) {
+                self::$hasPhotoBase64Column = false;
+            }
+        }
+        return self::$hasPhotoBase64Column;
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
 
         // Pilih hanya kolom yang benar-benar ada pada tabel report_photos.
         // Accessor `url` ditambahkan otomatis oleh model ReportPhoto.
         $photoColumns = ['id', 'report_id', 'photo', 'latitude', 'longitude', 'created_at'];
-        if (Schema::hasColumn('report_photos', 'address')) {
+        if ($this->hasPhotoAddressColumn()) {
             $photoColumns[] = 'address';
         }
 
@@ -29,7 +67,7 @@ class ReportController extends Controller
         ]);
 
         // Jika bukan admin, hanya tampilkan laporan milik user yang login.
-        if (!$user || $user->role !== 'admin') {
+        if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         } elseif ($request->filled('user_id')) {
             $query->where('user_id', $request->query('user_id'));
@@ -57,8 +95,14 @@ class ReportController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
         $query = Report::with(['user:id,name,email,role', 'category:id,name', 'photos']);
-        if (!$user || $user->role !== 'admin') {
+        if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
 
@@ -84,6 +128,13 @@ class ReportController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
         $validated = $request->validate([
             'category_id' => 'nullable|exists:categories,id',
             'title' => 'required|string|max:255',
@@ -96,7 +147,7 @@ class ReportController extends Controller
         ]);
 
         $report = Report::create([
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'category_id' => $validated['category_id'] ?? null,
             'title' => $validated['title'],
             'activity_date' => $validated['activity_date'],
@@ -112,7 +163,7 @@ class ReportController extends Controller
             if (Schema::hasTable('app_notifications')) {
                 $statusLabel = ($report->status === 'draft') ? 'Disimpan sebagai Draft' : 'Berhasil Dikirim';
                 AppNotification::create([
-                    'user_id' => $request->user()->id,
+                    'user_id' => $user->id,
                     'type' => 'laporan',
                     'title' => 'Laporan Baru: ' . $report->title,
                     'message' => "Laporan kegiatan \"{$report->title}\" di {$report->location} ({$statusLabel}).",
@@ -144,10 +195,10 @@ class ReportController extends Controller
                     'latitude' => $validated['latitude'] ?? null,
                     'longitude' => $validated['longitude'] ?? null,
                 ];
-                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                if ($this->hasPhotoBase64Column()) {
                     $photoData['photo_base64'] = $base64;
                 }
-                if (Schema::hasColumn('report_photos', 'address')) {
+                if ($this->hasPhotoAddressColumn()) {
                     $photoData['address'] = $request->input('address', $report->location);
                 }
 
@@ -167,9 +218,15 @@ class ReportController extends Controller
     public function update(Request $request, $id)
     {
         $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
         $query = Report::query();
 
-        if (!$user || $user->role !== 'admin') {
+        if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
 
@@ -208,10 +265,10 @@ class ReportController extends Controller
                     'latitude' => $validated['latitude'] ?? $report->latitude,
                     'longitude' => $validated['longitude'] ?? $report->longitude,
                 ];
-                if (Schema::hasColumn('report_photos', 'photo_base64')) {
+                if ($this->hasPhotoBase64Column()) {
                     $photoData['photo_base64'] = $base64;
                 }
-                if (Schema::hasColumn('report_photos', 'address')) {
+                if ($this->hasPhotoAddressColumn()) {
                     $photoData['address'] = $request->input('address', $report->location);
                 }
 
@@ -231,9 +288,15 @@ class ReportController extends Controller
     public function destroy(Request $request, $id)
     {
         $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
         $query = Report::query();
 
-        if (!$user || $user->role !== 'admin') {
+        if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
 

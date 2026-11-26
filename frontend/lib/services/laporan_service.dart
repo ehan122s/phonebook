@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,9 +22,18 @@ class UnauthorizedException implements Exception {
   String toString() => message;
 }
 
+/// Exception thrown when user lacks permission (HTTP 403).
+class ForbiddenException implements Exception {
+  final String message;
+  const ForbiddenException([this.message = 'Anda tidak memiliki izin untuk mengakses data ini.']);
+  @override
+  String toString() => message;
+}
+
 /// Service class that handles all report-related API calls & offline persistence.
 class LaporanService {
   static List<Map<String, dynamic>>? _cachedReports;
+  static String? _cachedToken;
   static DateTime? _lastFetchTime;
   static const Duration cacheTtl = Duration(seconds: 45);
 
@@ -60,15 +70,18 @@ class LaporanService {
   /// Invalidate report cache (e.g. after adding/editing/deleting a report)
   static void clearCache() {
     _cachedReports = null;
+    _cachedToken = null;
     _lastFetchTime = null;
   }
 
-  /// Get cached reports if available
-  static List<Map<String, dynamic>>? getCachedReports() {
+  /// Get cached reports if available and belongs to the active token.
+  static List<Map<String, dynamic>>? getCachedReports({String? token}) {
     if (_cachedReports != null &&
         _lastFetchTime != null &&
         DateTime.now().difference(_lastFetchTime!) < cacheTtl) {
-      return _cachedReports;
+      if (token == null || _cachedToken == token) {
+        return _cachedReports;
+      }
     }
     return null;
   }
@@ -86,42 +99,70 @@ class LaporanService {
     }
 
     if (!forceRefresh) {
-      final cached = getCachedReports();
+      final cached = getCachedReports(token: token);
       if (cached != null) {
         return cached;
       }
     }
 
-    final response = await http
-        .get(
-          Uri.parse('$baseUrl/api/reports'),
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        )
-        .timeout(const Duration(seconds: 10));
+    http.Response? response;
+    Object? lastError;
+
+    for (int attempt = 1; attempt <= 2; attempt++) {
+      try {
+        response = await http
+            .get(
+              Uri.parse('$baseUrl/api/reports'),
+              headers: {
+                'Accept': 'application/json',
+                'Authorization': 'Bearer $token',
+              },
+            )
+            .timeout(const Duration(seconds: 25));
+        break;
+      } on TimeoutException catch (e) {
+        lastError = e;
+        if (attempt == 2) {
+          throw Exception(
+            'Server membutuhkan waktu terlalu lama untuk merespons. Silakan ketuk Coba Lagi.',
+          );
+        }
+      } on SocketException catch (_) {
+        throw Exception(
+          'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.',
+        );
+      } on http.ClientException catch (_) {
+        throw Exception(
+          'Koneksi ke server terganggu. Periksa jaringan Anda lalu coba lagi.',
+        );
+      }
+    }
+
+    if (response == null) {
+      throw Exception('Gagal menghubungi server: $lastError');
+    }
 
     if (response.statusCode == 401) {
+      clearCache();
       throw const UnauthorizedException(
         'Sesi login telah berakhir. Silakan login kembali.',
       );
     }
 
+    if (response.statusCode == 403) {
+      throw ForbiddenException(extractErrorMessage(response));
+    }
+
     if (response.statusCode != 200) {
       final body = response.body;
-      if (body.contains('SQLSTATE') ||
-          body.contains('FATAL') ||
-          body.contains('pooler.supabase') ||
-          body.contains('tenant')) {
+      final lower = body.toLowerCase();
+      if (lower.contains('tenant or user not found') ||
+          lower.contains('project is paused')) {
         throw Exception(
-          'Database cloud Supabase sedang tidak aktif (Paused). '
-          'Silakan restore/unpause project di Supabase Dashboard.',
+          'Layanan database sedang tidak aktif sementara. Hubungi administrator.',
         );
       }
-      throw Exception(
-        'Gagal mengambil laporan dari server (HTTP ${response.statusCode})',
-      );
+      throw Exception(extractErrorMessage(response));
     }
 
     final body = jsonDecode(response.body);
@@ -190,6 +231,7 @@ class LaporanService {
     }).toList();
 
     _cachedReports = reportsList;
+    _cachedToken = token;
     _lastFetchTime = DateTime.now();
 
     return reportsList;
