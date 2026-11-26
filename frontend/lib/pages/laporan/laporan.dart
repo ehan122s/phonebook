@@ -42,6 +42,7 @@ class _LaporanPageState extends State<LaporanPage> {
   bool _isAdmin = false;
   bool _isLoadingReports = true;
   String? _loadErrorMessage;
+  int _loadRequestToken = 0;
   bool _hasOpenedInitialReport = false;
 
   final ScrollController _userScrollController = ScrollController();
@@ -213,11 +214,15 @@ class _LaporanPageState extends State<LaporanPage> {
   // Data loading (User & Admin Monitoring - Tanpa Data Dummy)
   // ---------------------------------------------------------------------------
 
-  Future<void> _loadSavedReports({bool silent = false}) async {
+  Future<void> _loadSavedReports({
+    bool silent = false,
+    bool forceRefresh = false,
+  }) async {
+    final int myToken = ++_loadRequestToken;
     final hasExisting = _laporanList.isNotEmpty;
-    if (!hasExisting && !silent && mounted) {
+    if ((!hasExisting || forceRefresh) && !silent && mounted) {
       setState(() {
-        _isLoadingReports = true;
+        if (!hasExisting) _isLoadingReports = true;
         _loadErrorMessage = null;
       });
     }
@@ -337,7 +342,11 @@ class _LaporanPageState extends State<LaporanPage> {
       final online = await ConnectivityService.instance.isOnline();
       if (online && !isOfflineToken) {
         try {
-          final serverReports = await LaporanService.fetchReports(token);
+          final serverReports = await LaporanService.fetchReports(
+            token,
+            forceRefresh: forceRefresh,
+          );
+          if (!mounted || myToken != _loadRequestToken) return;
           for (final sr in serverReports) {
             final idStr = (sr['id'] ?? '').toString();
             final titleLower = (sr['judul'] ?? '').toString().toLowerCase();
@@ -387,7 +396,40 @@ class _LaporanPageState extends State<LaporanPage> {
           }
         } catch (e) {
           debugPrint('LaporanService fetch reports warning: $e');
-          _loadErrorMessage = e.toString().replaceFirst('Exception: ', '');
+          _loadErrorMessage = LaporanService.friendlyErrorMessage(e);
+
+          // Offline-First Fallback: muat semua laporan lokal dari SQLite jika server timeout/gagal
+          try {
+            final fallbackLocals = await OfflineDatabase.instance.getAllLocalReports();
+            for (final local in fallbackLocals) {
+              final String activityDate = local['activity_date']?.toString() ?? '';
+              final String rawStatus = local['status']?.toString() ?? 'draft';
+              final String photoVal =
+                  (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
+              addUniqueReport({
+                'id': 'local_${local['id']}',
+                'judul': local['title'] ?? 'Laporan tanpa judul',
+                'jenis': local['jenis_laporan'] ?? 'Laporan Kegiatan',
+                'pelapor': defaultUserName,
+                'tanggal': LaporanDateUtils.formatApiDate(activityDate),
+                'tanggalApi': activityDate,
+                'lokasi': local['location'] ?? 'Belum diisi',
+                'alamatGeolokasi': (local['address'] ?? local['location'] ?? '').toString(),
+                'isi': local['description'] ?? '',
+                'latitude': local['latitude']?.toString() ?? '',
+                'longitude': local['longitude']?.toString() ?? '',
+                'foto': photoVal,
+                'photo_base64': local['photo_base64'] ?? '',
+                'localPhotoPath': local['photo_path'],
+                'photos': <dynamic>[],
+                'status': LaporanDateUtils.displayStatus(rawStatus),
+                'statusApi': rawStatus,
+                'isOffline': true,
+                'syncStatus': local['sync_status'],
+                'localId': local['id'],
+              });
+            }
+          } catch (_) {}
         }
       }
 
@@ -471,7 +513,7 @@ class _LaporanPageState extends State<LaporanPage> {
         }
       }
 
-      if (!mounted) return;
+      if (!mounted || myToken != _loadRequestToken) return;
       setState(() {
         _laporanList
           ..clear()
@@ -964,7 +1006,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ),
             ),
           IconButton(
-            onPressed: _loadSavedReports,
+            onPressed: () => _loadSavedReports(forceRefresh: true),
             tooltip: 'Segarkan Laporan',
             icon: Icon(Icons.refresh_rounded, color: primaryGreen),
           ),
@@ -1723,7 +1765,7 @@ class _LaporanPageState extends State<LaporanPage> {
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
-              onPressed: _loadSavedReports,
+              onPressed: () => _loadSavedReports(forceRefresh: true),
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Coba Lagi'),
             ),
@@ -1737,7 +1779,51 @@ class _LaporanPageState extends State<LaporanPage> {
     }
 
     return Column(
-      children: _laporanList.asMap().entries.map((entry) {
+      children: [
+        if (_loadErrorMessage != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_off_rounded, size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Menampilkan data lokal. $_loadErrorMessage',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _loadSavedReports(forceRefresh: true),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Coba Lagi',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ..._laporanList.asMap().entries.map((entry) {
         final index = entry.key;
         final laporan = entry.value;
         final isHighlighted = index == 0 && _highlightLatestCard;
@@ -1775,7 +1861,8 @@ class _LaporanPageState extends State<LaporanPage> {
             onDelete: () => _deleteReport(laporan),
           ),
         );
-      }).toList(),
+      }),
+      ],
     );
   }
 }

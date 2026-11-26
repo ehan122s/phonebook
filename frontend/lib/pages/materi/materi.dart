@@ -205,18 +205,22 @@ class _MateriPageState extends State<MateriPage> {
 
     http.Response? response;
 
-    for (int attempt = 1; attempt <= 2; attempt++) {
+    for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         response = await http
             .get(Uri.parse(ApiConstants.materialsUrl), headers: headers)
-            .timeout(const Duration(seconds: 25));
+            .timeout(const Duration(seconds: 30));
         break;
       } on TimeoutException catch (e) {
         debugPrint('Fetch materials timeout (attempt $attempt): $e');
-        if (attempt == 2 && _materials.isEmpty && mounted) {
+        if (attempt < 3) {
+          await Future.delayed(Duration(milliseconds: 600 * attempt));
+          continue;
+        }
+        if (_materials.isEmpty && mounted) {
           setState(() {
             _errorMessage =
-                'Server membutuhkan waktu terlalu lama untuk merespons. Silakan ketuk Coba Lagi.';
+                'Koneksi ke server memakan waktu terlalu lama. Pastikan internet stabil lalu ketuk Coba Lagi.';
           });
           return;
         }

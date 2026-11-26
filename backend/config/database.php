@@ -97,6 +97,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => extension_loaded('pdo_pgsql') ? [
+                \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+            ] : [],
         ],
 
         'sqlsrv' => [
@@ -126,6 +129,9 @@ return [
     'collation' => 'utf8mb4_unicode_ci',
     'prefix' => '',
     'strict' => true,
+    'options' => extension_loaded('pdo_pgsql') ? [
+        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+    ] : [],
 ],
 
 'db_foto' => [
@@ -140,6 +146,9 @@ return [
     'collation' => 'utf8mb4_unicode_ci',
     'prefix' => '',
     'strict' => true,
+    'options' => extension_loaded('pdo_pgsql') ? [
+        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+    ] : [],
 ],
 
 'db_materi' => [
@@ -154,6 +163,9 @@ return [
     'collation' => 'utf8mb4_unicode_ci',
     'prefix' => '',
     'strict' => true,
+    'options' => extension_loaded('pdo_pgsql') ? [
+        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+    ] : [],
 ],
 
     ],

@@ -36,6 +36,27 @@ class LaporanService {
   static String? _cachedToken;
   static DateTime? _lastFetchTime;
   static const Duration cacheTtl = Duration(seconds: 45);
+  static const Duration httpTimeout = Duration(seconds: 30);
+
+  /// Mengubah exception mentah (termasuk TimeoutException) menjadi pesan ramah pengguna.
+  static String friendlyErrorMessage(Object error) {
+    final msg = error.toString().replaceFirst('Exception: ', '').trim();
+    final lower = msg.toLowerCase();
+    if (error is TimeoutException ||
+        lower.contains('timeoutexception') ||
+        lower.contains('future not completed')) {
+      return 'Koneksi ke server memakan waktu terlalu lama. Pastikan internet stabil lalu tekan Coba Lagi.';
+    }
+    if (error is SocketException || lower.contains('socketexception')) {
+      return 'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.';
+    }
+    if (error is http.ClientException || lower.contains('clientexception')) {
+      return 'Koneksi ke server terganggu. Periksa jaringan Anda lalu coba lagi.';
+    }
+    return msg.isNotEmpty
+        ? msg
+        : 'Terjadi kendala saat menghubungi server. Silakan coba lagi.';
+  }
 
   /// Mengekstrak pesan error yang jelas dari response JSON Laravel.
   static String extractErrorMessage(http.Response response) {
@@ -108,7 +129,8 @@ class LaporanService {
     http.Response? response;
     Object? lastError;
 
-    for (int attempt = 1; attempt <= 2; attempt++) {
+    // Maksimal 2 kali auto-retry (total 3 percobaan) saat terjadi TimeoutException
+    for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         response = await http
             .get(
@@ -118,15 +140,17 @@ class LaporanService {
                 'Authorization': 'Bearer $token',
               },
             )
-            .timeout(const Duration(seconds: 25));
+            .timeout(httpTimeout);
         break;
       } on TimeoutException catch (e) {
         lastError = e;
-        if (attempt == 2) {
-          throw Exception(
-            'Server membutuhkan waktu terlalu lama untuk merespons. Silakan ketuk Coba Lagi.',
-          );
+        if (attempt < 3) {
+          await Future.delayed(Duration(milliseconds: 600 * attempt));
+          continue;
         }
+        throw Exception(
+          'Koneksi ke server memakan waktu terlalu lama. Pastikan internet stabil lalu tekan Coba Lagi.',
+        );
       } on SocketException catch (_) {
         throw Exception(
           'Tidak ada koneksi internet. Periksa jaringan Anda lalu coba lagi.',
@@ -263,10 +287,10 @@ class LaporanService {
     final response = isEditing
         ? await http
               .put(uri, headers: headers, body: jsonEncode(cleanPayload))
-              .timeout(const Duration(seconds: 20))
+              .timeout(httpTimeout)
         : await http
               .post(uri, headers: headers, body: jsonEncode(cleanPayload))
-              .timeout(const Duration(seconds: 20));
+              .timeout(httpTimeout);
 
     return response;
   }
@@ -330,10 +354,12 @@ class LaporanService {
   /// Deletes a report from the API by its [id].
   static Future<void> deleteReport(String token, dynamic id) async {
     clearCache();
-    final response = await http.delete(
-      Uri.parse('$baseUrl/api/reports/$id'),
-      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
-    );
+    final response = await http
+        .delete(
+          Uri.parse('$baseUrl/api/reports/$id'),
+          headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+        )
+        .timeout(httpTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 204) {
       final lower = response.body.toLowerCase();

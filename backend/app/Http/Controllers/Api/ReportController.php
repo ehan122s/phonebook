@@ -7,6 +7,7 @@ use App\Models\AppNotification;
 use App\Models\Report;
 use App\Models\ReportPhoto;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
@@ -23,26 +24,30 @@ class ReportController extends Controller
     {
         if (self::$hasPhotoAddressColumn === null) {
             try {
-                self::$hasPhotoAddressColumn = Schema::connection('db_foto')
-                    ->hasColumn('report_photos', 'address');
+                self::$hasPhotoAddressColumn = Cache::remember('schema_report_photos_address_v1', 3600, function () {
+                    return Schema::connection('db_foto')
+                        ->hasColumn('report_photos', 'address');
+                });
             } catch (\Throwable $e) {
                 self::$hasPhotoAddressColumn = false;
             }
         }
-        return self::$hasPhotoAddressColumn;
+        return (bool) self::$hasPhotoAddressColumn;
     }
 
     private function hasPhotoBase64Column(): bool
     {
         if (self::$hasPhotoBase64Column === null) {
             try {
-                self::$hasPhotoBase64Column = Schema::connection('db_foto')
-                    ->hasColumn('report_photos', 'photo_base64');
+                self::$hasPhotoBase64Column = Cache::remember('schema_report_photos_base64_v1', 3600, function () {
+                    return Schema::connection('db_foto')
+                        ->hasColumn('report_photos', 'photo_base64');
+                });
             } catch (\Throwable $e) {
                 self::$hasPhotoBase64Column = false;
             }
         }
-        return self::$hasPhotoBase64Column;
+        return (bool) self::$hasPhotoBase64Column;
     }
 
     public function index(Request $request)
@@ -85,7 +90,8 @@ class ReportController extends Controller
             $query->whereDate('activity_date', '<=', $request->query('date_to'));
         }
 
-        $reports = $query->latest()->get();
+        $limit = max(1, min((int) $request->query('limit', 50), 100));
+        $reports = $query->latest()->limit($limit)->get();
 
         return response()->json([
             'success' => true,
