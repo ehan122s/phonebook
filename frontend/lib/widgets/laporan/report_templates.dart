@@ -1701,7 +1701,7 @@ class ReportDocumentExporter {
       int fontSize = 11,
     }) {
       final fontKey = bold ? '/F2' : '/F1';
-      final escaped = _escapePdfLiteral(text);
+      final escaped = _escapePdfLiteral(_cleanPdfText(text));
       content.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
     }
 
