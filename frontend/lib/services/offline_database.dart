@@ -41,7 +41,7 @@ class OfflineDatabase {
 
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -84,6 +84,18 @@ class OfflineDatabase {
             ''');
           } catch (_) {}
         }
+        if (oldVersion < 5) {
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN document_path TEXT',
+            );
+          } catch (_) {}
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN document_name TEXT',
+            );
+          } catch (_) {}
+        }
       },
     );
   }
@@ -106,6 +118,8 @@ class OfflineDatabase {
         server_id INTEGER,
         photo_path TEXT,
         photo_base64 TEXT,
+        document_path TEXT,
+        document_name TEXT,
         created_at TEXT,
         updated_at TEXT
       )
@@ -151,6 +165,8 @@ class OfflineDatabase {
       'server_id': data['server_id'],
       'photo_path': data['photo_path'],
       'photo_base64': data['photo_base64'],
+      'document_path': data['document_path'],
+      'document_name': data['document_name'],
       'created_at': data['created_at'] ?? now,
       'updated_at': now,
     };
@@ -164,8 +180,8 @@ class OfflineDatabase {
       final db = await database;
       return await db.query(
         'offline_reports',
-        where: "sync_status = ? OR sync_status = ?",
-        whereArgs: ['pending', 'failed'],
+        where: "sync_status = ? OR sync_status = ? OR sync_status = ?",
+        whereArgs: ['pending', 'failed', 'attachment_pending'],
         orderBy: 'created_at DESC',
       );
     } catch (_) {
@@ -229,7 +245,7 @@ class OfflineDatabase {
       final db = await database;
       final result = await db.rawQuery(
         "SELECT COUNT(*) as cnt FROM offline_reports "
-        "WHERE sync_status = 'pending' OR sync_status = 'failed'",
+        "WHERE sync_status = 'pending' OR sync_status = 'failed' OR sync_status = 'attachment_pending'",
       );
       return Sqflite.firstIntValue(result) ?? 0;
     } catch (_) {

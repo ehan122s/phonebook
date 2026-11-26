@@ -283,15 +283,21 @@ class UserController extends Controller
         $processedReports = (clone $reportBaseQuery)->whereIn('status', ['diperiksa', 'disetujui', 'ditolak'])->count();
 
         $photoCols = ['id', 'report_id', 'photo', 'latitude', 'longitude'];
-        if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
-            $photoCols[] = 'address';
+        foreach (['address', 'imagekit_url', 'imagekit_file_id', 'storage_provider'] as $optCol) {
+            if (Schema::connection('db_foto')->hasColumn('report_photos', $optCol)) {
+                $photoCols[] = $optCol;
+            }
+        }
+        $recentRelations = [
+            'user:id,name,email,role,wilayah',
+            'category:id,name',
+            'photos:' . implode(',', $photoCols),
+        ];
+        if (Schema::connection('db_laporan')->hasTable('report_files')) {
+            $recentRelations[] = 'files';
         }
         $recentReports = (clone $reportBaseQuery)
-            ->with([
-                'user:id,name,email,role,wilayah',
-                'category:id,name',
-                'photos:' . implode(',', $photoCols),
-            ])
+            ->with($recentRelations)
             ->latest()->limit(20)->get();
 
         $statsByPeriod = (clone $reportBaseQuery)

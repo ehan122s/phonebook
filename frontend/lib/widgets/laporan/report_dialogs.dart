@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/connectivity_service.dart';
+import '../../services/device_file_storage_service.dart';
 import '../../services/laporan_service.dart';
 import '../../services/location_service.dart';
 import '../../services/notification_service.dart';
@@ -412,48 +413,49 @@ Future<void> showReportForm(
 
   XFile? pickedPhotoFile;
   Uint8List? pickedPhotoBytes;
+  Uint8List? pickedDocBytes;
+  String? pickedDocName;
   String? existingPhotoUrl;
   if (existing != null) {
-    final rawFoto = (existing['foto'] ?? existing['photo_base64'] ?? '')
-        .toString()
-        .trim();
-    if (rawFoto.isNotEmpty) {
-      existingPhotoUrl =
-          rawFoto.startsWith('http') ||
-              rawFoto.startsWith('data:') ||
-              rawFoto.startsWith('/')
-          ? rawFoto
-          : '${ApiConstants.baseUrl}/storage/$rawFoto';
-    } else if (existing['photos'] is List &&
-        (existing['photos'] as List).isNotEmpty) {
+    if (existing['photos'] is List && (existing['photos'] as List).isNotEmpty) {
       final first = (existing['photos'] as List).first;
       if (first is Map) {
-        final b64 = (first['photo_base64'] ?? '').toString().trim();
-        final raw =
-            (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
-                .toString()
-                .trim();
-        if (b64.isNotEmpty) {
-          existingPhotoUrl = b64.startsWith('data:')
-              ? b64
-              : 'data:image/jpeg;base64,$b64';
-        } else if (first['id'] != null) {
-          existingPhotoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
-        } else if (raw.isNotEmpty) {
-          existingPhotoUrl = raw.startsWith('http') || raw.startsWith('/')
-              ? raw
-              : '${ApiConstants.baseUrl}/storage/$raw';
+        final resolved = LaporanService.resolvePhotoUrl(first);
+        if (resolved.isNotEmpty) {
+          existingPhotoUrl = resolved;
+        } else if (first['local_path'] != null &&
+            first['local_path'].toString().trim().isNotEmpty) {
+          existingPhotoUrl = first['local_path'].toString().trim();
         }
       }
-    } else if (existing['localPhotoPath'] != null &&
-        existing['localPhotoPath'].toString().trim().isNotEmpty) {
-      existingPhotoUrl = existing['localPhotoPath'].toString().trim();
+    }
+
+    if (existingPhotoUrl == null || existingPhotoUrl.isEmpty) {
+      final rawFoto = (existing['foto'] ?? existing['photo_base64'] ?? '')
+          .toString()
+          .trim();
+      if (rawFoto.isNotEmpty) {
+        existingPhotoUrl =
+            rawFoto.startsWith('http') ||
+                rawFoto.startsWith('data:') ||
+                rawFoto.startsWith('/')
+            ? rawFoto
+            : '${ApiConstants.baseUrl}/storage/$rawFoto';
+      } else if (existing['localPhotoPath'] != null &&
+          existing['localPhotoPath'].toString().trim().isNotEmpty) {
+        existingPhotoUrl = existing['localPhotoPath'].toString().trim();
+      }
     }
   }
 
   bool isGettingLocation = false;
   bool isProcessingPhoto = false;
   bool isSubmittingForm = false;
+  double? uploadProgress;
+  String? uploadProgressLabel;
+  int? pendingRetryReportId;
+  bool retryPhotoPending = false;
+  bool retryDocPending = false;
   String? locationWarningMessage;
   bool showCoordinateInputs =
       latCtrl.text.isNotEmpty || lngCtrl.text.isNotEmpty;
@@ -1900,9 +1902,267 @@ Future<void> showReportForm(
                                             ),
                                           ],
                                         ),
+
+                                      // Lampiran Dokumen Pendukung (Opsional - Supabase Storage)
+                                      const SizedBox(height: 16),
+                                      Divider(height: 1, color: borderCol),
+                                      const SizedBox(height: 14),
+                                      Text(
+                                        'Dokumen Pendukung Laporan (Opsional)',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Lampirkan berkas PDF, Word (.doc/.docx), Excel (.xls/.xlsx), atau CSV/TXT (maks. 20 MB).',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      if (pickedDocBytes != null &&
+                                          pickedDocName != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isDark
+                                                ? const Color(0xFF18221B)
+                                                : const Color(0xFFF2F7F0),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: borderCol,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.description_outlined,
+                                                color: primaryGreen,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      pickedDocName!,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 12.5,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: textPrimary,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      '${(pickedDocBytes!.length / 1024).toStringAsFixed(1)} KB',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: textSecondary,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              IconButton(
+                                                onPressed: isSubmittingForm
+                                                    ? null
+                                                    : () {
+                                                        setModalState(() {
+                                                          pickedDocBytes = null;
+                                                          pickedDocName = null;
+                                                        });
+                                                      },
+                                                icon: const Icon(
+                                                  Icons.close_rounded,
+                                                  color: Colors.red,
+                                                  size: 18,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: OutlinedButton.icon(
+                                            onPressed: isSubmittingForm
+                                                ? null
+                                                : () async {
+                                                    try {
+                                                      final res =
+                                                          await FilePicker
+                                                              .platform
+                                                              .pickFiles(
+                                                                type: FileType
+                                                                    .custom,
+                                                                allowedExtensions:
+                                                                    const [
+                                                                      'pdf',
+                                                                      'doc',
+                                                                      'docx',
+                                                                      'xls',
+                                                                      'xlsx',
+                                                                      'csv',
+                                                                      'txt',
+                                                                    ],
+                                                                withData: true,
+                                                              );
+                                                      if (res == null ||
+                                                          res.files.isEmpty) {
+                                                        return;
+                                                      }
+                                                      final picked =
+                                                          res.files.single;
+                                                      Uint8List? bytes =
+                                                          picked.bytes;
+                                                      if (bytes == null &&
+                                                          !kIsWeb &&
+                                                          picked.path != null &&
+                                                          picked
+                                                              .path!
+                                                              .isNotEmpty) {
+                                                        bytes = await File(
+                                                          picked.path!,
+                                                        ).readAsBytes();
+                                                      }
+                                                      if (bytes == null ||
+                                                          bytes.isEmpty) {
+                                                        return;
+                                                      }
+                                                      if (bytes.length >
+                                                          20 * 1024 * 1024) {
+                                                        if (sheetContext
+                                                            .mounted) {
+                                                          showTopFrontNotification(
+                                                            sheetContext,
+                                                            message:
+                                                                'Ukuran dokumen maksimal 20 MB.',
+                                                            isError: true,
+                                                          );
+                                                        }
+                                                        return;
+                                                      }
+                                                      if (!sheetContext
+                                                          .mounted) {
+                                                        return;
+                                                      }
+                                                      setModalState(() {
+                                                        pickedDocBytes = bytes;
+                                                        pickedDocName =
+                                                            picked.name;
+                                                      });
+                                                    } catch (e) {
+                                                      if (sheetContext
+                                                          .mounted) {
+                                                        showTopFrontNotification(
+                                                          sheetContext,
+                                                          message:
+                                                              'Gagal memilih dokumen: $e',
+                                                          isError: true,
+                                                        );
+                                                      }
+                                                    }
+                                                  },
+                                            icon: const Icon(
+                                              Icons.attach_file_rounded,
+                                              size: 17,
+                                            ),
+                                            label: const Text(
+                                              'Lampirkan Dokumen (PDF / Word / Excel)',
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: primaryGreen,
+                                              side: BorderSide(
+                                                color: borderCol,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 11,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
+
+                                if (uploadProgress != null) ...[
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: cardBg,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: borderCol),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                uploadProgressLabel ??
+                                                    'Mengunggah lampiran...',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: textPrimary,
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              '${(uploadProgress! * 100).round()}%',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: primaryGreen,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: LinearProgressIndicator(
+                                            value: uploadProgress,
+                                            minHeight: 6,
+                                            color: primaryGreen,
+                                            backgroundColor: borderCol,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
 
                                 // Banner Status / Notifikasi Transisi di Bawah Kartu Form
                                 AnimatedSize(
@@ -1962,36 +2222,245 @@ Future<void> showReportForm(
                                                             ),
                                                 ),
                                               ),
-                                              child: Row(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
-                                                  Icon(
-                                                    inlineStatusIsError
-                                                        ? Icons
-                                                              .error_outline_rounded
-                                                        : Icons
-                                                              .check_circle_rounded,
-                                                    color: inlineStatusIsError
-                                                        ? Colors.red.shade700
-                                                        : primaryGreen,
-                                                    size: 20,
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(
-                                                    child: Text(
-                                                      inlineStatusMessage!,
-                                                      style: TextStyle(
-                                                        fontSize: 12.8,
-                                                        fontWeight:
-                                                            FontWeight.w700,
+                                                  Row(
+                                                    children: [
+                                                      Icon(
+                                                        inlineStatusIsError
+                                                            ? Icons
+                                                                  .error_outline_rounded
+                                                            : Icons
+                                                                  .check_circle_rounded,
                                                         color:
                                                             inlineStatusIsError
                                                             ? Colors
                                                                   .red
                                                                   .shade700
                                                             : primaryGreen,
+                                                        size: 20,
+                                                      ),
+                                                      const SizedBox(width: 10),
+                                                      Expanded(
+                                                        child: Text(
+                                                          inlineStatusMessage!,
+                                                          style: TextStyle(
+                                                            fontSize: 12.8,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color:
+                                                                inlineStatusIsError
+                                                                ? Colors
+                                                                      .red
+                                                                      .shade700
+                                                                : primaryGreen,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  if (pendingRetryReportId !=
+                                                          null &&
+                                                      (retryPhotoPending ||
+                                                          retryDocPending)) ...[
+                                                    const SizedBox(height: 10),
+                                                    SizedBox(
+                                                      width: double.infinity,
+                                                      child: OutlinedButton.icon(
+                                                        onPressed:
+                                                            isSubmittingForm
+                                                            ? null
+                                                            : () async {
+                                                                final prefs =
+                                                                    await SharedPreferences.getInstance();
+                                                                final token =
+                                                                    prefs.getString(
+                                                                      'token',
+                                                                    ) ??
+                                                                    '';
+                                                                if (token
+                                                                    .isEmpty) {
+                                                                  return;
+                                                                }
+                                                                setModalState(() {
+                                                                  isSubmittingForm =
+                                                                      true;
+                                                                  uploadProgress =
+                                                                      0.05;
+                                                                  uploadProgressLabel =
+                                                                      'Mengunggah ulang lampiran...';
+                                                                });
+                                                                bool ok = true;
+                                                                String errText =
+                                                                    '';
+                                                                if (retryPhotoPending &&
+                                                                    pickedPhotoBytes !=
+                                                                        null) {
+                                                                  try {
+                                                                    final pRes = await LaporanService.uploadReportPhoto(
+                                                                      token:
+                                                                          token,
+                                                                      reportId:
+                                                                          pendingRetryReportId!,
+                                                                      photoBytes:
+                                                                          pickedPhotoBytes!,
+                                                                      filename:
+                                                                          pickedPhotoFile
+                                                                              ?.name ??
+                                                                          'foto_laporan.jpg',
+                                                                      latitude:
+                                                                          double.tryParse(
+                                                                            latCtrl.text.trim(),
+                                                                          ),
+                                                                      longitude:
+                                                                          double.tryParse(
+                                                                            lngCtrl.text.trim(),
+                                                                          ),
+                                                                      address: reverseGeocodedAddress.isNotEmpty
+                                                                          ? reverseGeocodedAddress
+                                                                          : lokasiCtrl.text.trim(),
+                                                                      onProgress:
+                                                                          (p) {
+                                                                            if (sheetContext.mounted) {
+                                                                              setModalState(() {
+                                                                                uploadProgress = p;
+                                                                                uploadProgressLabel = 'Mengunggah ulang foto...';
+                                                                              });
+                                                                            }
+                                                                          },
+                                                                    );
+                                                                    if (pRes.statusCode ==
+                                                                            200 ||
+                                                                        pRes.statusCode ==
+                                                                            201) {
+                                                                      retryPhotoPending =
+                                                                          false;
+                                                                    } else {
+                                                                      ok = false;
+                                                                      errText = LaporanService.extractErrorMessage(
+                                                                        pRes,
+                                                                      );
+                                                                    }
+                                                                  } catch (e) {
+                                                                    ok = false;
+                                                                    errText = LaporanService.friendlyErrorMessage(
+                                                                      e,
+                                                                    );
+                                                                  }
+                                                                }
+                                                                if (retryDocPending &&
+                                                                    pickedDocBytes !=
+                                                                        null &&
+                                                                    pickedDocName !=
+                                                                        null) {
+                                                                  try {
+                                                                    final dRes = await LaporanService.uploadReportFile(
+                                                                      token:
+                                                                          token,
+                                                                      reportId:
+                                                                          pendingRetryReportId!,
+                                                                      fileBytes:
+                                                                          pickedDocBytes!,
+                                                                      filename:
+                                                                          pickedDocName!,
+                                                                      onProgress:
+                                                                          (p) {
+                                                                            if (sheetContext.mounted) {
+                                                                              setModalState(() {
+                                                                                uploadProgress = p;
+                                                                                uploadProgressLabel = 'Mengunggah ulang dokumen...';
+                                                                              });
+                                                                            }
+                                                                          },
+                                                                    );
+                                                                    if (dRes.statusCode ==
+                                                                            200 ||
+                                                                        dRes.statusCode ==
+                                                                            201) {
+                                                                      retryDocPending =
+                                                                          false;
+                                                                    } else {
+                                                                      ok = false;
+                                                                      errText = LaporanService.extractErrorMessage(
+                                                                        dRes,
+                                                                      );
+                                                                    }
+                                                                  } catch (e) {
+                                                                    ok = false;
+                                                                    errText = LaporanService.friendlyErrorMessage(
+                                                                      e,
+                                                                    );
+                                                                  }
+                                                                }
+                                                                await onReportSaved();
+                                                                if (!sheetContext
+                                                                    .mounted) {
+                                                                  return;
+                                                                }
+                                                                setModalState(() {
+                                                                  isSubmittingForm =
+                                                                      false;
+                                                                  uploadProgress =
+                                                                      null;
+                                                                  uploadProgressLabel =
+                                                                      null;
+                                                                  if (ok) {
+                                                                    pendingRetryReportId =
+                                                                        null;
+                                                                    inlineStatusIsError =
+                                                                        false;
+                                                                    inlineStatusMessage =
+                                                                        'Lampiran berhasil diunggah ulang!';
+                                                                  } else {
+                                                                    inlineStatusIsError =
+                                                                        true;
+                                                                    inlineStatusMessage =
+                                                                        'Upload ulang masih gagal: $errText';
+                                                                  }
+                                                                });
+                                                                if (ok &&
+                                                                    sheetContext
+                                                                        .mounted) {
+                                                                  Navigator.pop(
+                                                                    sheetContext,
+                                                                  );
+                                                                  if (context
+                                                                      .mounted) {
+                                                                    showTopFrontNotification(
+                                                                      context,
+                                                                      message:
+                                                                          'Lampiran laporan berhasil diunggah ulang.',
+                                                                    );
+                                                                  }
+                                                                }
+                                                              },
+                                                        icon: const Icon(
+                                                          Icons.refresh_rounded,
+                                                          size: 17,
+                                                        ),
+                                                        label: const Text(
+                                                          'Coba Upload Ulang Lampiran',
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                        style: OutlinedButton.styleFrom(
+                                                          foregroundColor:
+                                                              Colors
+                                                                  .red
+                                                                  .shade700,
+                                                          side: BorderSide(
+                                                            color: Colors
+                                                                .red
+                                                                .shade400,
+                                                          ),
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
+                                                  ],
                                                 ],
                                               ),
                                             ),
@@ -2095,12 +2564,40 @@ Future<void> showReportForm(
                                                     pickedPhotoFile?.name,
                                                 existingPhotoUrl:
                                                     existingPhotoUrl,
+                                                documentBytes: pickedDocBytes,
+                                                documentFilename: pickedDocName,
+                                                onProgress: (prog, label) {
+                                                  if (sheetContext.mounted) {
+                                                    setModalState(() {
+                                                      uploadProgress = prog;
+                                                      uploadProgressLabel =
+                                                          label;
+                                                    });
+                                                  }
+                                                },
+                                                onUploadRetryRequired:
+                                                    (repId, pPend, dPend) {
+                                                      if (sheetContext
+                                                          .mounted) {
+                                                        setModalState(() {
+                                                          pendingRetryReportId =
+                                                              repId;
+                                                          retryPhotoPending =
+                                                              pPend;
+                                                          retryDocPending =
+                                                              dPend;
+                                                        });
+                                                      }
+                                                    },
                                                 onStatusFeedback: (msg, isErr) {
                                                   if (sheetContext.mounted) {
                                                     setModalState(() {
                                                       inlineStatusMessage = msg;
                                                       inlineStatusIsError =
                                                           isErr;
+                                                      uploadProgress = null;
+                                                      uploadProgressLabel =
+                                                          null;
                                                     });
                                                     scrollFormToBottom();
                                                   }
@@ -2178,6 +2675,8 @@ Future<void> showReportForm(
                                               lokasiCtrl: lokasiCtrl,
                                               latCtrl: latCtrl,
                                               lngCtrl: lngCtrl,
+                                              addressGeolokasi:
+                                                  reverseGeocodedAddress,
                                               customActivityDate:
                                                   formattedDateApi,
                                               status: 'Selesai',
@@ -2186,12 +2685,38 @@ Future<void> showReportForm(
                                               photoBytes: pickedPhotoBytes,
                                               photoFilename:
                                                   pickedPhotoFile?.name,
+                                              existingPhotoUrl:
+                                                  existingPhotoUrl,
+                                              documentBytes: pickedDocBytes,
+                                              documentFilename: pickedDocName,
+                                              onProgress: (prog, label) {
+                                                if (sheetContext.mounted) {
+                                                  setModalState(() {
+                                                    uploadProgress = prog;
+                                                    uploadProgressLabel = label;
+                                                  });
+                                                }
+                                              },
+                                              onUploadRetryRequired:
+                                                  (repId, pPend, dPend) {
+                                                    if (sheetContext.mounted) {
+                                                      setModalState(() {
+                                                        pendingRetryReportId =
+                                                            repId;
+                                                        retryPhotoPending =
+                                                            pPend;
+                                                        retryDocPending = dPend;
+                                                      });
+                                                    }
+                                                  },
                                               onStatusFeedback: (msg, isErr) {
                                                 if (sheetContext.mounted) {
                                                   setModalState(() {
                                                     inlineStatusMessage = msg;
                                                     inlineStatusIsError = isErr;
                                                     isSubmittingForm = false;
+                                                    uploadProgress = null;
+                                                    uploadProgressLabel = null;
                                                   });
                                                   scrollFormToBottom();
                                                 }
@@ -4520,6 +5045,8 @@ void showReportDetail(
                   ),
                   const SizedBox(height: 8),
                   _buildReportPhotoSection(ctx, laporan, isDark),
+                  const SizedBox(height: 18),
+                  _ReportFilesSection(laporan: laporan, isDark: isDark),
                   const SizedBox(height: 20),
                   if (isAdmin && onUpdateStatus != null) ...[
                     const Text(
@@ -4735,36 +5262,32 @@ Widget _buildReportPhotoSection(
 ) {
   String? photoUrl;
 
-  final rawB64 = (laporan['photo_base64'] ?? '').toString().trim();
-  final rawFoto = (laporan['foto'] ?? '').toString().trim();
-  if (rawFoto.startsWith('data:image')) {
-    photoUrl = rawFoto;
-  } else if (rawB64.isNotEmpty) {
-    photoUrl = rawB64.startsWith('data:image')
-        ? rawB64
-        : 'data:image/jpeg;base64,$rawB64';
-  } else if (rawFoto.isNotEmpty) {
-    photoUrl = rawFoto;
-  }
-
-  if ((photoUrl == null || photoUrl.isEmpty) &&
-      laporan['photos'] is List &&
-      (laporan['photos'] as List).isNotEmpty) {
+  if (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty) {
     final first = (laporan['photos'] as List).first;
     if (first is Map) {
-      final pB64 = (first['photo_base64'] ?? '').toString().trim();
-      final raw = (first['url'] ?? first['photo'] ?? first['local_path'] ?? '')
-          .toString()
-          .trim();
-      if (pB64.isNotEmpty) {
-        photoUrl = pB64.startsWith('data:image')
-            ? pB64
-            : 'data:image/jpeg;base64,$pB64';
-      } else if (first['id'] != null) {
-        photoUrl = ApiConstants.reportPhotoFileUrl(first['id']);
-      } else if (raw.isNotEmpty) {
-        photoUrl = raw;
+      final resolved = LaporanService.resolvePhotoUrl(first);
+      if (resolved.isNotEmpty) {
+        photoUrl = resolved;
+      } else if (first['local_path'] != null &&
+          first['local_path'].toString().trim().isNotEmpty) {
+        photoUrl = first['local_path'].toString().trim();
       }
+    }
+  }
+
+  final rawB64 = (laporan['photo_base64'] ?? '').toString().trim();
+  final rawFoto = (laporan['foto'] ?? '').toString().trim();
+  if (photoUrl == null || photoUrl.isEmpty) {
+    if (rawFoto.startsWith('http://') ||
+        rawFoto.startsWith('https://') ||
+        rawFoto.startsWith('data:image')) {
+      photoUrl = rawFoto;
+    } else if (rawB64.isNotEmpty) {
+      photoUrl = rawB64.startsWith('data:image')
+          ? rawB64
+          : 'data:image/jpeg;base64,$rawB64';
+    } else if (rawFoto.isNotEmpty) {
+      photoUrl = rawFoto;
     }
   }
 
@@ -4967,6 +5490,11 @@ Future<void> _handleSubmit({
   Uint8List? photoBytes,
   String? photoFilename,
   String? existingPhotoUrl,
+  Uint8List? documentBytes,
+  String? documentFilename,
+  void Function(double progress, String label)? onProgress,
+  void Function(int reportId, bool photoPending, bool docPending)?
+  onUploadRetryRequired,
   void Function(String message, bool isError)? onStatusFeedback,
 }) async {
   final prefs = await SharedPreferences.getInstance();
@@ -5105,6 +5633,8 @@ Future<void> _handleSubmit({
         jenisLaporan: jenisLaporan,
         photoBytes: photoBytes,
         photoFilename: photoFilename,
+        documentBytes: documentBytes,
+        documentFilename: documentFilename,
       );
       final recordId = 'local_$insertedId';
       await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
@@ -5118,7 +5648,7 @@ Future<void> _handleSubmit({
       );
 
       final offlineMsg = photoBytes != null
-          ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan saat online.'
+          ? 'Laporan dan foto bukti disimpan secara offline. Akan otomatis disinkronkan ke ImageKit saat online.'
           : 'Laporan disimpan secara offline. Akan otomatis dikirim saat ada koneksi.';
       onStatusFeedback?.call(offlineMsg, false);
 
@@ -5143,6 +5673,7 @@ Future<void> _handleSubmit({
         ? int.tryParse(existing!['id'].toString())
         : null;
 
+    onProgress?.call(0.15, 'Menyimpan data laporan...');
     final response = await LaporanService.submitReport(
       token: token,
       payload: payload,
@@ -5165,9 +5696,9 @@ Future<void> _handleSubmit({
       bool photoUploaded = photoBytes == null || serverPhotos.isNotEmpty;
       String? photoError;
 
-      // Jika foto belum masuk melalui JSON payload (misal server versi lama), kirim juga via Multipart
       if (reportId != null && photoBytes != null && !photoUploaded) {
         try {
+          onProgress?.call(0.3, 'Mengunggah foto ke ImageKit...');
           final photoRes = await LaporanService.uploadReportPhoto(
             token: token,
             reportId: reportId,
@@ -5178,6 +5709,12 @@ Future<void> _handleSubmit({
             latitude: double.tryParse(latCtrl.text.trim()),
             longitude: double.tryParse(lngCtrl.text.trim()),
             address: addressGeolokasi ?? location,
+            onProgress: (p) {
+              onProgress?.call(
+                0.3 + (p * 0.4),
+                'Mengunggah foto ke ImageKit...',
+              );
+            },
           );
           if (photoRes.statusCode == 200 || photoRes.statusCode == 201) {
             photoUploaded = true;
@@ -5188,15 +5725,50 @@ Future<void> _handleSubmit({
               }
             } catch (_) {}
           } else {
-            photoError =
-                'Upload foto gagal dengan status ${photoRes.statusCode}.';
+            photoError = LaporanService.extractErrorMessage(photoRes);
           }
         } catch (e) {
-          photoError = 'Upload foto gagal: $e';
+          photoError = LaporanService.friendlyErrorMessage(e);
         }
       } else if (photoBytes != null && reportId == null && !photoUploaded) {
         photoError =
             'Foto belum dapat dikaitkan karena ID laporan tidak tersedia.';
+      }
+
+      String? docError;
+      if (reportId != null &&
+          documentBytes != null &&
+          documentFilename != null) {
+        try {
+          onProgress?.call(0.75, 'Mengunggah dokumen ke Supabase Storage...');
+          final docRes = await LaporanService.uploadReportFile(
+            token: token,
+            reportId: reportId,
+            fileBytes: documentBytes,
+            filename: documentFilename,
+            onProgress: (p) {
+              onProgress?.call(
+                0.75 + (p * 0.25),
+                'Mengunggah dokumen ke Supabase Storage...',
+              );
+            },
+          );
+          if (docRes.statusCode != 200 && docRes.statusCode != 201) {
+            docError = LaporanService.extractErrorMessage(docRes);
+          }
+        } catch (e) {
+          docError = LaporanService.friendlyErrorMessage(e);
+        }
+      }
+
+      String? resolvedRemotePhotoUrl;
+      if (serverPhotos.isNotEmpty && serverPhotos.first is Map) {
+        final remote = LaporanService.resolvePhotoUrl(
+          serverPhotos.first as Map,
+        );
+        if (remote.isNotEmpty) {
+          resolvedRemotePhotoUrl = remote;
+        }
       }
 
       final finalRecordId = (reportId ?? DateTime.now().millisecondsSinceEpoch)
@@ -5204,7 +5776,7 @@ Future<void> _handleSubmit({
 
       await syncToLocalMonitoringStorage(
         finalRecordId,
-        savedPhotoUrl: photoDataUri,
+        savedPhotoUrl: resolvedRemotePhotoUrl ?? photoDataUri,
         serverPhotos: serverPhotos.isNotEmpty ? serverPhotos : null,
       );
       await NotificationService.instance.addReportCreatedNotification(
@@ -5219,31 +5791,43 @@ Future<void> _handleSubmit({
 
       if (!parentContext.mounted) return;
 
+      final hasUploadError = photoError != null || docError != null;
+      if (hasUploadError && reportId != null) {
+        onUploadRetryRequired?.call(
+          reportId,
+          photoError != null,
+          docError != null,
+        );
+      }
+
       final String notifyMsg;
-      if (apiStatus == 'draft') {
-        notifyMsg = photoError != null
-            ? 'Draft disimpan, tetapi upload foto gagal ($photoError).'
-            : photoBytes != null
-            ? 'Draft laporan beserta foto geolokasi berhasil disimpan.'
+      if (hasUploadError) {
+        final parts = <String>[
+          if (photoError != null) 'Foto: $photoError',
+          if (docError != null) 'Dokumen: $docError',
+        ];
+        notifyMsg =
+            'Laporan tersimpan, tetapi upload lampiran gagal (${parts.join('; ')}). Tekan Coba Upload Ulang.';
+      } else if (apiStatus == 'draft') {
+        notifyMsg = photoBytes != null
+            ? 'Draft laporan beserta lampiran berhasil disimpan.'
             : 'Draft berhasil disimpan ke database.';
       } else {
-        notifyMsg = photoError != null
-            ? 'Laporan terkirim, tetapi upload foto gagal ($photoError).'
-            : photoBytes != null
-            ? 'Laporan dan foto bukti geolokasi berhasil dikirim.'
+        notifyMsg = (photoBytes != null || documentBytes != null)
+            ? 'Laporan dan lampiran berhasil dikirim.'
             : 'Laporan berhasil dikirim ke database.';
       }
 
-      onStatusFeedback?.call(notifyMsg, photoError != null);
+      onStatusFeedback?.call(notifyMsg, hasUploadError);
 
-      if (closeOnSuccess && context.mounted) {
+      if (closeOnSuccess && !hasUploadError && context.mounted) {
         Navigator.pop(context);
       }
       if (!parentContext.mounted) return;
       showTopFrontNotification(
         parentContext,
         message: notifyMsg,
-        isError: photoError != null,
+        isError: hasUploadError,
       );
     } else {
       final serverError = LaporanService.extractErrorMessage(response);
@@ -5259,6 +5843,8 @@ Future<void> _handleSubmit({
         jenisLaporan: jenisLaporan,
         photoBytes: photoBytes,
         photoFilename: photoFilename,
+        documentBytes: documentBytes,
+        documentFilename: documentFilename,
       );
       final recordId = 'local_$insertedId';
       await syncToLocalMonitoringStorage(recordId, savedPhotoUrl: photoDataUri);
@@ -5270,7 +5856,7 @@ Future<void> _handleSubmit({
         reportId: recordId,
       );
       const fallbackMsg =
-          'Koneksi bermasalah. Laporan dan foto disimpan di perangkat.';
+          'Koneksi bermasalah. Laporan dan lampiran disimpan di perangkat.';
       onStatusFeedback?.call(fallbackMsg, false);
       if (closeOnSuccess && context.mounted) {
         Navigator.pop(context);
@@ -5285,6 +5871,374 @@ Future<void> _handleSubmit({
       if (!parentContext.mounted) return;
       showTopFrontNotification(parentContext, message: errMsg, isError: true);
     }
+  }
+}
+
+/// Seksi daftar dokumen lampiran laporan (Supabase Storage) pada modal detail laporan.
+class _ReportFilesSection extends StatefulWidget {
+  final Map<String, dynamic> laporan;
+  final bool isDark;
+
+  const _ReportFilesSection({required this.laporan, required this.isDark});
+
+  @override
+  State<_ReportFilesSection> createState() => _ReportFilesSectionState();
+}
+
+class _ReportFilesSectionState extends State<_ReportFilesSection> {
+  List<Map<String, dynamic>> _files = [];
+  bool _isUploading = false;
+  double _uploadProgress = 0.0;
+  String? _statusMessage;
+  bool _isError = false;
+  int? _downloadingFileId;
+
+  @override
+  void initState() {
+    super.initState();
+    final raw = widget.laporan['files'];
+    if (raw is List) {
+      _files = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    _refreshFiles();
+  }
+
+  int? get _reportId => int.tryParse((widget.laporan['id'] ?? '').toString());
+
+  Future<void> _refreshFiles() async {
+    final reportId = _reportId;
+    if (reportId == null || widget.laporan['isOffline'] == true) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+      if (token.isEmpty ||
+          token.startsWith('offline_') ||
+          token.startsWith('google_session_')) {
+        return;
+      }
+      final loaded = await LaporanService.fetchReportFiles(token, reportId);
+      if (!mounted) return;
+      setState(() {
+        _files = loaded;
+        widget.laporan['files'] = loaded;
+      });
+    } catch (_) {
+      // Gunakan daftar files dari cache laporan bila gagal refresh
+    }
+  }
+
+  Future<void> _pickAndUploadDocument() async {
+    final reportId = _reportId;
+    if (reportId == null) return;
+
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'csv',
+          'txt',
+        ],
+        withData: true,
+      );
+      if (res == null || res.files.isEmpty) return;
+
+      final picked = res.files.single;
+      Uint8List? bytes = picked.bytes;
+      if (bytes == null &&
+          !kIsWeb &&
+          picked.path != null &&
+          picked.path!.isNotEmpty) {
+        bytes = await File(picked.path!).readAsBytes();
+      }
+      if (bytes == null || bytes.isEmpty) return;
+
+      if (bytes.length > 20 * 1024 * 1024) {
+        if (mounted) {
+          setState(() {
+            _isError = true;
+            _statusMessage = 'Ukuran dokumen maksimal 20 MB.';
+          });
+        }
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+      if (token.isEmpty) return;
+
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0.05;
+        _statusMessage = null;
+        _isError = false;
+      });
+
+      final uploadRes = await LaporanService.uploadReportFile(
+        token: token,
+        reportId: reportId,
+        fileBytes: bytes,
+        filename: picked.name,
+        onProgress: (p) {
+          if (mounted) setState(() => _uploadProgress = p);
+        },
+      );
+
+      if (!mounted) return;
+      if (uploadRes.statusCode == 200 || uploadRes.statusCode == 201) {
+        setState(() {
+          _isUploading = false;
+          _isError = false;
+          _statusMessage = 'Dokumen "${picked.name}" berhasil diunggah.';
+        });
+        await _refreshFiles();
+      } else {
+        setState(() {
+          _isUploading = false;
+          _isError = true;
+          _statusMessage = LaporanService.extractErrorMessage(uploadRes);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isUploading = false;
+        _isError = true;
+        _statusMessage = LaporanService.friendlyErrorMessage(e);
+      });
+    }
+  }
+
+  Future<void> _downloadFile(Map<String, dynamic> file) async {
+    final fileId = int.tryParse((file['id'] ?? '').toString());
+    if (fileId == null) return;
+    final filename = (file['file_name'] ?? 'dokumen_laporan').toString();
+
+    setState(() {
+      _downloadingFileId = fileId;
+      _statusMessage = null;
+      _isError = false;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+      final saved = await LaporanService.downloadReportFile(
+        token: token,
+        fileId: fileId,
+        filename: filename,
+      );
+      if (!mounted) return;
+      setState(() {
+        _downloadingFileId = null;
+        _isError = !saved.success;
+        _statusMessage = saved.message;
+      });
+      if (saved.success && saved.filePath != null && !kIsWeb) {
+        await DeviceFileStorageService.instance.openFile(saved.filePath!);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _downloadingFileId = null;
+        _isError = true;
+        _statusMessage = LaporanService.friendlyErrorMessage(e);
+      });
+    }
+  }
+
+  Future<void> _deleteFile(Map<String, dynamic> file) async {
+    final fileId = int.tryParse((file['id'] ?? '').toString());
+    if (fileId == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token') ?? '';
+      await LaporanService.deleteReportFile(token, fileId);
+      if (!mounted) return;
+      setState(() {
+        _files.removeWhere((f) => f['id'].toString() == fileId.toString());
+        widget.laporan['files'] = _files;
+        _isError = false;
+        _statusMessage = 'Dokumen berhasil dihapus.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isError = true;
+        _statusMessage = LaporanService.friendlyErrorMessage(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = widget.isDark ? Colors.white : const Color(0xFF24352A);
+    final primaryGreen =
+        widget.isDark ? const Color(0xFF81C784) : LaporanColors.primary;
+    final borderCol = widget.isDark
+        ? const Color(0xFF2E3D34)
+        : LaporanColors.borderDetail;
+    final bgCol =
+        widget.isDark ? const Color(0xFF18221B) : LaporanColors.fieldFill;
+    final canManageOnline =
+        _reportId != null && widget.laporan['isOffline'] != true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Dokumen Lampiran Laporan',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+            ),
+            if (canManageOnline)
+              TextButton.icon(
+                onPressed: _isUploading ? null : _pickAndUploadDocument,
+                icon: const Icon(Icons.upload_file_rounded, size: 17),
+                label: const Text(
+                  'Tambah Dokumen',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+                style: TextButton.styleFrom(foregroundColor: primaryGreen),
+              ),
+          ],
+        ),
+        if (_isUploading) ...[
+          const SizedBox(height: 6),
+          LinearProgressIndicator(value: _uploadProgress, color: primaryGreen),
+          const SizedBox(height: 8),
+        ],
+        if (_statusMessage != null) ...[
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isError
+                  ? Colors.red.withValues(alpha: 0.12)
+                  : primaryGreen.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              _statusMessage!,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _isError ? Colors.red.shade700 : primaryGreen,
+              ),
+            ),
+          ),
+        ],
+        if (_files.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+            decoration: BoxDecoration(
+              color: bgCol,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderCol),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.attach_file_rounded, color: Colors.grey, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Belum ada dokumen pendukung yang dilampirkan.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ..._files.map((file) {
+            final fileId = int.tryParse((file['id'] ?? '').toString());
+            final fileName = (file['file_name'] ?? 'Dokumen').toString();
+            final sizeBytes = int.tryParse((file['file_size'] ?? '0').toString()) ?? 0;
+            final sizeLabel = sizeBytes >= 1024 * 1024
+                ? '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB'
+                : '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+            final isDownloading =
+                fileId != null && _downloadingFileId == fileId;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: bgCol,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderCol),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.description_outlined, color: primaryGreen, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                          ),
+                        ),
+                        Text(
+                          sizeLabel,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Unduh Dokumen',
+                    onPressed:
+                        isDownloading ? null : () => _downloadFile(file),
+                    icon: isDownloading
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: primaryGreen,
+                            ),
+                          )
+                        : Icon(Icons.download_rounded, color: primaryGreen),
+                  ),
+                  IconButton(
+                    tooltip: 'Hapus Dokumen',
+                    onPressed: () => _deleteFile(file),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+      ],
+    );
   }
 }
 

@@ -5,15 +5,19 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Report;
 use App\Models\ReportPhoto;
+use App\Services\ReportPhotoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ReportPhotoController extends Controller
 {
+    public function __construct(
+        private readonly ReportPhotoService $photoService
+    ) {}
+
     public function store(Request $request, $reportId)
     {
-        // Pastikan laporan milik user yang sedang login atau akun admin
         $user = $request->user();
         $query = Report::query();
         if ($user && strtolower((string) $user->role) !== 'admin') {
@@ -43,71 +47,24 @@ class ReportPhotoController extends Controller
             ], 422);
         }
 
-        $path = 'reports/photo_' . $report->id . '_' . time() . '.jpg';
-        $base64 = null;
-
-        if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            try {
-                $realPath = $photo->getRealPath();
-                if ($realPath && file_exists($realPath)) {
-                    $photoBytes = file_get_contents($realPath);
-                    if ($photoBytes !== false) {
-                        $base64 = base64_encode($photoBytes);
-                    }
-                }
-            } catch (\Throwable $e) {}
-
-            // Coba simpan ke disk public; jika di serverless read-only, tetap lanjutkan dengan photo_base64
-            try {
-                if (!Storage::disk('public')->exists('reports')) {
-                    Storage::disk('public')->makeDirectory('reports');
-                }
-                $storedPath = $photo->store('reports', 'public');
-                if ($storedPath) {
-                    $path = $storedPath;
-                }
-            } catch (\Throwable $e) {
-                $ext = strtolower($photo->getClientOriginalExtension() ?: 'jpg');
-                $path = 'reports/photo_' . $report->id . '_' . time() . '.' . $ext;
-            }
-        }
-
-        if (empty($base64) && !empty($validated['photo_base64'])) {
-            $rawB64 = trim($validated['photo_base64']);
-            if (str_contains($rawB64, ',')) {
-                $rawB64 = substr($rawB64, strpos($rawB64, ',') + 1);
-            }
-            $base64 = $rawB64;
-        }
-
-        $photoData = [
-            'report_id' => $report->id,
-            'photo' => $path,
-            'latitude' => $validated['latitude'] ?? $report->latitude,
-            'longitude' => $validated['longitude'] ?? $report->longitude,
-        ];
-
         try {
-            if (Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
-                $photoData['photo_base64'] = $base64;
-            }
-            if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
-                $photoData['address'] = $validated['address'] ?? $report->location;
-            }
+            $reportPhoto = $this->photoService->storeForReport(
+                $report,
+                $request->file('photo'),
+                $validated['photo_base64'] ?? null,
+                [
+                    'latitude' => $validated['latitude'] ?? null,
+                    'longitude' => $validated['longitude'] ?? null,
+                    'address' => $validated['address'] ?? null,
+                ]
+            );
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            $photoData['photo_base64'] = $base64;
-        }
-
-        $reportPhoto = ReportPhoto::create($photoData);
-
-        // Sinkronkan juga koordinat pada laporan induk apabila laporan belum memiliki koordinat
-        if (($report->latitude === null || $report->longitude === null) &&
-            (!empty($validated['latitude']) && !empty($validated['longitude']))) {
-            $report->update([
-                'latitude' => $validated['latitude'],
-                'longitude' => $validated['longitude'],
-            ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage() ?: 'Gagal mengunggah foto laporan.',
+            ], 502);
         }
 
         return response()->json([
@@ -118,8 +75,8 @@ class ReportPhotoController extends Controller
     }
 
     /**
-     * Menyajikan berkas foto laporan secara langsung ke frontend / preview.
-     * Mendukung rute /report-photos/{id}/file maupun /reports/{reportId}/photos/{photoId}/file.
+     * Menyajikan berkas foto laporan ke frontend / preview.
+     * Foto ImageKit langsung diarahkan ke URL ImageKit; foto lama tetap dilayani via fallback.
      */
     public function file($id, $photoId = null)
     {
@@ -137,7 +94,15 @@ class ReportPhotoController extends Controller
             ], 404);
         }
 
-        // 1. Coba dari penyimpanan fisik storage public
+        // 1. Jika tersimpan di ImageKit atau URL eksternal, redirect langsung
+        if (!empty($photo->imagekit_url) && filter_var($photo->imagekit_url, FILTER_VALIDATE_URL)) {
+            return redirect()->away($photo->imagekit_url);
+        }
+        if (!empty($photo->photo) && filter_var($photo->photo, FILTER_VALIDATE_URL)) {
+            return redirect()->away($photo->photo);
+        }
+
+        // 2. Fallback foto lama dari penyimpanan lokal disk public
         try {
             if ($photo->photo && Storage::disk('public')->exists($photo->photo)) {
                 $file = Storage::disk('public')->get($photo->photo);
@@ -148,9 +113,11 @@ class ReportPhotoController extends Controller
                     'Access-Control-Allow-Origin' => '*',
                 ]);
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            // Lanjutkan ke fallback base64
+        }
 
-        // 2. Fallback dari cadangan biner Base64 di database (aman untuk serverless / multi-instance)
+        // 3. Fallback foto lama dari kolom photo_base64
         if (!empty($photo->photo_base64)) {
             $rawB64 = $photo->photo_base64;
             if (str_contains($rawB64, ',')) {
@@ -189,13 +156,7 @@ class ReportPhotoController extends Controller
             ], 404);
         }
 
-        try {
-            if ($photo->photo && Storage::disk('public')->exists($photo->photo)) {
-                Storage::disk('public')->delete($photo->photo);
-            }
-        } catch (\Throwable $e) {}
-
-        $photo->delete();
+        $this->photoService->deletePhoto($photo);
 
         return response()->json([
             'success' => true,

@@ -26,6 +26,11 @@ protected static function booted(): void
 {
     static::deleting(function (Report $report) {
         $report->photos()->delete();
+        try {
+            $report->files()->delete();
+        } catch (\Throwable $e) {
+            // Abaikan jika tabel report_files belum dimigrasi
+        }
     });
 }
 
@@ -60,6 +65,14 @@ protected static function booted(): void
     public function photos()
     {
         return $this->hasMany(ReportPhoto::class);
+    }
+
+    /**
+     * Relasi ke dokumen/lampiran laporan di Supabase Storage.
+     */
+    public function files()
+    {
+        return $this->hasMany(ReportFile::class);
     }
 
     protected $connection = 'db_laporan';

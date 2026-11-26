@@ -5,49 +5,67 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Report;
-use App\Models\ReportPhoto;
+use App\Services\ReportFileService;
+use App\Services\ReportPhotoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class ReportController extends Controller
 {
-    private static ?bool $hasPhotoAddressColumn = null;
-    private static ?bool $hasPhotoBase64Column = null;
+    public function __construct(
+        private readonly ReportPhotoService $photoService,
+        private readonly ReportFileService $fileService
+    ) {}
 
     private function isAdmin($user): bool
     {
         return $user && strtolower((string) $user->role) === 'admin';
     }
 
-    private function hasPhotoAddressColumn(): bool
+    /**
+     * Daftar kolom report_photos yang aman untuk list query (tanpa photo_base64).
+     *
+     * @return array<int, string>
+     */
+    private function getSafePhotoSelectColumns(): array
     {
-        if (self::$hasPhotoAddressColumn === null) {
-            try {
-                self::$hasPhotoAddressColumn = Cache::remember('schema_report_photos_address_v1', 3600, function () {
-                    return Schema::connection('db_foto')
-                        ->hasColumn('report_photos', 'address');
-                });
-            } catch (\Throwable $e) {
-                self::$hasPhotoAddressColumn = false;
+        $base = ['id', 'report_id', 'photo', 'latitude', 'longitude', 'created_at'];
+        $optional = [
+            'address',
+            'imagekit_file_id',
+            'imagekit_url',
+            'file_name',
+            'mime_type',
+            'file_size',
+            'storage_provider',
+        ];
+
+        try {
+            $existing = Cache::remember('schema_report_photos_columns_v2', 300, static function () {
+                return Schema::connection('db_foto')->getColumnListing('report_photos');
+            });
+            foreach ($optional as $col) {
+                if (in_array($col, $existing, true)) {
+                    $base[] = $col;
+                }
             }
+        } catch (\Throwable $e) {
+            // Gunakan kolom dasar jika inspeksi schema gagal
         }
-        return (bool) self::$hasPhotoAddressColumn;
+
+        return $base;
     }
 
-    private function hasPhotoBase64Column(): bool
+    private function hasReportFilesTable(): bool
     {
-        if (self::$hasPhotoBase64Column === null) {
-            try {
-                self::$hasPhotoBase64Column = Cache::remember('schema_report_photos_base64_v1', 3600, function () {
-                    return Schema::connection('db_foto')
-                        ->hasColumn('report_photos', 'photo_base64');
-                });
-            } catch (\Throwable $e) {
-                self::$hasPhotoBase64Column = false;
-            }
+        try {
+            return Cache::remember('schema_report_files_table_v1', 300, static function () {
+                return Schema::connection('db_laporan')->hasTable('report_files');
+            });
+        } catch (\Throwable $e) {
+            return false;
         }
-        return (bool) self::$hasPhotoBase64Column;
     }
 
     public function index(Request $request)
@@ -60,20 +78,18 @@ class ReportController extends Controller
             ], 401);
         }
 
-        // Pilih hanya kolom yang benar-benar ada pada tabel report_photos.
-        // Accessor `url` ditambahkan otomatis oleh model ReportPhoto.
-        $photoColumns = ['id', 'report_id', 'photo', 'latitude', 'longitude', 'created_at'];
-        if ($this->hasPhotoAddressColumn()) {
-            $photoColumns[] = 'address';
-        }
-
-        $query = Report::with([
+        $relations = [
             'user:id,name,email,role',
             'category:id,name',
-            'photos:' . implode(',', $photoColumns),
-        ]);
+            'photos:' . implode(',', $this->getSafePhotoSelectColumns()),
+        ];
 
-        // Jika bukan admin, hanya tampilkan laporan milik user yang login.
+        if ($this->hasReportFilesTable()) {
+            $relations[] = 'files';
+        }
+
+        $query = Report::with($relations);
+
         if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         } elseif ($request->filled('user_id')) {
@@ -109,7 +125,13 @@ class ReportController extends Controller
                 'message' => 'Sesi login tidak valid. Silakan login kembali.',
             ], 401);
         }
-        $query = Report::with(['user:id,name,email,role', 'category:id,name', 'photos']);
+
+        $relations = ['user:id,name,email,role', 'category:id,name', 'photos'];
+        if ($this->hasReportFilesTable()) {
+            $relations[] = 'files';
+        }
+
+        $query = Report::with($relations);
         if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
@@ -123,9 +145,13 @@ class ReportController extends Controller
             ], 404);
         }
 
-        // Khusus laporan individual, buka photo_base64 untuk keperluan export dokumen
+        // Untuk foto lama tanpa URL ImageKit, buka photo_base64 guna kompatibilitas export dokumen
         if ($report->relationLoaded('photos')) {
-            $report->photos->each->makeVisible('photo_base64');
+            $report->photos->each(function ($photo) {
+                if (empty($photo->imagekit_url)) {
+                    $photo->makeVisible('photo_base64');
+                }
+            });
         }
 
         return response()->json([
@@ -143,6 +169,7 @@ class ReportController extends Controller
                 'message' => 'Sesi login tidak valid. Silakan login kembali.',
             ], 401);
         }
+
         $validated = $request->validate([
             'category_id' => 'nullable|exists:categories,id',
             'title' => 'required|string|max:255',
@@ -152,6 +179,8 @@ class ReportController extends Controller
             'longitude' => 'nullable|numeric',
             'description' => 'nullable|string',
             'status' => 'nullable|in:draft,terkirim,diperiksa,disetujui,ditolak',
+            'photo' => 'nullable|file|mimes:jpg,jpeg,png,webp,gif|max:10240',
+            'document' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx,csv,txt|max:20480',
         ]);
 
         $report = Report::create([
@@ -189,32 +218,36 @@ class ReportController extends Controller
             // Abaikan jika tabel belum tersedia
         }
 
-        // Simpan lampiran foto jika dikirimkan bersamaan dengan form laporan
+        // Unggah lampiran foto jika dikirimkan bersamaan dengan form laporan
         if ($request->hasFile('photo')) {
             try {
-                $photoFile = $request->file('photo');
-                $path = $photoFile->store('reports', 'public');
-                $photoBytes = file_get_contents($photoFile->getRealPath());
-                $base64 = $photoBytes !== false ? base64_encode($photoBytes) : null;
-
-                $photoData = [
-                    'report_id' => $report->id,
-                    'photo' => $path,
+                $this->photoService->storeForReport($report, $request->file('photo'), null, [
                     'latitude' => $validated['latitude'] ?? null,
                     'longitude' => $validated['longitude'] ?? null,
-                ];
-                if ($this->hasPhotoBase64Column()) {
-                    $photoData['photo_base64'] = $base64;
-                }
-                if ($this->hasPhotoAddressColumn()) {
-                    $photoData['address'] = $request->input('address', $report->location);
-                }
-
-                ReportPhoto::create($photoData);
-            } catch (\Throwable $e) {}
+                    'address' => $request->input('address', $report->location),
+                ]);
+            } catch (\Throwable $e) {
+                // Laporan tetap dibuat; lampiran dapat diunggah ulang secara terpisah
+            }
         }
 
-        $report->load(['user', 'category', 'photos']);
+        // Unggah lampiran dokumen jika dikirimkan bersamaan dengan form laporan
+        if ($request->hasFile('document') && $this->hasReportFilesTable()) {
+            try {
+                $this->fileService->uploadForReport($report, $request->file('document'), [
+                    'title' => $request->input('document_title'),
+                    'description' => $request->input('document_description'),
+                ]);
+            } catch (\Throwable $e) {
+                // Laporan tetap dibuat; dokumen dapat diunggah ulang melalui endpoint dokumen
+            }
+        }
+
+        $relations = ['user', 'category', 'photos'];
+        if ($this->hasReportFilesTable()) {
+            $relations[] = 'files';
+        }
+        $report->load($relations);
 
         return response()->json([
             'success' => true,
@@ -232,8 +265,8 @@ class ReportController extends Controller
                 'message' => 'Sesi login tidak valid. Silakan login kembali.',
             ], 401);
         }
-        $query = Report::query();
 
+        $query = Report::query();
         if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
@@ -256,35 +289,28 @@ class ReportController extends Controller
             'longitude' => 'sometimes|nullable|numeric',
             'description' => 'sometimes|nullable|string',
             'status' => 'sometimes|required|in:draft,terkirim,diperiksa,disetujui,ditolak',
+            'photo' => 'nullable|file|mimes:jpg,jpeg,png,webp,gif|max:10240',
         ]);
 
-        $report->update($validated);
+        $report->update(collect($validated)->except(['photo'])->all());
 
         if ($request->hasFile('photo')) {
             try {
-                $photoFile = $request->file('photo');
-                $path = $photoFile->store('reports', 'public');
-                $photoBytes = file_get_contents($photoFile->getRealPath());
-                $base64 = $photoBytes !== false ? base64_encode($photoBytes) : null;
-
-                $photoData = [
-                    'report_id' => $report->id,
-                    'photo' => $path,
+                $this->photoService->storeForReport($report, $request->file('photo'), null, [
                     'latitude' => $validated['latitude'] ?? $report->latitude,
                     'longitude' => $validated['longitude'] ?? $report->longitude,
-                ];
-                if ($this->hasPhotoBase64Column()) {
-                    $photoData['photo_base64'] = $base64;
-                }
-                if ($this->hasPhotoAddressColumn()) {
-                    $photoData['address'] = $request->input('address', $report->location);
-                }
-
-                ReportPhoto::create($photoData);
-            } catch (\Throwable $e) {}
+                    'address' => $request->input('address', $report->location),
+                ]);
+            } catch (\Throwable $e) {
+                // Abaikan agar pembaruan metadata laporan tetap berhasil
+            }
         }
 
-        $report->load(['user', 'category', 'photos']);
+        $relations = ['user', 'category', 'photos'];
+        if ($this->hasReportFilesTable()) {
+            $relations[] = 'files';
+        }
+        $report->load($relations);
 
         return response()->json([
             'success' => true,
@@ -302,8 +328,8 @@ class ReportController extends Controller
                 'message' => 'Sesi login tidak valid. Silakan login kembali.',
             ], 401);
         }
-        $query = Report::query();
 
+        $query = Report::query();
         if (!$this->isAdmin($user)) {
             $query->where('user_id', $user->id);
         }
@@ -317,11 +343,24 @@ class ReportController extends Controller
             ], 404);
         }
 
-        // Hapus foto terkait terlebih dahulu agar tidak memicu pelanggaran foreign key di PostgreSQL
+        // Hapus file foto dari ImageKit / disk lokal terlebih dahulu
         try {
-            $report->photos()->delete();
+            foreach ($report->photos()->get() as $photo) {
+                $this->photoService->deletePhoto($photo);
+            }
         } catch (\Throwable $e) {
-            // Abaikan jika tabel/relasi foto tidak tersedia
+            // Tetap lanjutkan penghapusan laporan
+        }
+
+        // Hapus dokumen lampiran dari Supabase Storage jika tabel tersedia
+        if ($this->hasReportFilesTable()) {
+            try {
+                foreach ($report->files()->get() as $file) {
+                    $this->fileService->deleteFile($file);
+                }
+            } catch (\Throwable $e) {
+                // Tetap lanjutkan penghapusan laporan
+            }
         }
 
         $report->delete();

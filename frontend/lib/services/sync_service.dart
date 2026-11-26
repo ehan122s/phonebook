@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'offline_database.dart';
 import 'laporan_service.dart';
+import 'offline_database.dart';
 
 /// Result returned after a synchronisation attempt.
 class SyncResult {
@@ -24,14 +24,13 @@ class SyncResult {
       'SyncResult(total: $total, synced: $synced, failed: $failed)';
 }
 
-/// Synchronises locally stored offline reports with the remote API.
+/// Synchronises locally stored offline reports (along with local photos -> ImageKit
+/// and local documents -> Supabase Storage) with the remote Laravel API.
 class SyncService {
   const SyncService._();
 
   static bool _isSyncing = false;
 
-  /// Attempts to upload every pending / previously-failed report to
-  /// the server using [LaporanService.submitReport].
   static Future<SyncResult> syncAll(String token) async {
     if (_isSyncing ||
         token.isEmpty ||
@@ -50,12 +49,58 @@ class SyncService {
 
       for (final report in pending) {
         final localId = report['id'] as int;
-        if (report['server_id'] != null) {
-          await db.updateSyncStatus(localId, 'synced');
-          continue;
-        }
+        int? serverId = report['server_id'] != null
+            ? int.tryParse(report['server_id'].toString())
+            : null;
 
         try {
+          // 1. Jika laporan belum dibuat di server, kirim data laporan terlebih dahulu
+          if (serverId == null) {
+            final payload = <String, dynamic>{
+              'title': report['title'],
+              'activity_date': report['activity_date'],
+              'location': report['location'],
+              'address': report['address'] ?? report['location'],
+              'description': report['description'],
+              'latitude': report['latitude'] != null
+                  ? double.tryParse(report['latitude'].toString())
+                  : null,
+              'longitude': report['longitude'] != null
+                  ? double.tryParse(report['longitude'].toString())
+                  : null,
+              'category_id': report['category_id'],
+              'status': report['status'] ?? 'draft',
+            };
+
+            final response = await LaporanService.submitReport(
+              token: token,
+              payload: payload,
+            );
+
+            if (response.statusCode != 200 && response.statusCode != 201) {
+              await db.updateSyncStatus(localId, 'failed');
+              failedCount++;
+              continue;
+            }
+
+            try {
+              final body = jsonDecode(response.body);
+              serverId = body['data']?['id'] != null
+                  ? int.tryParse(body['data']['id'].toString())
+                  : null;
+            } catch (_) {}
+
+            if (serverId != null) {
+              await db.updateSyncStatus(
+                localId,
+                'attachment_pending',
+                serverId: serverId,
+              );
+            }
+          }
+
+          // 2. Unggah foto lokal ke backend -> ImageKit jika ada
+          bool allAttachmentsOk = true;
           final String? rawPhotoB64 = report['photo_base64'] as String?;
           final String? localPhotoPath = report['photo_path'] as String?;
           Uint8List? photoBytes;
@@ -83,70 +128,76 @@ class SyncService {
             } catch (_) {}
           }
 
-          final payload = <String, dynamic>{
-            'title': report['title'],
-            'activity_date': report['activity_date'],
-            'location': report['location'],
-            'address': report['address'] ?? report['location'],
-            'description': report['description'],
-            'latitude': report['latitude'] != null
-                ? double.tryParse(report['latitude'].toString())
-                : null,
-            'longitude': report['longitude'] != null
-                ? double.tryParse(report['longitude'].toString())
-                : null,
-            'category_id': report['category_id'],
-            'status': report['status'] ?? 'draft',
-          };
-
-          final response = await LaporanService.submitReport(
-            token: token,
-            payload: payload,
-          );
-
-          if (response.statusCode == 200 || response.statusCode == 201) {
-            int? serverId;
+          if (serverId != null && photoBytes != null && photoBytes.isNotEmpty) {
             try {
-              final body = jsonDecode(response.body);
-              serverId = body['data']?['id'] != null
-                  ? int.tryParse(body['data']['id'].toString())
-                  : null;
-            } catch (_) {}
+              final photoRes = await LaporanService.uploadReportPhoto(
+                token: token,
+                reportId: serverId,
+                photoBytes: photoBytes,
+                filename: filename,
+                latitude: report['latitude'] != null
+                    ? double.tryParse(report['latitude'].toString())
+                    : null,
+                longitude: report['longitude'] != null
+                    ? double.tryParse(report['longitude'].toString())
+                    : null,
+                address: (report['address'] ?? report['location'])?.toString(),
+              );
+              if (photoRes.statusCode != 200 && photoRes.statusCode != 201) {
+                allAttachmentsOk = false;
+              }
+            } catch (_) {
+              allAttachmentsOk = false;
+            }
+          }
 
-            if (serverId != null &&
-                photoBytes != null &&
-                photoBytes.isNotEmpty) {
+          // 3. Unggah dokumen lokal ke backend -> Supabase Storage jika ada
+          final String? localDocPath = report['document_path'] as String?;
+          final String? localDocName = report['document_name'] as String?;
+          if (allAttachmentsOk &&
+              serverId != null &&
+              !kIsWeb &&
+              localDocPath != null &&
+              localDocPath.isNotEmpty) {
+            final docFile = File(localDocPath);
+            if (docFile.existsSync()) {
               try {
-                await LaporanService.uploadReportPhoto(
+                final docBytes = await docFile.readAsBytes();
+                final docRes = await LaporanService.uploadReportFile(
                   token: token,
                   reportId: serverId,
-                  photoBytes: photoBytes,
-                  filename: filename,
-                  latitude: report['latitude'] != null
-                      ? double.tryParse(report['latitude'].toString())
-                      : null,
-                  longitude: report['longitude'] != null
-                      ? double.tryParse(report['longitude'].toString())
-                      : null,
-                  address: (report['address'] ?? report['location'])
-                      ?.toString(),
+                  fileBytes: docBytes,
+                  filename: localDocName?.isNotEmpty == true
+                      ? localDocName!
+                      : docFile.uri.pathSegments.last,
                 );
-              } catch (_) {}
+                if (docRes.statusCode != 200 && docRes.statusCode != 201) {
+                  allAttachmentsOk = false;
+                }
+              } catch (_) {
+                allAttachmentsOk = false;
+              }
             }
+          }
 
-            await db.updateSyncStatus(
-              report['id'] as int,
-              'synced',
-              serverId: serverId,
-            );
+          if (allAttachmentsOk) {
+            await db.updateSyncStatus(localId, 'synced', serverId: serverId);
             await _removeLocalDraftMirror('local_$localId');
             syncedCount++;
           } else {
-            await db.updateSyncStatus(report['id'] as int, 'failed');
+            await db.updateSyncStatus(
+              localId,
+              'attachment_pending',
+              serverId: serverId,
+            );
             failedCount++;
           }
         } catch (_) {
-          await db.updateSyncStatus(report['id'] as int, 'failed');
+          await db.updateSyncStatus(
+            localId,
+            serverId != null ? 'attachment_pending' : 'failed',
+            serverId: serverId,
+          );
           failedCount++;
         }
       }

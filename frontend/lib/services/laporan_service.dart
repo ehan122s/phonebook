@@ -5,10 +5,12 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../constants/api_constants.dart';
 import '../constants/laporan_constants.dart';
+import 'device_file_storage_service.dart';
 import 'offline_database.dart';
 
 /// Base URL for the Laravel API (mengacu ke [ApiConstants.baseUrl]).
@@ -25,7 +27,9 @@ class UnauthorizedException implements Exception {
 /// Exception thrown when user lacks permission (HTTP 403).
 class ForbiddenException implements Exception {
   final String message;
-  const ForbiddenException([this.message = 'Anda tidak memiliki izin untuk mengakses data ini.']);
+  const ForbiddenException([
+    this.message = 'Anda tidak memiliki izin untuk mengakses data ini.',
+  ]);
   @override
   String toString() => message;
 }
@@ -83,7 +87,7 @@ class LaporanService {
       return 'Sesi login telah berakhir. Silakan login kembali.';
     }
     if (response.statusCode == 413) {
-      return 'Ukuran data/foto terlalu besar untuk dikirim ke server.';
+      return 'Ukuran data/berkas terlalu besar untuk dikirim ke server.';
     }
     return 'Server menolak permintaan (HTTP ${response.statusCode}).';
   }
@@ -107,8 +111,44 @@ class LaporanService {
     return null;
   }
 
+  /// Mengambil URL foto terbaik dari object foto backend (memprioritaskan URL ImageKit).
+  static String resolvePhotoUrl(Map photoMap) {
+    final imagekitUrl = (photoMap['imagekit_url'] ?? '').toString().trim();
+    if (imagekitUrl.startsWith('http://') || imagekitUrl.startsWith('https://')) {
+      return imagekitUrl;
+    }
+
+    final directUrl = (photoMap['url'] ?? '').toString().trim();
+    if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) {
+      return directUrl;
+    }
+
+    final rawPhoto = (photoMap['photo'] ?? '').toString().trim();
+    if (rawPhoto.startsWith('http://') ||
+        rawPhoto.startsWith('https://') ||
+        rawPhoto.startsWith('data:image')) {
+      return rawPhoto;
+    }
+
+    final b64 = (photoMap['photo_base64'] ?? '').toString().trim();
+    if (b64.isNotEmpty) {
+      return b64.startsWith('data:image') ? b64 : 'data:image/jpeg;base64,$b64';
+    }
+
+    final photoId = photoMap['id'];
+    if (photoId != null) {
+      return ApiConstants.reportPhotoFileUrl(photoId);
+    }
+
+    if (rawPhoto.isNotEmpty) {
+      return '$baseUrl/storage/$rawPhoto';
+    }
+
+    return '';
+  }
+
   /// Fetches all reports from the API and returns them as a
-  /// list of mapped report data including attached photos and coordinates.
+  /// list of mapped report data including attached photos, documents, and coordinates.
   static Future<List<Map<String, dynamic>>> fetchReports(
     String token, {
     bool forceRefresh = false,
@@ -198,6 +238,10 @@ class LaporanService {
       final List<dynamic> rawPhotos = (report['photos'] is List)
           ? report['photos']
           : [];
+      final List<dynamic> rawFiles = (report['files'] is List)
+          ? report['files']
+          : [];
+
       String photoUrl = '';
       String photoBase64 = '';
       String photoAddress = '';
@@ -207,24 +251,11 @@ class LaporanService {
       if (rawPhotos.isNotEmpty) {
         final first = rawPhotos.first;
         if (first is Map) {
-          final photoId = first['id'];
-          final rawUrl = (first['url'] ?? first['photo'] ?? '').toString();
+          photoUrl = resolvePhotoUrl(first);
           photoBase64 = (first['photo_base64'] ?? '').toString();
           photoAddress = (first['address'] ?? '').toString();
           photoLat = (first['latitude'] ?? '').toString();
           photoLng = (first['longitude'] ?? '').toString();
-
-          if (photoBase64.isNotEmpty) {
-            photoUrl = photoBase64.startsWith('data:image')
-                ? photoBase64
-                : 'data:image/jpeg;base64,$photoBase64';
-          } else if (photoId != null) {
-            photoUrl = ApiConstants.reportPhotoFileUrl(photoId);
-          } else if (rawUrl.isNotEmpty) {
-            photoUrl = rawUrl.startsWith('http') || rawUrl.startsWith('data:')
-                ? rawUrl
-                : '$baseUrl/storage/$rawUrl';
-          }
         }
       }
 
@@ -248,6 +279,7 @@ class LaporanService {
         'foto': photoUrl,
         'photo_base64': photoBase64,
         'photos': rawPhotos,
+        'files': rawFiles,
         'status': LaporanDateUtils.displayStatus(rawStatus),
         'statusApi': rawStatus,
       };
@@ -295,7 +327,57 @@ class LaporanService {
     return response;
   }
 
+  /// Helper untuk mengirim MultipartRequest dengan pelaporan progres upload (0.0 .. 1.0).
+  static Future<http.Response> _sendMultipartWithProgress(
+    http.MultipartRequest multipartRequest, {
+    void Function(double progress)? onProgress,
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    if (onProgress == null) {
+      final streamed = await multipartRequest.send().timeout(timeout);
+      return http.Response.fromStream(streamed);
+    }
+
+    final byteStream = multipartRequest.finalize();
+    final totalBytes = multipartRequest.contentLength;
+    int sentBytes = 0;
+
+    final streamedRequest = http.StreamedRequest(
+      multipartRequest.method,
+      multipartRequest.url,
+    );
+    streamedRequest.headers.addAll(multipartRequest.headers);
+    if (totalBytes > 0) {
+      streamedRequest.contentLength = totalBytes;
+    }
+
+    final subscription = byteStream.listen(
+      (chunk) {
+        sentBytes += chunk.length;
+        streamedRequest.sink.add(chunk);
+        if (totalBytes > 0) {
+          final pct = (sentBytes / totalBytes).clamp(0.0, 1.0);
+          onProgress(pct);
+        }
+      },
+      onDone: () => streamedRequest.sink.close(),
+      onError: (Object err, StackTrace st) {
+        streamedRequest.sink.addError(err, st);
+      },
+      cancelOnError: true,
+    );
+
+    try {
+      final streamedResponse = await streamedRequest.send().timeout(timeout);
+      onProgress(1.0);
+      return await http.Response.fromStream(streamedResponse);
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
   /// Uploads a photo attachment for a given [reportId] along with GPS coordinates & address.
+  /// Backend Laravel mengunggah foto ke ImageKit dan menyimpan URL/metadata di PostgreSQL.
   static Future<http.Response> uploadReportPhoto({
     required String token,
     required int reportId,
@@ -304,6 +386,7 @@ class LaporanService {
     double? latitude,
     double? longitude,
     String? address,
+    void Function(double progress)? onProgress,
   }) async {
     final uri = Uri.parse('$baseUrl/api/reports/$reportId/photos');
     final request = http.MultipartRequest('POST', uri);
@@ -332,8 +415,6 @@ class LaporanService {
       ),
     );
 
-    request.fields['photo_base64'] = base64Encode(photoBytes);
-
     if (latitude != null) {
       request.fields['latitude'] = latitude.toString();
     }
@@ -344,11 +425,155 @@ class LaporanService {
       request.fields['address'] = address.trim();
     }
 
-    final streamedResponse = await request.send().timeout(
-      const Duration(seconds: 30),
+    final response = await _sendMultipartWithProgress(
+      request,
+      onProgress: onProgress,
     );
     clearCache();
-    return http.Response.fromStream(streamedResponse);
+    return response;
+  }
+
+  /// Mengambil daftar dokumen lampiran milik laporan dari API Laravel.
+  static Future<List<Map<String, dynamic>>> fetchReportFiles(
+    String token,
+    int reportId,
+  ) async {
+    final response = await http
+        .get(
+          Uri.parse(ApiConstants.reportFilesUrl(reportId)),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(httpTimeout);
+
+    if (response.statusCode == 401) {
+      throw const UnauthorizedException();
+    }
+    if (response.statusCode != 200) {
+      throw Exception(extractErrorMessage(response));
+    }
+
+    final decoded = jsonDecode(response.body);
+    final list = decoded['data'] is List ? (decoded['data'] as List) : [];
+    return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// Mengunggah dokumen pendukung laporan (PDF, Word, Excel, dll.) ke Supabase Storage melalui API Laravel.
+  static Future<http.Response> uploadReportFile({
+    required String token,
+    required int reportId,
+    required List<int> fileBytes,
+    required String filename,
+    String? title,
+    String? description,
+    void Function(double progress)? onProgress,
+  }) async {
+    final uri = Uri.parse(ApiConstants.reportFilesUrl(reportId));
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Accept'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $token';
+
+    final cleanFilename = filename.isNotEmpty
+        ? filename
+        : 'dokumen_laporan_${DateTime.now().millisecondsSinceEpoch}.pdf';
+
+    final guessedMime = DeviceFileStorageService.guessMimeType(cleanFilename);
+    final parts = guessedMime.split('/');
+    final mediaType = parts.length == 2
+        ? MediaType(parts[0], parts[1])
+        : MediaType('application', 'octet-stream');
+
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        fileBytes,
+        filename: cleanFilename,
+        contentType: mediaType,
+      ),
+    );
+
+    if (title != null && title.trim().isNotEmpty) {
+      request.fields['title'] = title.trim();
+    }
+    if (description != null && description.trim().isNotEmpty) {
+      request.fields['description'] = description.trim();
+    }
+
+    final response = await _sendMultipartWithProgress(
+      request,
+      onProgress: onProgress,
+      timeout: const Duration(seconds: 60),
+    );
+    clearCache();
+    return response;
+  }
+
+  /// Mengunduh dokumen laporan dari Supabase Storage melalui API Laravel yang terautentikasi.
+  static Future<StorageSaveResult> downloadReportFile({
+    required String token,
+    required int fileId,
+    required String filename,
+  }) async {
+    final response = await http
+        .get(
+          Uri.parse(ApiConstants.reportFileDownloadUrl(fileId)),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode == 401) {
+      throw const UnauthorizedException();
+    }
+    if (response.statusCode == 403) {
+      throw ForbiddenException(extractErrorMessage(response));
+    }
+    if (response.statusCode != 200) {
+      throw Exception(extractErrorMessage(response));
+    }
+
+    final bytes = response.bodyBytes;
+    final cleanName = DeviceFileStorageService.sanitizeFileName(filename);
+
+    if (kIsWeb) {
+      final mime = DeviceFileStorageService.guessMimeType(cleanName);
+      final xf = XFile.fromData(bytes, name: cleanName, mimeType: mime);
+      await xf.saveTo(cleanName);
+      return StorageSaveResult(
+        success: true,
+        fileName: cleanName,
+        fileSizeBytes: bytes.length,
+        message: 'Dokumen $cleanName berhasil diunduh.',
+      );
+    }
+
+    return DeviceFileStorageService.instance.saveToDownloads(
+      bytes: bytes,
+      fileName: cleanName,
+      subfolder: 'Phonebook/Dokumen',
+    );
+  }
+
+  /// Menghapus dokumen lampiran laporan di Supabase Storage melalui API Laravel.
+  static Future<void> deleteReportFile(String token, int fileId) async {
+    clearCache();
+    final response = await http
+        .delete(
+          Uri.parse(ApiConstants.reportFileDetailUrl(fileId)),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(httpTimeout);
+
+    if (response.statusCode == 401) {
+      throw const UnauthorizedException();
+    }
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(extractErrorMessage(response));
+    }
   }
 
   /// Deletes a report from the API by its [id].
@@ -370,15 +595,18 @@ class LaporanService {
     }
   }
 
-  /// Saves a report locally for offline use (supporting both Android file system and Web/Base64).
+  /// Saves a report locally for offline use (supporting Android/Desktop file system and Web/Base64).
   static Future<int> saveOffline({
     required Map<String, dynamic> payload,
     required String jenisLaporan,
     Uint8List? photoBytes,
     String? photoFilename,
+    Uint8List? documentBytes,
+    String? documentFilename,
   }) async {
     String? localPhotoPath;
     String? photoBase64;
+    String? localDocPath;
 
     if (photoBytes != null && photoBytes.isNotEmpty) {
       photoBase64 = 'data:image/jpeg;base64,${base64Encode(photoBytes)}';
@@ -400,6 +628,23 @@ class LaporanService {
       }
     }
 
+    if (documentBytes != null && documentBytes.isNotEmpty && !kIsWeb) {
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final docDir = Directory('${appDir.path}/offline_report_docs');
+        if (!docDir.existsSync()) {
+          docDir.createSync(recursive: true);
+        }
+        final safeDocName =
+            documentFilename != null && documentFilename.isNotEmpty
+                ? documentFilename.replaceAll(RegExp(r'[^\w\.-]'), '_')
+                : 'offline_doc_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        final docFile = File('${docDir.path}/$safeDocName');
+        await docFile.writeAsBytes(documentBytes, flush: true);
+        localDocPath = docFile.path;
+      } catch (_) {}
+    }
+
     final data = <String, dynamic>{
       'title': payload['title'],
       'activity_date': payload['activity_date'],
@@ -414,6 +659,8 @@ class LaporanService {
       'sync_status': 'pending',
       'photo_path': localPhotoPath ?? photoBase64,
       'photo_base64': photoBase64,
+      'document_path': localDocPath,
+      'document_name': documentFilename,
     };
 
     try {

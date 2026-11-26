@@ -27,6 +27,7 @@ class ReportCard extends StatelessWidget {
     final bool hasPhoto = (laporan['foto'] != null && laporan['foto'].toString().trim().isNotEmpty) ||
         (laporan['localPhotoPath'] != null && laporan['localPhotoPath'].toString().trim().isNotEmpty) ||
         (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty);
+    final int fileCount = (laporan['files'] is List) ? (laporan['files'] as List).length : 0;
 
     final (Color statusColor, Color statusBg) = switch (status) {
       'Selesai' => (
@@ -188,6 +189,15 @@ class ReportCard extends StatelessWidget {
             _InfoRow(
               icon: Icons.photo_camera_outlined,
               text: 'Foto lampiran terlampir',
+              iconSize: 16,
+            ),
+          ],
+
+          if (fileCount > 0) ...[
+            const SizedBox(height: 8),
+            _InfoRow(
+              icon: Icons.attach_file_rounded,
+              text: '$fileCount dokumen lampiran tersedia',
               iconSize: 16,
             ),
           ],

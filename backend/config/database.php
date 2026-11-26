@@ -3,6 +3,64 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+$buildScopedConnection = static function (string $prefix, string $defaultMysqlDb): array {
+    $driver = env("{$prefix}_CONNECTION", env('DB_CONNECTION', 'sqlite'));
+
+    if ($driver === 'pgsql') {
+        return [
+            'driver' => 'pgsql',
+            'url' => env("{$prefix}_URL", env('DB_URL')),
+            'host' => env("{$prefix}_HOST", env('DB_HOST', '127.0.0.1')),
+            'port' => env("{$prefix}_PORT", env('DB_PORT', '5432')),
+            'database' => env("{$prefix}_DATABASE", env('DB_DATABASE', 'postgres')),
+            'username' => env("{$prefix}_USERNAME", env('DB_USERNAME', 'postgres')),
+            'password' => env("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
+            'charset' => env("{$prefix}_CHARSET", env('DB_CHARSET', 'utf8')),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env("{$prefix}_SSLMODE", env('DB_SSLMODE', 'prefer')),
+            'options' => extension_loaded('pdo_pgsql') ? [
+                \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+            ] : [],
+        ];
+    }
+
+    if ($driver === 'sqlite') {
+        return [
+            'driver' => 'sqlite',
+            'url' => env("{$prefix}_URL", env('DB_URL')),
+            'database' => env("{$prefix}_DATABASE", env('DB_DATABASE', database_path('database.sqlite'))),
+            'prefix' => '',
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            'busy_timeout' => null,
+            'journal_mode' => null,
+            'synchronous' => null,
+            'transaction_mode' => 'DEFERRED',
+        ];
+    }
+
+    return [
+        'driver' => $driver,
+        'url' => env("{$prefix}_URL", env('DB_URL')),
+        'host' => env("{$prefix}_HOST", env('DB_HOST', '127.0.0.1')),
+        'port' => env("{$prefix}_PORT", env('DB_PORT', '3306')),
+        'database' => env("{$prefix}_DATABASE", $defaultMysqlDb),
+        'username' => env("{$prefix}_USERNAME", env('DB_USERNAME', 'root')),
+        'password' => env("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
+        'unix_socket' => env("{$prefix}_SOCKET", env('DB_SOCKET', '')),
+        'charset' => env("{$prefix}_CHARSET", 'utf8mb4'),
+        'collation' => env("{$prefix}_COLLATION", 'utf8mb4_unicode_ci'),
+        'prefix' => '',
+        'prefix_indexes' => true,
+        'strict' => true,
+        'engine' => null,
+        'options' => extension_loaded('pdo_mysql') ? array_filter([
+            (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+        ]) : [],
+    ];
+};
+
 return [
 
     /*
@@ -117,56 +175,11 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
-        'db_laporan' => [
-    'driver' => env('DB_LAPORAN_CONNECTION', env('DB_CONNECTION', 'mysql')),
-    'url' => env('DB_LAPORAN_URL'),
-    'host' => env('DB_LAPORAN_HOST', env('DB_HOST', '127.0.0.1')),
-    'port' => env('DB_LAPORAN_PORT', env('DB_PORT', '3306')),
-    'database' => env('DB_LAPORAN_DATABASE', 'phonebook_laporan'),
-    'username' => env('DB_LAPORAN_USERNAME', env('DB_USERNAME', 'root')),
-    'password' => env('DB_LAPORAN_PASSWORD', env('DB_PASSWORD', '')),
-    'charset' => 'utf8mb4',
-    'collation' => 'utf8mb4_unicode_ci',
-    'prefix' => '',
-    'strict' => true,
-    'options' => extension_loaded('pdo_pgsql') ? [
-        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
-    ] : [],
-],
+        'db_laporan' => $buildScopedConnection('DB_LAPORAN', 'phonebook_laporan'),
 
-'db_foto' => [
-    'driver' => env('DB_FOTO_CONNECTION', env('DB_CONNECTION', 'mysql')),
-    'url' => env('DB_FOTO_URL'),
-    'host' => env('DB_FOTO_HOST', env('DB_HOST', '127.0.0.1')),
-    'port' => env('DB_FOTO_PORT', env('DB_PORT', '3306')),
-    'database' => env('DB_FOTO_DATABASE', 'phonebook_foto'),
-    'username' => env('DB_FOTO_USERNAME', env('DB_USERNAME', 'root')),
-    'password' => env('DB_FOTO_PASSWORD', env('DB_PASSWORD', '')),
-    'charset' => 'utf8mb4',
-    'collation' => 'utf8mb4_unicode_ci',
-    'prefix' => '',
-    'strict' => true,
-    'options' => extension_loaded('pdo_pgsql') ? [
-        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
-    ] : [],
-],
+        'db_foto' => $buildScopedConnection('DB_FOTO', 'phonebook_foto'),
 
-'db_materi' => [
-    'driver' => env('DB_MATERI_CONNECTION', env('DB_CONNECTION', 'mysql')),
-    'url' => env('DB_MATERI_URL'),
-    'host' => env('DB_MATERI_HOST', env('DB_HOST', '127.0.0.1')),
-    'port' => env('DB_MATERI_PORT', env('DB_PORT', '3306')),
-    'database' => env('DB_MATERI_DATABASE', 'phonebook_materi'),
-    'username' => env('DB_MATERI_USERNAME', env('DB_USERNAME', 'root')),
-    'password' => env('DB_MATERI_PASSWORD', env('DB_PASSWORD', '')),
-    'charset' => 'utf8mb4',
-    'collation' => 'utf8mb4_unicode_ci',
-    'prefix' => '',
-    'strict' => true,
-    'options' => extension_loaded('pdo_pgsql') ? [
-        \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
-    ] : [],
-],
+        'db_materi' => $buildScopedConnection('DB_MATERI', 'phonebook_materi'),
 
     ],
 

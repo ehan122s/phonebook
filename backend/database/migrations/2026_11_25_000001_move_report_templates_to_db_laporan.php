@@ -38,19 +38,28 @@ return new class extends Migration
             });
         }
 
-        // Migrasi data dari database utama ke db_laporan jika tabel lama ada
-        if (Schema::connection('mysql')->hasTable('report_templates')) {
-            $oldData = DB::connection('mysql')->table('report_templates')->get();
-            foreach ($oldData as $row) {
-                $data = (array) $row;
-                // Cek apakah ID sudah ada di tabel baru untuk menghindari duplikasi
-                $exists = DB::connection('db_laporan')
-                    ->table('report_templates')
-                    ->where('id', $data['id'])
-                    ->exists();
-                if (!$exists) {
-                    DB::connection('db_laporan')->table('report_templates')->insert($data);
+        // Migrasi data dari database utama ke db_laporan jika kedua database berbeda dan tabel lama ada
+        $defaultConn = config('database.default');
+        $defaultDb = config("database.connections.{$defaultConn}.database");
+        $laporanDb = config('database.connections.db_laporan.database');
+
+        if ($defaultConn !== 'db_laporan' && $defaultDb !== $laporanDb) {
+            try {
+                if (Schema::connection($defaultConn)->hasTable('report_templates')) {
+                    $oldData = DB::connection($defaultConn)->table('report_templates')->get();
+                    foreach ($oldData as $row) {
+                        $data = (array) $row;
+                        $exists = DB::connection('db_laporan')
+                            ->table('report_templates')
+                            ->where('id', $data['id'])
+                            ->exists();
+                        if (!$exists) {
+                            DB::connection('db_laporan')->table('report_templates')->insert($data);
+                        }
+                    }
                 }
+            } catch (\Throwable $e) {
+                // Abaikan jika koneksi asal tidak tersedia
             }
         }
     }

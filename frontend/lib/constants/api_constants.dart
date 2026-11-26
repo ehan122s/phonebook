@@ -14,6 +14,12 @@ abstract final class ApiConstants {
       '$baseUrl/api/reports/$reportId/photos';
   static String reportPhotoFileUrl(dynamic photoId) =>
       '$baseUrl/api/report-photos/$photoId/file';
+  static String reportFilesUrl(dynamic reportId) =>
+      '$baseUrl/api/reports/$reportId/files';
+  static String reportFileDetailUrl(dynamic fileId) =>
+      '$baseUrl/api/report-files/$fileId';
+  static String reportFileDownloadUrl(dynamic fileId) =>
+      '$baseUrl/api/report-files/$fileId/download';
   static String get schedulesUrl => '$baseUrl/api/schedules';
   static String scheduleDetailUrl(dynamic id) => '$baseUrl/api/schedules/$id';
   static String get notificationsUrl => '$baseUrl/api/notifications';

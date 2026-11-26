@@ -64,6 +64,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | External Object Storage & Upload Policies (ImageKit & Supabase Storage)
+    |--------------------------------------------------------------------------
+    */
+
+    'report_photos' => [
+        'provider' => env('REPORT_PHOTO_STORAGE', 'imagekit'),
+        'max_size_kb' => (int) env('REPORT_PHOTO_MAX_SIZE_KB', 10240),
+        'allowed_mimes' => ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+        'allowed_extensions' => ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+    ],
+
+    'report_files' => [
+        'provider' => env('REPORT_FILE_STORAGE', 'supabase'),
+        'bucket' => env('SUPABASE_STORAGE_BUCKET', 'reports'),
+        'is_public' => filter_var(env('SUPABASE_STORAGE_PUBLIC', false), FILTER_VALIDATE_BOOLEAN),
+        'signed_url_expires' => (int) env('SUPABASE_SIGNED_URL_EXPIRES', 300),
+        'max_size_kb' => (int) env('REPORT_FILE_MAX_SIZE_KB', 20480),
+        'allowed_extensions' => ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt'],
+        'allowed_mimes' => [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'text/csv',
+            'text/plain',
+            'application/csv',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Symbolic Links
     |--------------------------------------------------------------------------
     |

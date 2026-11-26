@@ -63,4 +63,22 @@ return [
         ],
     ],
 
+    'imagekit' => [
+        'public_key' => env('IMAGEKIT_PUBLIC_KEY'),
+        'private_key' => env('IMAGEKIT_PRIVATE_KEY'),
+        'url_endpoint' => env('IMAGEKIT_URL_ENDPOINT'),
+        'folder' => env('IMAGEKIT_FOLDER', '/phonebook/reports'),
+        'upload_endpoint' => env('IMAGEKIT_UPLOAD_ENDPOINT', 'https://upload.imagekit.io/api/v1/files/upload'),
+        'api_endpoint' => env('IMAGEKIT_API_ENDPOINT', 'https://api.imagekit.io/v1'),
+    ],
+
+    'supabase' => [
+        'url' => env('SUPABASE_URL'),
+        'service_role_key' => env('SUPABASE_SERVICE_ROLE_KEY'),
+        'anon_key' => env('SUPABASE_ANON_KEY'),
+        'storage_bucket' => env('SUPABASE_STORAGE_BUCKET', 'reports'),
+        'storage_public' => filter_var(env('SUPABASE_STORAGE_PUBLIC', false), FILTER_VALIDATE_BOOLEAN),
+        'signed_url_expires' => (int) env('SUPABASE_SIGNED_URL_EXPIRES', 300),
+    ],
+
 ];

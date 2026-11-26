@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\ReportFileController;
 use App\Http\Controllers\Api\ReportPhotoController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\MaterialController;
@@ -52,6 +53,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/reports/{reportId}/photos', [ReportPhotoController::class, 'store']);
     Route::delete('/report-photos/{id}', [ReportPhotoController::class, 'destroy']);
+
+    Route::get('/reports/{reportId}/files', [ReportFileController::class, 'index']);
+    Route::post('/reports/{reportId}/files', [ReportFileController::class, 'store']);
+    Route::get('/report-files/{id}/download', [ReportFileController::class, 'download']);
+    Route::delete('/report-files/{id}', [ReportFileController::class, 'destroy']);
 });
 
 // Endpoint publik penyajian berkas foto lampiran laporan (untuk preview Flutter Image.network / browser)
