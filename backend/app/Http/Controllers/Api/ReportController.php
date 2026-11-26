@@ -23,7 +23,8 @@ class ReportController extends Controller
     {
         if (self::$hasPhotoAddressColumn === null) {
             try {
-                self::$hasPhotoAddressColumn = Schema::hasColumn('report_photos', 'address');
+                self::$hasPhotoAddressColumn = Schema::connection('db_foto')
+                    ->hasColumn('report_photos', 'address');
             } catch (\Throwable $e) {
                 self::$hasPhotoAddressColumn = false;
             }
@@ -35,7 +36,8 @@ class ReportController extends Controller
     {
         if (self::$hasPhotoBase64Column === null) {
             try {
-                self::$hasPhotoBase64Column = Schema::hasColumn('report_photos', 'photo_base64');
+                self::$hasPhotoBase64Column = Schema::connection('db_foto')
+                    ->hasColumn('report_photos', 'photo_base64');
             } catch (\Throwable $e) {
                 self::$hasPhotoBase64Column = false;
             }

@@ -283,7 +283,7 @@ class UserController extends Controller
         $processedReports = (clone $reportBaseQuery)->whereIn('status', ['diperiksa', 'disetujui', 'ditolak'])->count();
 
         $photoCols = ['id', 'report_id', 'photo', 'latitude', 'longitude'];
-        if (Schema::hasColumn('report_photos', 'address')) {
+        if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
             $photoCols[] = 'address';
         }
         $recentReports = (clone $reportBaseQuery)

@@ -8,8 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('report_photos', function (Blueprint $table) {
-            if (!Schema::hasColumn('report_photos', 'photo_base64')) {
+       Schema::connection('db_foto')->table('report_photos', function (Blueprint $table) {
+            if (!Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
                 $table->longText('photo_base64')->nullable()->after('photo');
             }
         });
@@ -17,8 +17,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('report_photos', function (Blueprint $table) {
-            if (Schema::hasColumn('report_photos', 'photo_base64')) {
+        Schema::connection('db_foto')->table('report_photos', function (Blueprint $table) {
+            if (Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
                 $table->dropColumn('photo_base64');
             }
         });

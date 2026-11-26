@@ -9,6 +9,8 @@ class ReportTemplate extends Model
 {
     use HasFactory;
 
+    protected $connection = 'db_laporan';
+
     protected $fillable = [
         'name',
         'category',
@@ -52,6 +54,10 @@ class ReportTemplate extends Model
         $this->attributes['name'] = $value;
     }
 
+    /**
+     * Relasi cross-database: users ada di database utama (mysql).
+     * Laravel otomatis menggunakan connection dari model User.
+     */
     public function user()
     {
         return $this->belongsTo(User::class, 'uploaded_by');

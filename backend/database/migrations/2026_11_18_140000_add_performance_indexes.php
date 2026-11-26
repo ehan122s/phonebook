@@ -11,23 +11,27 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('reports', function (Blueprint $table) {
+        // Tabel reports berada di db_laporan
+        Schema::connection('db_laporan')->table('reports', function (Blueprint $table) {
             $table->index('user_id', 'idx_reports_user_id');
             $table->index(['user_id', 'created_at'], 'idx_reports_user_created_at');
             $table->index('activity_date', 'idx_reports_activity_date');
         });
 
+        // Tabel schedules tetap di database utama (default)
         Schema::table('schedules', function (Blueprint $table) {
             $table->index('user_id', 'idx_schedules_user_id');
             $table->index(['user_id', 'date'], 'idx_schedules_user_date');
             $table->index(['whatsapp_status', 'reminder_at'], 'idx_schedules_wa_reminder');
         });
 
-        Schema::table('report_templates', function (Blueprint $table) {
+        // Tabel report_templates sekarang di db_laporan
+        Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
             $table->index('is_active', 'idx_report_templates_is_active');
         });
 
-        Schema::table('materials', function (Blueprint $table) {
+        // Tabel materials berada di db_materi
+        Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
             $table->index('created_at', 'idx_materials_created_at');
         });
     }
@@ -37,7 +41,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('reports', function (Blueprint $table) {
+        Schema::connection('db_laporan')->table('reports', function (Blueprint $table) {
             $table->dropIndex('idx_reports_user_id');
             $table->dropIndex('idx_reports_user_created_at');
             $table->dropIndex('idx_reports_activity_date');
@@ -49,11 +53,11 @@ return new class extends Migration
             $table->dropIndex('idx_schedules_wa_reminder');
         });
 
-        Schema::table('report_templates', function (Blueprint $table) {
+        Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
             $table->dropIndex('idx_report_templates_is_active');
         });
 
-        Schema::table('materials', function (Blueprint $table) {
+        Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
             $table->dropIndex('idx_materials_created_at');
         });
     }

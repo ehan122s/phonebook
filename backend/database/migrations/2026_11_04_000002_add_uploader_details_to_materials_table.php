@@ -8,14 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('materials', function (Blueprint $table) {
-            if (!Schema::hasColumn('materials', 'uploader_name')) {
+        Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
+            if (!Schema::connection('db_materi')->hasColumn('materials', 'uploader_name')) {
                 $table->string('uploader_name', 255)->nullable()->after('file_type');
             }
-            if (!Schema::hasColumn('materials', 'uploader_role')) {
+            if (!Schema::connection('db_materi')->hasColumn('materials', 'uploader_role')) {
                 $table->string('uploader_role', 50)->nullable()->after('uploader_name');
             }
-            if (!Schema::hasColumn('materials', 'category_name')) {
+            if (!Schema::connection('db_materi')->hasColumn('materials', 'category_name')) {
                 $table->string('category_name', 100)->nullable()->after('category_id');
             }
         });
@@ -23,7 +23,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('materials', function (Blueprint $table) {
+        Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
             $table->dropColumn(['uploader_name', 'uploader_role', 'category_name']);
         });
     }

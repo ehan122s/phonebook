@@ -8,17 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('reports', function (Blueprint $table) {
+        Schema::connection('db_laporan')->create('reports', function (Blueprint $table) {
             $table->id();
 
-            $table->foreignId('user_id')
-                ->constrained('users')
-                ->cascadeOnDelete();
+            $table->unsignedBigInteger('user_id')->index();
 
-            $table->foreignId('category_id')
-                ->nullable()
-                ->constrained('categories')
-                ->nullOnDelete();
+            $table->unsignedBigInteger('category_id')->nullable()->index();
 
             $table->string('title');
             $table->date('activity_date');
@@ -43,6 +38,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('reports');
+        Schema::connection('db_laporan')->dropIfExists('reports');
     }
 };

@@ -89,10 +89,10 @@ class ReportPhotoController extends Controller
         ];
 
         try {
-            if (Schema::hasColumn('report_photos', 'photo_base64')) {
+            if (Schema::connection('db_foto')->hasColumn('report_photos', 'photo_base64')) {
                 $photoData['photo_base64'] = $base64;
             }
-            if (Schema::hasColumn('report_photos', 'address')) {
+            if (Schema::connection('db_foto')->hasColumn('report_photos', 'address')) {
                 $photoData['address'] = $validated['address'] ?? $report->location;
             }
         } catch (\Throwable $e) {

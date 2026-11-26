@@ -138,7 +138,7 @@ class MaterialController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:mysql,categories,id',
             'category_name' => 'nullable|string|max:100',
             'description' => 'nullable|string',
             'file_type' => 'nullable|string|max:50',
@@ -256,7 +256,7 @@ class MaterialController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => 'nullable|exists:mysql,categories,id',
             'category_name' => 'nullable|string|max:100',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
