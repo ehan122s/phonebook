@@ -16,7 +16,7 @@ class ReportPhotoController extends Controller
         // Pastikan laporan milik user yang sedang login atau akun admin
         $user = $request->user();
         $query = Report::query();
-        if ($user && $user->role !== 'admin') {
+        if ($user && strtolower((string) $user->role) !== 'admin') {
             $query->where('user_id', $user->id);
         }
         $report = $query->find($reportId);
@@ -182,7 +182,7 @@ class ReportPhotoController extends Controller
         $photo = ReportPhoto::with('report')->find($id);
         $user = $request->user();
 
-        if (!$photo || ($user->role !== 'admin' && $photo->report->user_id !== $user->id)) {
+        if (!$photo || !$user || (strtolower((string) $user->role) !== 'admin' && (!$photo->report || (int) $photo->report->user_id !== (int) $user->id))) {
             return response()->json([
                 'success' => false,
                 'message' => 'Foto tidak ditemukan',

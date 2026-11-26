@@ -21,7 +21,7 @@ class MaterialController extends Controller
     private function forgetMaterialsCache(): void
     {
         try {
-            $this->forgetMaterialsCache();
+            Cache::forget('materials_index_v2');
         } catch (\Throwable $e) {
         }
     }
@@ -138,7 +138,7 @@ class MaterialController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:mysql,categories,id',
+            'category_id' => 'nullable|exists:categories,id',
             'category_name' => 'nullable|string|max:100',
             'description' => 'nullable|string',
             'file_type' => 'nullable|string|max:50',
@@ -150,7 +150,7 @@ class MaterialController extends Controller
             'uploader_role' => 'nullable|string|max:50',
         ]);
 
-        $user = $request->user();
+        $user = $request->user() ?? $request->user('sanctum');
 
         // Determine uploader name and role
         $uploaderName = $validated['uploader_name']
@@ -237,7 +237,14 @@ class MaterialController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $user = $request->user();
+        $user = $request->user() ?? $request->user('sanctum');
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
+
         $material = Material::find($id);
 
         if (!$material) {
@@ -248,7 +255,7 @@ class MaterialController extends Controller
         }
 
         // Authorization check: Admin or creator can edit
-        if ($user && !$this->isAdmin($user) && $material->user_id && $material->user_id !== $user->id) {
+        if (!$this->isAdmin($user) && (int) $material->user_id !== (int) $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak akses untuk mengedit materi ini',
@@ -256,7 +263,7 @@ class MaterialController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'nullable|exists:mysql,categories,id',
+            'category_id' => 'nullable|exists:categories,id',
             'category_name' => 'nullable|string|max:100',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -309,7 +316,14 @@ class MaterialController extends Controller
      */
     public function destroy(Request $request, $id)
     {
-        $user = $request->user();
+        $user = $request->user() ?? $request->user('sanctum');
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi login tidak valid. Silakan login kembali.',
+            ], 401);
+        }
+
         $material = Material::find($id);
 
         if (!$material) {
@@ -320,7 +334,7 @@ class MaterialController extends Controller
         }
 
         // Authorization check: Admin or creator can delete
-        if ($user && !$this->isAdmin($user) && $material->user_id && $material->user_id !== $user->id) {
+        if (!$this->isAdmin($user) && (int) $material->user_id !== (int) $user->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda tidak memiliki hak untuk menghapus materi ini',

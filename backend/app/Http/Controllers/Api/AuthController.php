@@ -45,12 +45,20 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $email = strtolower(trim($validated['email']));
+        $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
 
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['Email atau password salah.'],
             ]);
+        }
+
+        if (isset($user->status) && strtolower((string) $user->status) === 'nonaktif') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Anda berstatus Nonaktif. Silakan hubungi Administrator CDK V.',
+            ], 403);
         }
 
         $token = $user->createToken('phonebook-token')->plainTextToken;
@@ -258,6 +266,13 @@ class AuthController extends Controller
         $user = User::where('email', $email)->first();
 
         if ($user) {
+            if (isset($user->status) && strtolower((string) $user->status) === 'nonaktif') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun Anda berstatus Nonaktif. Silakan hubungi Administrator CDK V.',
+                ], 403);
+            }
+
             $isAdminEmail = str_starts_with($email, 'admin@') ||
                 $email === 'admin@kehutanan.go.id' ||
                 $email === 'admin@phonebook.com' ||
@@ -329,6 +344,12 @@ class AuthController extends Controller
             $userData['password'] = Hash::make(\Illuminate\Support\Str::random(32));
             $user = User::create($userData);
         } else {
+            if (isset($user->status) && strtolower((string) $user->status) === 'nonaktif') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun Anda berstatus Nonaktif. Silakan hubungi Administrator CDK V.',
+                ], 403);
+            }
             $user->update($userData);
         }
 
@@ -382,6 +403,12 @@ class AuthController extends Controller
                 ]);
             }
         } else {
+            if (isset($user->status) && strtolower((string) $user->status) === 'nonaktif') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun Anda berstatus Nonaktif. Silakan hubungi Administrator CDK V.',
+                ], 403);
+            }
             if ($isAdminEmail && ($user->role !== 'admin')) {
                 $user->role = 'admin';
                 $user->save();

@@ -26,9 +26,11 @@ return new class extends Migration
         });
 
         // Tabel report_templates sekarang di db_laporan
-        Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
-            $table->index('is_active', 'idx_report_templates_is_active');
-        });
+        if (Schema::connection('db_laporan')->hasTable('report_templates')) {
+            Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
+                $table->index('is_active', 'idx_report_templates_is_active');
+            });
+        }
 
         // Tabel materials berada di db_materi
         Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
@@ -53,9 +55,11 @@ return new class extends Migration
             $table->dropIndex('idx_schedules_wa_reminder');
         });
 
-        Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
-            $table->dropIndex('idx_report_templates_is_active');
-        });
+        if (Schema::connection('db_laporan')->hasTable('report_templates')) {
+            Schema::connection('db_laporan')->table('report_templates', function (Blueprint $table) {
+                $table->dropIndex('idx_report_templates_is_active');
+            });
+        }
 
         Schema::connection('db_materi')->table('materials', function (Blueprint $table) {
             $table->dropIndex('idx_materials_created_at');

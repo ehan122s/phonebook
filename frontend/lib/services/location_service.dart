@@ -416,17 +416,38 @@ class LocationService extends ChangeNotifier {
       final coordStr = (latitude != null && longitude != null)
           ? 'GPS: ${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}'
           : 'GPS: Koordinat belum tersedia';
-      final locStr = (locationName != null && locationName.trim().isNotEmpty)
-          ? locationName.trim()
-          : 'Dokumentasi Lapangan CDK Wilayah V';
+      final bool isLandscape = canvas.width > canvas.height;
+      final bool useLargeFont = canvas.width >= 1080 && canvas.height >= 760;
+      final font = useLargeFont ? img.arial24 : img.arial14;
+      final int charWidth = useLargeFont ? 13 : 8;
+      final int lineHeight = useLargeFont ? 28 : 20;
+      final int padX = (canvas.width * 0.02).round().clamp(12, 28);
+      final int maxTextWidth = (canvas.width - (padX * 2)).clamp(160, canvas.width);
+      final int maxChars = (maxTextWidth / charWidth).floor().clamp(20, 120);
+
+      String fitText(String raw) {
+        final cleaned = raw.trim();
+        if (cleaned.length <= maxChars) return cleaned;
+        return '${cleaned.substring(0, (maxChars - 3).clamp(1, cleaned.length))}...';
+      }
+
+      final coordTimeStr = fitText('$coordStr  |  $timeStr');
+      final locStr = fitText(
+        (locationName != null && locationName.trim().isNotEmpty)
+            ? locationName
+            : 'Dokumentasi Lapangan CDK Wilayah V',
+      );
       final addrStr = (address != null && address.trim().isNotEmpty)
-          ? (address.trim().length > 76
-              ? '${address.trim().substring(0, 76)}...'
-              : address.trim())
+          ? fitText(address)
           : '';
 
-      final barHeight = addrStr.isNotEmpty ? 96 : 74;
-      final barTop = (canvas.height - barHeight).clamp(0, canvas.height);
+      final int lineCount = addrStr.isNotEmpty ? 3 : 2;
+      final int topPad = isLandscape ? 10 : 12;
+      // Extra bottom padding (+6px safety) agar descender huruf (g, j, p, q, y) tidak terpotong di orientasi landscape
+      final int bottomPad = (isLandscape ? 12 : 14) + 6;
+      final int barHeight = (topPad + (lineCount * lineHeight) + bottomPad)
+          .clamp(56, (canvas.height * 0.4).round());
+      final int barTop = (canvas.height - barHeight).clamp(0, canvas.height);
 
       // Gambar pita latar belakang semi-transparan di bagian bawah foto
       img.fillRect(
@@ -450,19 +471,19 @@ class LocationService extends ChangeNotifier {
 
       img.drawString(
         canvas,
-        '$coordStr  |  $timeStr',
-        font: img.arial14,
-        x: 16,
-        y: barTop + 12,
+        coordTimeStr,
+        font: font,
+        x: padX,
+        y: barTop + topPad,
         color: img.ColorRgba8(165, 214, 167, 255),
       );
 
       img.drawString(
         canvas,
-        locStr.length > 76 ? '${locStr.substring(0, 76)}...' : locStr,
-        font: img.arial14,
-        x: 16,
-        y: barTop + 34,
+        locStr,
+        font: font,
+        x: padX,
+        y: barTop + topPad + lineHeight,
         color: img.ColorRgba8(255, 255, 255, 255),
       );
 
@@ -470,9 +491,9 @@ class LocationService extends ChangeNotifier {
         img.drawString(
           canvas,
           addrStr,
-          font: img.arial14,
-          x: 16,
-          y: barTop + 56,
+          font: font,
+          x: padX,
+          y: barTop + topPad + (lineHeight * 2),
           color: img.ColorRgba8(220, 235, 222, 255),
         );
       }

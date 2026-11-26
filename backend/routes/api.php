@@ -89,6 +89,7 @@ Route::delete('/materials/{id}/public', [MaterialController::class, 'destroy']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/materials', [MaterialController::class, 'store']);
     Route::post('/materials/{id}', [MaterialController::class, 'update']);
+    Route::put('/materials/{id}', [MaterialController::class, 'update']);
     Route::delete('/materials/{id}', [MaterialController::class, 'destroy']);
 });
 

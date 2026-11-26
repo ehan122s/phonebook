@@ -156,8 +156,7 @@ class LaporanService {
     if (response.statusCode != 200) {
       final body = response.body;
       final lower = body.toLowerCase();
-      if (lower.contains('tenant or user not found') ||
-          lower.contains('project is paused')) {
+      if (lower.contains('project is paused')) {
         throw Exception(
           'Layanan database sedang tidak aktif sementara. Hubungi administrator.',
         );
@@ -337,13 +336,11 @@ class LaporanService {
     );
 
     if (response.statusCode != 200 && response.statusCode != 204) {
-      final body = response.body;
-      if (body.contains('SQLSTATE') ||
-          body.contains('FATAL') ||
-          body.contains('pooler.supabase')) {
+      final lower = response.body.toLowerCase();
+      if (lower.contains('project is paused')) {
         throw Exception('Database Supabase sedang tidak aktif (Paused).');
       }
-      throw Exception('Gagal menghapus laporan (${response.statusCode})');
+      throw Exception(extractErrorMessage(response));
     }
   }
 

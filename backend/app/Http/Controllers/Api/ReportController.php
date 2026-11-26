@@ -311,6 +311,13 @@ class ReportController extends Controller
             ], 404);
         }
 
+        // Hapus foto terkait terlebih dahulu agar tidak memicu pelanggaran foreign key di PostgreSQL
+        try {
+            $report->photos()->delete();
+        } catch (\Throwable $e) {
+            // Abaikan jika tabel/relasi foto tidak tersedia
+        }
+
         $report->delete();
 
         return response()->json([

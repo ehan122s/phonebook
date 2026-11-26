@@ -49,6 +49,7 @@ class _MateriPageState extends State<MateriPage> {
   String _searchQuery = '';
   String _selectedCategory = 'Semua';
 
+  String _currentUserId = '';
   String _currentUserName = 'Penyuluh Kehutanan';
   String _currentUserRole = 'user';
   String _currentUserEmail = '';
@@ -79,6 +80,7 @@ class _MateriPageState extends State<MateriPage> {
   Future<void> _loadUserAndMaterials() async {
     final prefs = await SharedPreferences.getInstance();
 
+    final userId = (prefs.getString('user_id') ?? '').trim();
     final name = prefs.getString('profil_nama') ??
         prefs.getString('name') ??
         'Penyuluh Kehutanan';
@@ -87,6 +89,7 @@ class _MateriPageState extends State<MateriPage> {
 
     if (mounted) {
       setState(() {
+        _currentUserId = userId;
         _currentUserName = name;
         _currentUserRole = role;
         _currentUserEmail = email;
@@ -287,6 +290,7 @@ class _MateriPageState extends State<MateriPage> {
             merged.add({
               'id': mapItem['id']?.toString() ??
                   'MAT-${DateTime.now().millisecondsSinceEpoch}',
+              'user_id': (mapItem['user_id'] ?? userObj?['id'] ?? '').toString(),
               'title': mapItem['title'] ?? 'Materi Kehutanan',
               'type': (mapItem['file_type'] ?? 'PDF').toString().toUpperCase(),
               'category': mapItem['category_name'] ??
@@ -1412,7 +1416,15 @@ class _MateriPageState extends State<MateriPage> {
     // Kirim ke server backend agar terlihat oleh semua user di perangkat lain
     try {
       final token = prefs.getString('token');
-      final uri = Uri.parse('${ApiConstants.baseUrl}/api/materials/public');
+      final hasAuthToken = token != null &&
+          token.isNotEmpty &&
+          !token.startsWith('offline_') &&
+          !token.startsWith('google_session_');
+      final uri = Uri.parse(
+        hasAuthToken
+            ? ApiConstants.materialsUrl
+            : '${ApiConstants.baseUrl}/api/materials/public',
+      );
 
       if (pickedFile != null && pickedFile.bytes != null) {
         final request = http.MultipartRequest('POST', uri);
@@ -1648,12 +1660,14 @@ class _MateriPageState extends State<MateriPage> {
         rawUrl.contains('docs.google.com') ||
         (rawUrl.startsWith('http') && rawUrl.contains('drive'));
 
-    final isUploader =
-        uploaderName.toLowerCase() == _currentUserName.toLowerCase() ||
-            (_currentUserEmail.isNotEmpty &&
-                uploaderName.toLowerCase() ==
-                    _currentUserEmail.toLowerCase()) ||
-            _currentUserRole == 'admin';
+    final materialUserId = (material['user_id'] ?? '').toString().trim();
+    final isUploader = _currentUserRole == 'admin' ||
+        (materialUserId.isNotEmpty && _currentUserId.isNotEmpty
+            ? materialUserId == _currentUserId
+            : (uploaderName.toLowerCase() == _currentUserName.toLowerCase() ||
+                (_currentUserEmail.isNotEmpty &&
+                    uploaderName.toLowerCase() ==
+                        _currentUserEmail.toLowerCase())));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDownloading = _downloadingIds.contains(
@@ -2582,7 +2596,15 @@ class _MateriPageState extends State<MateriPage> {
                             // 2. Kirim update ke backend Laravel & PostgreSQL Supabase
                             try {
                               if (!idStr.startsWith('MAT-')) {
-                                final uri = Uri.parse('${ApiConstants.baseUrl}/api/materials/$idStr/public');
+                                final hasAuthToken = token != null &&
+                                    token.isNotEmpty &&
+                                    !token.startsWith('offline_') &&
+                                    !token.startsWith('google_session_');
+                                final uri = Uri.parse(
+                                  hasAuthToken
+                                      ? '${ApiConstants.baseUrl}/api/materials/$idStr'
+                                      : '${ApiConstants.baseUrl}/api/materials/$idStr/public',
+                                );
 
                                 if (replacementFile != null && replacementFile!.bytes != null) {
                                   final req = http.MultipartRequest('POST', uri);
@@ -2700,13 +2722,18 @@ class _MateriPageState extends State<MateriPage> {
                   headers['Authorization'] = 'Bearer $token';
                 }
                 try {
+                  final hasAuthToken = token != null &&
+                      token.isNotEmpty &&
+                      !token.startsWith('offline_') &&
+                      !token.startsWith('google_session_');
+                  final primaryUrl = hasAuthToken
+                      ? '${ApiConstants.baseUrl}/api/materials/$idStr'
+                      : '${ApiConstants.baseUrl}/api/materials/$idStr/public';
                   final res = await http.delete(
-                    Uri.parse(
-                      '${ApiConstants.baseUrl}/api/materials/$idStr/public',
-                    ),
+                    Uri.parse(primaryUrl),
                     headers: headers,
                   );
-                  if (res.statusCode != 200) {
+                  if (!hasAuthToken && res.statusCode != 200) {
                     await http.delete(
                       Uri.parse(
                         '${ApiConstants.baseUrl}/api/materials/$idStr',
