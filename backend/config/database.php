@@ -22,6 +22,8 @@ $buildScopedConnection = static function (string $prefix, string $defaultMysqlDb
             'sslmode' => env("{$prefix}_SSLMODE", env('DB_SSLMODE', 'prefer')),
             'options' => extension_loaded('pdo_pgsql') ? [
                 \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+                \PDO::ATTR_EMULATE_PREPARES => filter_var(env('DB_EMULATE_PREPARES', true), FILTER_VALIDATE_BOOLEAN),
+                \PDO::ATTR_PERSISTENT => false,
             ] : [],
         ];
     }
@@ -157,6 +159,8 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'options' => extension_loaded('pdo_pgsql') ? [
                 \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
+                \PDO::ATTR_EMULATE_PREPARES => filter_var(env('DB_EMULATE_PREPARES', true), FILTER_VALIDATE_BOOLEAN),
+                \PDO::ATTR_PERSISTENT => false,
             ] : [],
         ],
 

@@ -31,8 +31,11 @@ class GoogleAuthService {
 
   /// Memutuskan sesi akun Google lokal (agar pengguna dapat berganti akun saat login berikutnya)
   static Future<void> signOut() async {
+    if (_isDesktop) return;
     try {
       await _googleSignIn.signOut();
+    } on MissingPluginException {
+      // Abaikan jika plugin google_sign_in tidak tersedia pada platform/test ini
     } catch (e) {
       debugPrint('GoogleAuthService signOut error: $e');
     }
