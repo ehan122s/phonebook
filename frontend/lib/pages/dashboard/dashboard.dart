@@ -15,7 +15,6 @@ import '../../services/location_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/offline_database.dart';
 import '../../widgets/location_dashboard_widget.dart';
-import '../ai/ai_agent_page.dart';
 import '../jadwal/jadwal.dart';
 import '../laporan/laporan.dart';
 import '../notifikasi/notifikasi_page.dart';
@@ -410,86 +409,6 @@ class _DashboardPageState extends State<DashboardPage> {
                             ),
                           ),
                         ],
-                      ),
-
-                      const SizedBox(height: 14),
-                      Material(
-                        color: isDark ? const Color(0xFF1A2820) : DashboardPage.kLightGreen,
-                        borderRadius: BorderRadius.circular(18),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const AiAgentPage(),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: DashboardPage.kPrimary.withValues(
-                                  alpha: isDark ? 0.45 : 0.18,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: DashboardPage.kPrimary,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Icon(
-                                    Icons.auto_awesome_rounded,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Asisten AI Phonebook',
-                                        style: TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: textColor,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Tanya fitur, susun & rangkum laporan kehutanan',
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : DashboardPage.kTextSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 16,
-                                  color: isDark
-                                      ? const Color(0xFF81C784)
-                                      : DashboardPage.kPrimary,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 26),

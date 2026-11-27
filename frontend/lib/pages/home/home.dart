@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
+import '../ai/ai_agent_page.dart';
 import '../dashboard/dashboard.dart';
 import '../laporan/laporan.dart';
 import '../jadwal/jadwal.dart';
@@ -233,46 +234,109 @@ class _HomePageState extends State<HomePage>
         extendBody: true,
         body: ColoredBox(
           color: bgColor,
-          child: ClipRect(
-            child: AnimatedBuilder(
-              animation: _transitionCtrl,
-              builder: (context, _) {
-                final bool activeTransition = _isAnimating &&
-                    _previousIndex != null &&
-                    _previousIndex != selectedIndex;
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRect(
+                child: AnimatedBuilder(
+                  animation: _transitionCtrl,
+                  builder: (context, _) {
+                    final bool activeTransition = _isAnimating &&
+                        _previousIndex != null &&
+                        _previousIndex != selectedIndex;
 
-                return Stack(
-                  fit: StackFit.expand,
-                  children: List<Widget>.generate(_pages.length, (index) {
-                    final page = _pages[index];
-                    if (page == null && index != selectedIndex) {
-                      return const SizedBox.shrink();
-                    }
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: List<Widget>.generate(_pages.length, (index) {
+                        final page = _pages[index];
+                        if (page == null && index != selectedIndex) {
+                          return const SizedBox.shrink();
+                        }
 
-                    final resolvedPage = _pageAt(index);
-                    final bool isCurrent = index == selectedIndex;
-                    final bool isPrevious =
-                        activeTransition && index == _previousIndex;
-                    final bool isVisible = isCurrent || isPrevious;
+                        final resolvedPage = _pageAt(index);
+                        final bool isCurrent = index == selectedIndex;
+                        final bool isPrevious =
+                            activeTransition && index == _previousIndex;
+                        final bool isVisible = isCurrent || isPrevious;
 
-                    return Offstage(
-                      key: ValueKey<String>('home_tab_slot_$index'),
-                      offstage: !isVisible,
-                      child: TickerMode(
-                        enabled: isVisible,
-                        child: _buildTransitionedPage(
-                          child: resolvedPage,
-                          bgColor: bgColor,
-                          isCurrent: isCurrent,
-                          isPrevious: isPrevious,
-                          activeTransition: activeTransition,
+                        return Offstage(
+                          key: ValueKey<String>('home_tab_slot_$index'),
+                          offstage: !isVisible,
+                          child: TickerMode(
+                            enabled: isVisible,
+                            child: _buildTransitionedPage(
+                              child: resolvedPage,
+                              bgColor: bgColor,
+                              isCurrent: isCurrent,
+                              isPrevious: isPrevious,
+                              activeTransition: activeTransition,
+                            ),
+                          ),
+                        );
+                      }),
+                    );
+                  },
+                ),
+              ),
+              Positioned(
+                left: 16,
+                bottom: 88.0 + MediaQuery.paddingOf(context).bottom,
+                child: Material(
+                  color: Colors.transparent,
+                  elevation: 6,
+                  shadowColor: const Color(0xFF245C3A).withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(28),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AiAgentPage(),
+                        ),
+                      );
+                    },
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 11,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF2E7D32), Color(0xFF245C3A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          width: 1,
                         ),
                       ),
-                    );
-                  }),
-                );
-              },
-            ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Colors.white,
+                            size: 19,
+                          ),
+                          SizedBox(width: 7),
+                          Text(
+                            'Tanya AI',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         bottomNavigationBar: BottomNav(
