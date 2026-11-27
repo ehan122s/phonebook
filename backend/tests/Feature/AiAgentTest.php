@@ -329,4 +329,30 @@ class AiAgentTest extends TestCase
 
         $this->assertSame([1, 'Rapat Tim', 'true', 'false', 10], $prepared);
     }
+
+    public function test_groq_service_falls_back_to_secondary_model_on_429(): void
+    {
+        Http::fake([
+            'api.groq.com/*' => Http::sequence()
+                ->push(['error' => ['message' => 'Rate limit reached']], 429)
+                ->push([
+                    'model' => 'llama-3.1-8b-instant',
+                    'choices' => [
+                        ['message' => ['role' => 'assistant', 'content' => 'Berhasil via fallback model.']],
+                    ],
+                ], 200),
+        ]);
+
+        Sanctum::actingAs($this->user1);
+        $res = $this->postJson('/api/ai/chat', ['message' => 'Halo']);
+
+        $res->assertStatus(200)
+            ->assertJson([
+                'success' => true,
+                'data' => [
+                    'reply' => 'Berhasil via fallback model.',
+                    'model' => 'llama-3.1-8b-instant',
+                ],
+            ]);
+    }
 }

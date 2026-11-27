@@ -29,94 +29,34 @@ class AiAgentToolService
     ) {}
 
     /**
-     * Daftar definisi tools dalam format OpenAI/Groq Function Calling.
+     * Daftar definisi tools ringkas (8 tool domain) agar hemat token TPM Groq
+     * namun tetap mencakup seluruh akses baca, buat, edit, dan hapus aplikasi.
      *
      * @return array<int, array<string, mixed>>
      */
     public function getToolDefinitions(): array
     {
         return [
-            // --- LAPORAN & MONITORING ---
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'get_user_reports',
-                    'description' => 'Mengambil daftar ringkas laporan kegiatan/monitoring milik pengguna (atau semua laporan jika admin).',
+                    'name' => 'manage_reports',
+                    'description' => 'Kelola laporan & laporan monitoring (list, detail, templates, create, update, delete).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'status' => [
-                                'type' => 'string',
-                                'enum' => ['semua', 'draft', 'terkirim', 'diperiksa', 'disetujui', 'ditolak'],
-                                'description' => 'Filter status laporan (opsional). Default: semua.',
-                            ],
-                            'limit' => [
-                                'type' => 'integer',
-                                'description' => 'Jumlah maksimal laporan (1-15). Default: 10.',
-                            ],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_report_detail',
-                    'description' => 'Membaca detail lengkap satu laporan (termasuk data monitoring) berdasarkan ID laporan.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'report_id' => ['type' => 'integer', 'description' => 'ID numerik laporan.'],
-                        ],
-                        'required' => ['report_id'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'create_report',
-                    'description' => 'Membuat laporan kegiatan atau laporan monitoring baru. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'title' => ['type' => 'string', 'description' => 'Judul laporan kegiatan.'],
-                            'activity_date' => ['type' => 'string', 'description' => 'Tanggal kegiatan (YYYY-MM-DD).'],
-                            'location' => ['type' => 'string', 'description' => 'Lokasi kegiatan lapangan.'],
-                            'description' => ['type' => 'string', 'description' => 'Uraian isi/hasil kegiatan (opsional jika monitoring).'],
-                            'category_id' => ['type' => 'integer', 'description' => 'ID kategori (opsional).'],
-                            'status' => ['type' => 'string', 'enum' => ['draft', 'terkirim'], 'description' => 'Status laporan. Default: draft.'],
-                            'report_type' => ['type' => 'string', 'enum' => ['regular', 'monitoring'], 'description' => 'Tipe laporan: regular atau monitoring. Default: regular.'],
-                            'activity_name' => ['type' => 'string', 'description' => 'Nama kegiatan monitoring (jika report_type=monitoring).'],
-                            'monitoring_period' => ['type' => 'string', 'description' => 'Periode monitoring, mis. November 2026.'],
-                            'target_value' => ['type' => 'number', 'description' => 'Nilai target kuantitatif monitoring.'],
-                            'target_unit' => ['type' => 'string', 'description' => 'Satuan target (batang, ha, unit, kegiatan, dll).'],
-                            'actual_value' => ['type' => 'number', 'description' => 'Nilai capaian aktual monitoring.'],
-                            'field_facts' => ['type' => 'string', 'description' => 'Fakta dan kondisi lapangan.'],
-                            'obstacles' => ['type' => 'string', 'description' => 'Kendala di lapangan.'],
-                            'recommendations' => ['type' => 'string', 'description' => 'Rekomendasi perbaikan.'],
-                            'follow_up_plan' => ['type' => 'string', 'description' => 'Rencana tindak lanjut.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi untuk menyimpan.'],
-                        ],
-                        'required' => ['title', 'activity_date', 'location', 'confirmed'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'update_report',
-                    'description' => 'Mengedit laporan yang sudah ada berdasarkan report_id. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'report_id' => ['type' => 'integer', 'description' => 'ID laporan yang akan diedit.'],
+                            'action' => ['type' => 'string', 'enum' => ['list', 'detail', 'templates', 'create', 'update', 'delete']],
+                            'report_id' => ['type' => 'integer'],
+                            'status' => ['type' => 'string', 'enum' => ['semua', 'draft', 'terkirim', 'diperiksa', 'disetujui', 'ditolak']],
+                            'limit' => ['type' => 'integer'],
                             'title' => ['type' => 'string'],
                             'activity_date' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                             'location' => ['type' => 'string'],
                             'description' => ['type' => 'string'],
                             'category_id' => ['type' => 'integer'],
-                            'status' => ['type' => 'string', 'enum' => ['draft', 'terkirim', 'diperiksa', 'disetujui', 'ditolak']],
+                            'report_type' => ['type' => 'string', 'enum' => ['regular', 'monitoring']],
+                            'activity_name' => ['type' => 'string'],
+                            'monitoring_period' => ['type' => 'string'],
                             'target_value' => ['type' => 'number'],
                             'target_unit' => ['type' => 'string'],
                             'actual_value' => ['type' => 'number'],
@@ -124,85 +64,23 @@ class AiAgentToolService
                             'obstacles' => ['type' => 'string'],
                             'recommendations' => ['type' => 'string'],
                             'follow_up_plan' => ['type' => 'string'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi perubahan.'],
+                            'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['report_id', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'delete_report',
-                    'description' => 'Menghapus laporan berdasarkan report_id. Set confirmed=true HANYA setelah pengguna secara eksplisit menyetujui penghapusan.',
+                    'name' => 'manage_schedules',
+                    'description' => 'Kelola jadwal kegiatan pengguna WIB (list, create, update, delete).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'report_id' => ['type' => 'integer', 'description' => 'ID laporan yang akan dihapus.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi penghapusan.'],
-                        ],
-                        'required' => ['report_id', 'confirmed'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_report_templates',
-                    'description' => 'Mengambil daftar template form laporan yang aktif di aplikasi.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => new \stdClass(),
-                    ],
-                ],
-            ],
-
-            // --- JADWAL ---
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_user_schedules',
-                    'description' => 'Mengambil daftar jadwal kegiatan milik pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'limit' => ['type' => 'integer', 'description' => 'Jumlah maksimal jadwal (1-15). Default: 10.'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'create_schedule',
-                    'description' => 'Membuat jadwal kegiatan baru milik pengguna (WIB). Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'title' => ['type' => 'string', 'description' => 'Judul kegiatan jadwal.'],
-                            'category' => ['type' => 'string', 'description' => 'Kategori jadwal (opsional, mis. Rapat, Penyuluhan, Lapangan).'],
-                            'date' => ['type' => 'string', 'description' => 'Tanggal kegiatan (YYYY-MM-DD).'],
-                            'start_time' => ['type' => 'string', 'description' => 'Jam mulai (HH:MM WIB).'],
-                            'end_time' => ['type' => 'string', 'description' => 'Jam selesai (HH:MM WIB, opsional).'],
-                            'location' => ['type' => 'string', 'description' => 'Lokasi kegiatan (opsional).'],
-                            'description' => ['type' => 'string', 'description' => 'Keterangan tambahan (opsional).'],
-                            'reminder_enabled' => ['type' => 'boolean', 'description' => 'Aktifkan pengingat (default: true).'],
-                            'reminder_minutes' => ['type' => 'integer', 'description' => 'Menit pengingat sebelum acara (5, 10, atau 30). Default: 10.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi untuk menyimpan.'],
-                        ],
-                        'required' => ['title', 'date', 'start_time', 'confirmed'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'update_schedule',
-                    'description' => 'Mengedit jadwal kegiatan milik pengguna berdasarkan schedule_id (termasuk menandai selesai). Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'schedule_id' => ['type' => 'integer', 'description' => 'ID jadwal yang akan diedit.'],
+                            'action' => ['type' => 'string', 'enum' => ['list', 'create', 'update', 'delete']],
+                            'schedule_id' => ['type' => 'integer'],
+                            'limit' => ['type' => 'integer'],
                             'title' => ['type' => 'string'],
                             'category' => ['type' => 'string'],
                             'date' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
@@ -212,222 +90,80 @@ class AiAgentToolService
                             'description' => ['type' => 'string'],
                             'reminder_enabled' => ['type' => 'boolean'],
                             'reminder_minutes' => ['type' => 'integer'],
-                            'is_completed' => ['type' => 'boolean', 'description' => 'Tandai jadwal selesai (true/false).'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi perubahan.'],
+                            'is_completed' => ['type' => 'boolean'],
+                            'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['schedule_id', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'delete_schedule',
-                    'description' => 'Menghapus jadwal kegiatan berdasarkan schedule_id. Set confirmed=true HANYA setelah konfirmasi pengguna.',
+                    'name' => 'manage_materials',
+                    'description' => 'Kelola materi edukasi kehutanan (list, create, update, delete).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'schedule_id' => ['type' => 'integer', 'description' => 'ID jadwal yang akan dihapus.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi penghapusan.'],
-                        ],
-                        'required' => ['schedule_id', 'confirmed'],
-                    ],
-                ],
-            ],
-
-            // --- MATERI EDUKASI ---
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_materials',
-                    'description' => 'Mengambil daftar materi edukasi kehutanan terbaru.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'limit' => ['type' => 'integer', 'description' => 'Jumlah maksimal materi (1-15). Default: 10.'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'create_material',
-                    'description' => 'Membuat materi edukasi kehutanan baru. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'title' => ['type' => 'string', 'description' => 'Judul materi edukasi.'],
-                            'category_name' => ['type' => 'string', 'description' => 'Nama kategori materi.'],
-                            'description' => ['type' => 'string', 'description' => 'Ringkasan atau isi panduan materi.'],
-                            'drive_url' => ['type' => 'string', 'description' => 'Tautan HTTPS dokumen materi (opsional).'],
-                            'file_type' => ['type' => 'string', 'description' => 'Tipe file (PDF, DOCX, LINK). Default: PDF.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi untuk menyimpan.'],
-                        ],
-                        'required' => ['title', 'category_name', 'description', 'confirmed'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'update_material',
-                    'description' => 'Mengedit materi edukasi berdasarkan material_id (pembuat materi atau admin). Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'material_id' => ['type' => 'integer', 'description' => 'ID materi yang akan diedit.'],
+                            'action' => ['type' => 'string', 'enum' => ['list', 'create', 'update', 'delete']],
+                            'material_id' => ['type' => 'integer'],
+                            'limit' => ['type' => 'integer'],
                             'title' => ['type' => 'string'],
                             'category_name' => ['type' => 'string'],
                             'description' => ['type' => 'string'],
                             'drive_url' => ['type' => 'string'],
                             'file_type' => ['type' => 'string'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi perubahan.'],
-                        ],
-                        'required' => ['material_id', 'confirmed'],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'delete_material',
-                    'description' => 'Menghapus materi edukasi berdasarkan material_id (pembuat materi atau admin). Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'material_id' => ['type' => 'integer', 'description' => 'ID materi yang akan dihapus.'],
-                            'confirmed' => ['type' => 'boolean', 'description' => 'True jika pengguna sudah mengonfirmasi penghapusan.'],
-                        ],
-                        'required' => ['material_id', 'confirmed'],
-                    ],
-                ],
-            ],
-
-            // --- KATEGORI ---
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_categories',
-                    'description' => 'Mengambil daftar kategori laporan dan materi yang tersedia di sistem.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => new \stdClass(),
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'create_category',
-                    'description' => 'Membuat kategori baru. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'name' => ['type' => 'string', 'description' => 'Nama kategori baru.'],
                             'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['name', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'update_category',
-                    'description' => 'Mengubah nama kategori berdasarkan category_id. Set confirmed=true HANYA setelah konfirmasi pengguna.',
+                    'name' => 'manage_categories',
+                    'description' => 'Kelola kategori laporan dan materi (list, create, update, delete).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
+                            'action' => ['type' => 'string', 'enum' => ['list', 'create', 'update', 'delete']],
                             'category_id' => ['type' => 'integer'],
                             'name' => ['type' => 'string'],
                             'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['category_id', 'name', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'delete_category',
-                    'description' => 'Menghapus kategori berdasarkan category_id. Set confirmed=true HANYA setelah konfirmasi pengguna.',
+                    'name' => 'manage_notifications',
+                    'description' => 'Kelola notifikasi pengguna (list, mark_read, delete).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'category_id' => ['type' => 'integer'],
+                            'action' => ['type' => 'string', 'enum' => ['list', 'mark_read', 'delete']],
+                            'notification_id' => ['type' => 'integer'],
+                            'mark_all' => ['type' => 'boolean'],
+                            'clear_all' => ['type' => 'boolean'],
+                            'limit' => ['type' => 'integer'],
                             'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['category_id', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
-
-            // --- NOTIFIKASI ---
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'get_notifications',
-                    'description' => 'Mengambil daftar notifikasi milik pengguna beserta jumlah yang belum dibaca.',
+                    'name' => 'manage_profile',
+                    'description' => 'Baca atau ubah profil pengguna sendiri (get, update).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'limit' => ['type' => 'integer', 'description' => 'Jumlah maksimal notifikasi (1-20). Default: 10.'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'mark_notification_read',
-                    'description' => 'Menandai satu notifikasi atau semua notifikasi pengguna sebagai sudah dibaca.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'notification_id' => ['type' => 'integer', 'description' => 'ID notifikasi (opsional jika mark_all=true).'],
-                            'mark_all' => ['type' => 'boolean', 'description' => 'Set true untuk menandai semua notifikasi sebagai sudah dibaca.'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'delete_notification',
-                    'description' => 'Menghapus satu notifikasi atau seluruh notifikasi pengguna. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'notification_id' => ['type' => 'integer', 'description' => 'ID notifikasi (opsional jika clear_all=true).'],
-                            'clear_all' => ['type' => 'boolean', 'description' => 'Set true untuk menghapus semua notifikasi pengguna.'],
-                            'confirmed' => ['type' => 'boolean'],
-                        ],
-                        'required' => ['confirmed'],
-                    ],
-                ],
-            ],
-
-            // --- PROFIL, KENDALA/BUG, UPDATE & PANDUAN ---
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_my_profile',
-                    'description' => 'Membaca informasi profil pengguna yang sedang login.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => new \stdClass(),
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'update_my_profile',
-                    'description' => 'Memperbarui data profil pengguna sendiri (nama, nomor WhatsApp, NIP, jabatan, wilayah). Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
+                            'action' => ['type' => 'string', 'enum' => ['get', 'update']],
                             'name' => ['type' => 'string'],
                             'whatsapp_number' => ['type' => 'string'],
                             'nip' => ['type' => 'string'],
@@ -435,61 +171,39 @@ class AiAgentToolService
                             'wilayah' => ['type' => 'string'],
                             'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'get_bug_reports',
-                    'description' => 'Mengambil daftar laporan kendala/tiket milik pengguna (atau semua jika admin).',
+                    'name' => 'manage_bug_reports',
+                    'description' => 'Lihat atau kirim laporan kendala/tiket (list, create).',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'limit' => ['type' => 'integer', 'description' => 'Jumlah maksimal tiket (1-15). Default: 10.'],
-                        ],
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'create_bug_report',
-                    'description' => 'Mengirim laporan kendala / bug aplikasi ke tim developer. Set confirmed=true HANYA setelah konfirmasi pengguna.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'title' => ['type' => 'string', 'description' => 'Judul singkat kendala.'],
-                            'description' => ['type' => 'string', 'description' => 'Penjelasan detail kendala yang dialami.'],
-                            'category' => ['type' => 'string', 'description' => 'Kategori kendala (Bug, Error Login, UI, Fitur, Lainnya).'],
-                            'priority' => ['type' => 'string', 'enum' => ['low', 'medium', 'high', 'critical'], 'description' => 'Prioritas kendala. Default: medium.'],
+                            'action' => ['type' => 'string', 'enum' => ['list', 'create']],
+                            'limit' => ['type' => 'integer'],
+                            'title' => ['type' => 'string'],
+                            'description' => ['type' => 'string'],
+                            'category' => ['type' => 'string'],
+                            'priority' => ['type' => 'string', 'enum' => ['low', 'medium', 'high', 'critical']],
                             'confirmed' => ['type' => 'boolean'],
                         ],
-                        'required' => ['title', 'description', 'confirmed'],
+                        'required' => ['action'],
                     ],
                 ],
             ],
             [
                 'type' => 'function',
                 'function' => [
-                    'name' => 'get_app_update_info',
-                    'description' => 'Mengecek informasi versi pembaruan aplikasi Phonebook terbaru yang dipublikasikan.',
-                    'parameters' => [
-                        'type' => 'object',
-                        'properties' => new \stdClass(),
-                    ],
-                ],
-            ],
-            [
-                'type' => 'function',
-                'function' => [
-                    'name' => 'get_app_features_guide',
-                    'description' => 'Mengambil panduan resmi fitur-fitur aplikasi Phonebook CDK Wilayah V.',
+                    'name' => 'get_app_info',
+                    'description' => 'Ambil panduan fitur aplikasi Phonebook atau info rilis update terbaru.',
                     'parameters' => [
                         'type' => 'object',
                         'properties' => [
-                            'topic' => ['type' => 'string', 'description' => 'Topik: laporan, jadwal, materi, notifikasi, profil, atau umum.'],
+                            'topic' => ['type' => 'string', 'description' => 'update, laporan, jadwal, materi, notifikasi, profil, atau umum.'],
                         ],
                     ],
                 ],
@@ -499,39 +213,88 @@ class AiAgentToolService
 
     /**
      * Mengeksekusi tool secara aman dengan validasi kepemilikan data ($user).
+     * Mendukung baik tool domain ringkas maupun nama tool spesifik.
      *
      * @param array<string, mixed> $arguments
      * @return array<string, mixed>
      */
     public function executeTool(string $toolName, array $arguments, User $user): array
     {
+        $action = strtolower(trim((string) ($arguments['action'] ?? '')));
+
         return match ($toolName) {
+            'manage_reports' => match ($action) {
+                'list' => $this->getUserReports($arguments, $user),
+                'detail' => $this->getReportDetail($arguments, $user),
+                'templates' => $this->getReportTemplates(),
+                'create' => $this->createReport($arguments, $user),
+                'update' => $this->updateReport($arguments, $user),
+                'delete' => $this->deleteReport($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi laporan tidak dikenali.'],
+            },
+            'manage_schedules' => match ($action) {
+                'list' => $this->getUserSchedules($arguments, $user),
+                'create' => $this->createSchedule($arguments, $user),
+                'update' => $this->updateSchedule($arguments, $user),
+                'delete' => $this->deleteSchedule($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi jadwal tidak dikenali.'],
+            },
+            'manage_materials' => match ($action) {
+                'list' => $this->getMaterials($arguments),
+                'create' => $this->createMaterial($arguments, $user),
+                'update' => $this->updateMaterial($arguments, $user),
+                'delete' => $this->deleteMaterial($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi materi tidak dikenali.'],
+            },
+            'manage_categories' => match ($action) {
+                'list' => $this->getCategories(),
+                'create' => $this->createCategory($arguments),
+                'update' => $this->updateCategory($arguments),
+                'delete' => $this->deleteCategory($arguments),
+                default => ['ok' => false, 'error' => 'Aksi kategori tidak dikenali.'],
+            },
+            'manage_notifications' => match ($action) {
+                'list' => $this->getNotifications($arguments, $user),
+                'mark_read' => $this->markNotificationRead($arguments, $user),
+                'delete' => $this->deleteNotification($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi notifikasi tidak dikenali.'],
+            },
+            'manage_profile' => match ($action) {
+                'get' => $this->getMyProfile($user),
+                'update' => $this->updateMyProfile($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi profil tidak dikenali.'],
+            },
+            'manage_bug_reports' => match ($action) {
+                'list' => $this->getBugReports($arguments, $user),
+                'create' => $this->createBugReport($arguments, $user),
+                default => ['ok' => false, 'error' => 'Aksi kendala tidak dikenali.'],
+            },
+            'get_app_info' => (strtolower(trim((string) ($arguments['topic'] ?? ''))) === 'update')
+                ? $this->getAppUpdateInfo()
+                : $this->getAppFeaturesGuide($arguments),
+
+            // Backward-compatible direct tool names
             'get_user_reports' => $this->getUserReports($arguments, $user),
             'get_report_detail' => $this->getReportDetail($arguments, $user),
             'create_report' => $this->createReport($arguments, $user),
             'update_report' => $this->updateReport($arguments, $user),
             'delete_report' => $this->deleteReport($arguments, $user),
             'get_report_templates' => $this->getReportTemplates(),
-
             'get_user_schedules' => $this->getUserSchedules($arguments, $user),
             'create_schedule' => $this->createSchedule($arguments, $user),
             'update_schedule' => $this->updateSchedule($arguments, $user),
             'delete_schedule' => $this->deleteSchedule($arguments, $user),
-
             'get_materials' => $this->getMaterials($arguments),
             'create_material' => $this->createMaterial($arguments, $user),
             'update_material' => $this->updateMaterial($arguments, $user),
             'delete_material' => $this->deleteMaterial($arguments, $user),
-
             'get_categories' => $this->getCategories(),
             'create_category' => $this->createCategory($arguments),
             'update_category' => $this->updateCategory($arguments),
             'delete_category' => $this->deleteCategory($arguments),
-
             'get_notifications' => $this->getNotifications($arguments, $user),
             'mark_notification_read' => $this->markNotificationRead($arguments, $user),
             'delete_notification' => $this->deleteNotification($arguments, $user),
-
             'get_my_profile' => $this->getMyProfile($user),
             'update_my_profile' => $this->updateMyProfile($arguments, $user),
             'get_bug_reports' => $this->getBugReports($arguments, $user),

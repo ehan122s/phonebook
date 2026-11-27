@@ -293,6 +293,22 @@ class _AiAgentPageState extends State<AiAgentPage> {
   String _formatToolBadge(List<String> tools) {
     final labels = tools.map((t) {
       switch (t) {
+        case 'manage_reports':
+          return 'Laporan & Monitoring';
+        case 'manage_schedules':
+          return 'Jadwal';
+        case 'manage_materials':
+          return 'Materi Edukasi';
+        case 'manage_categories':
+          return 'Kategori';
+        case 'manage_notifications':
+          return 'Notifikasi';
+        case 'manage_profile':
+          return 'Profil Saya';
+        case 'manage_bug_reports':
+          return 'Tiket Kendala';
+        case 'get_app_info':
+          return 'Info Aplikasi';
         case 'get_user_reports':
           return 'Data Laporan';
         case 'get_report_detail':
