@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/connectivity_service.dart';
 import '../../services/laporan_service.dart';
+import '../../services/monitoring_calculator.dart';
 import '../../services/offline_database.dart';
 import '../../services/sync_service.dart';
 import '../../widgets/laporan/create_report_card.dart';
@@ -292,11 +293,19 @@ class _LaporanPageState extends State<LaporanPage> {
         final String rawStatus = local['status']?.toString() ?? 'draft';
         final String photoVal =
             (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
+        final monData = MonitoringCalculator.extractMonitoringMap(local);
+        final bool isMon = MonitoringCalculator.isMonitoringReportType(
+          local['jenis_laporan']?.toString(),
+          local['report_type']?.toString(),
+        );
 
         addUniqueReport({
           'id': 'local_${local['id']}',
           'judul': local['title'] ?? 'Laporan tanpa judul',
-          'jenis': local['jenis_laporan'] ?? 'Laporan Kegiatan',
+          'jenis': isMon
+              ? 'Laporan Monitoring'
+              : (local['jenis_laporan'] ?? 'Laporan Kegiatan'),
+          'report_type': isMon ? 'monitoring' : (local['report_type'] ?? 'standard'),
           'pelapor': defaultUserName,
           'tanggal': LaporanDateUtils.formatApiDate(activityDate),
           'tanggalApi': activityDate,
@@ -325,6 +334,8 @@ class _LaporanPageState extends State<LaporanPage> {
           'isOffline': true,
           'syncStatus': local['sync_status'],
           'localId': local['id'],
+          ...monData,
+          if (monData.isNotEmpty) 'monitoring_data': monData,
         });
       }
 
@@ -406,10 +417,18 @@ class _LaporanPageState extends State<LaporanPage> {
               final String rawStatus = local['status']?.toString() ?? 'draft';
               final String photoVal =
                   (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
+              final monData = MonitoringCalculator.extractMonitoringMap(local);
+              final bool isMon = MonitoringCalculator.isMonitoringReportType(
+                local['jenis_laporan']?.toString(),
+                local['report_type']?.toString(),
+              );
               addUniqueReport({
                 'id': 'local_${local['id']}',
                 'judul': local['title'] ?? 'Laporan tanpa judul',
-                'jenis': local['jenis_laporan'] ?? 'Laporan Kegiatan',
+                'jenis': isMon
+                    ? 'Laporan Monitoring'
+                    : (local['jenis_laporan'] ?? 'Laporan Kegiatan'),
+                'report_type': isMon ? 'monitoring' : (local['report_type'] ?? 'standard'),
                 'pelapor': defaultUserName,
                 'tanggal': LaporanDateUtils.formatApiDate(activityDate),
                 'tanggalApi': activityDate,
@@ -427,6 +446,8 @@ class _LaporanPageState extends State<LaporanPage> {
                 'isOffline': true,
                 'syncStatus': local['sync_status'],
                 'localId': local['id'],
+                ...monData,
+                if (monData.isNotEmpty) 'monitoring_data': monData,
               });
             }
           } catch (_) {}
@@ -536,11 +557,19 @@ class _LaporanPageState extends State<LaporanPage> {
           final String rawStatus = local['status']?.toString() ?? 'draft';
           final String photoVal =
               (local['photo_base64'] ?? local['photo_path'] ?? '').toString();
+          final monData = MonitoringCalculator.extractMonitoringMap(local);
+          final bool isMon = MonitoringCalculator.isMonitoringReportType(
+            local['jenis_laporan']?.toString(),
+            local['report_type']?.toString(),
+          );
 
           offlineList.add({
             'id': 'local_${local['id']}',
             'judul': local['title'] ?? 'Laporan tanpa judul',
-            'jenis': local['jenis_laporan'] ?? 'Laporan Kegiatan',
+            'jenis': isMon
+                ? 'Laporan Monitoring'
+                : (local['jenis_laporan'] ?? 'Laporan Kegiatan'),
+            'report_type': isMon ? 'monitoring' : (local['report_type'] ?? 'standard'),
             'pelapor': 'Penyuluh Kehutanan',
             'tanggal': LaporanDateUtils.formatApiDate(activityDate),
             'tanggalApi': activityDate,
@@ -559,6 +588,8 @@ class _LaporanPageState extends State<LaporanPage> {
             'isOffline': true,
             'syncStatus': local['sync_status'],
             'localId': local['id'],
+            ...monData,
+            if (monData.isNotEmpty) 'monitoring_data': monData,
           });
         }
 

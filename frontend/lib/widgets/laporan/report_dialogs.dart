@@ -14,7 +14,9 @@ import '../../services/connectivity_service.dart';
 import '../../services/device_file_storage_service.dart';
 import '../../services/laporan_service.dart';
 import '../../services/location_service.dart';
+import '../../services/monitoring_calculator.dart';
 import '../../services/notification_service.dart';
+import 'monitoring_report_widgets.dart';
 import 'report_templates.dart';
 
 // ---------------------------------------------------------------------------
@@ -411,6 +413,132 @@ Future<void> showReportForm(
     );
   }
 
+  final bool isMonitoringReport = MonitoringCalculator.isMonitoringReportType(
+    jenisLaporan,
+    existing?['report_type']?.toString(),
+  );
+  final Map<String, dynamic> existingMonitoring = existing != null
+      ? MonitoringCalculator.extractMonitoringMap(existing)
+      : <String, dynamic>{};
+
+  String pickMon(String key, [String fallback = '']) {
+    final val = existing?[key] ?? existingMonitoring[key];
+    if (val != null && val.toString().trim().isNotEmpty) {
+      return val.toString().trim();
+    }
+    return fallback;
+  }
+
+  final activityNameCtrl = TextEditingController(
+    text: pickMon('activity_name', existing?['judul']?.toString() ?? ''),
+  );
+  final monitoringPeriodCtrl = TextEditingController(
+    text: pickMon('monitoring_period'),
+  );
+  final officerNameCtrl = TextEditingController(
+    text: pickMon('officer_name', existing?['pelapor']?.toString() ?? ''),
+  );
+  final existingTargetNum = MonitoringCalculator.parseNumber(
+    existing?['target_value'] ?? existingMonitoring['target_value'],
+  );
+  final targetValueCtrl = TextEditingController(
+    text: existingTargetNum != null
+        ? MonitoringCalculator.formatNumber(existingTargetNum)
+        : '',
+  );
+  final targetPeriodCtrl = TextEditingController(
+    text: pickMon('target_period'),
+  );
+  // Hasil aktual harus berasal dari input pengguna (hanya diisi saat mengedit data tersimpan).
+  final existingActualNum = existing != null
+      ? MonitoringCalculator.parseNumber(
+          existing['actual_value'] ?? existingMonitoring['actual_value'],
+        )
+      : null;
+  final actualValueCtrl = TextEditingController(
+    text: existingActualNum != null
+        ? MonitoringCalculator.formatNumber(existingActualNum)
+        : '',
+  );
+  final fieldFactsCtrl = TextEditingController(text: pickMon('field_facts'));
+  final obstaclesCtrl = TextEditingController(text: pickMon('obstacles'));
+  final failureCausesCtrl = TextEditingController(
+    text: pickMon('failure_causes'),
+  );
+  final recommendationsCtrl = TextEditingController(
+    text: pickMon('recommendations'),
+  );
+  final followUpPlanCtrl = TextEditingController(
+    text: pickMon('follow_up_plan'),
+  );
+
+  final rawExistingUnit = pickMon('target_unit');
+  final presetUnits = MonitoringCalculator.defaultUnits
+      .where((u) => u != 'Lainnya')
+      .toList();
+  String selectedTargetUnit;
+  final TextEditingController customUnitCtrl;
+  if (rawExistingUnit.isEmpty) {
+    selectedTargetUnit = 'kelompok';
+    customUnitCtrl = TextEditingController();
+  } else if (presetUnits.any(
+    (u) => u.toLowerCase() == rawExistingUnit.toLowerCase(),
+  )) {
+    selectedTargetUnit = presetUnits.firstWhere(
+      (u) => u.toLowerCase() == rawExistingUnit.toLowerCase(),
+    );
+    customUnitCtrl = TextEditingController();
+  } else {
+    selectedTargetUnit = 'Lainnya';
+    customUnitCtrl = TextEditingController(text: rawExistingUnit);
+  }
+
+  DateTime? nextTargetDate = DateTime.tryParse(pickMon('next_target_date'));
+
+  Map<String, dynamic> buildMonitoringPayloadMap() {
+    final unit = selectedTargetUnit == 'Lainnya'
+        ? (customUnitCtrl.text.trim().isEmpty
+              ? 'satuan'
+              : customUnitCtrl.text.trim())
+        : selectedTargetUnit;
+    final calc = MonitoringCalculator.calculate(
+      target: targetValueCtrl.text,
+      actual: actualValueCtrl.text,
+      unit: unit,
+    );
+    return <String, dynamic>{
+      'report_type': 'monitoring',
+      'activity_name': activityNameCtrl.text.trim(),
+      'monitoring_period': monitoringPeriodCtrl.text.trim(),
+      'officer_name': officerNameCtrl.text.trim(),
+      'target_value': calc.targetValue,
+      'target_unit': unit,
+      'target_period': targetPeriodCtrl.text.trim(),
+      'actual_value': calc.actualValue,
+      'achievement_percentage': calc.achievementPercentage,
+      'remaining_target': calc.remainingTarget,
+      'achievement_status': calc.status,
+      'field_facts': fieldFactsCtrl.text.trim(),
+      'obstacles': obstaclesCtrl.text.trim(),
+      'failure_causes': failureCausesCtrl.text.trim(),
+      'recommendations': recommendationsCtrl.text.trim(),
+      'follow_up_plan': followUpPlanCtrl.text.trim(),
+      'next_target_date': nextTargetDate == null
+          ? null
+          : '${nextTargetDate!.year}-${nextTargetDate!.month.toString().padLeft(2, '0')}-${nextTargetDate!.day.toString().padLeft(2, '0')}',
+    };
+  }
+
+  void syncMonitoringToIsi(String activityDateIso) {
+    final monMap = buildMonitoringPayloadMap();
+    isiCtrl.text = MonitoringCalculator.buildFormattedMonitoringBody({
+      ...monMap,
+      'title': judulCtrl.text.trim(),
+      'location': lokasiCtrl.text.trim(),
+      'activity_date': activityDateIso,
+    });
+  }
+
   XFile? pickedPhotoFile;
   Uint8List? pickedPhotoBytes;
   Uint8List? pickedDocBytes;
@@ -507,6 +635,20 @@ Future<void> showReportForm(
             );
             if (picked != null) {
               setModalState(() => selectedDate = picked);
+            }
+          }
+
+          Future<void> pickNextTargetDate() async {
+            final initial =
+                nextTargetDate ?? DateTime.now().add(const Duration(days: 14));
+            final picked = await showDatePicker(
+              context: sheetContext,
+              initialDate: initial,
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2040),
+            );
+            if (picked != null) {
+              setModalState(() => nextTargetDate = picked);
             }
           }
 
@@ -1201,11 +1343,15 @@ Future<void> showReportForm(
 
                                 const SizedBox(height: 16),
 
-                                // KARTU SEKSI 2: BAGIAN ISIAN KEGIATAN SESUAI TEMPLATE ADMIN
+                                // KARTU SEKSI 2: BAGIAN ISIAN KEGIATAN SESUAI TEMPLATE ADMIN / MONITORING
                                 _SectionContainerCard(
                                   stepNumber: '2',
-                                  title: 'Isian Kegiatan ($jenisLaporan)',
-                                  subtitle: 'Bagian ini otomatis disusun sesuai template yang diatur oleh Admin.',
+                                  title: isMonitoringReport
+                                      ? 'Data & Evaluasi Monitoring'
+                                      : 'Isian Kegiatan ($jenisLaporan)',
+                                  subtitle: isMonitoringReport
+                                      ? 'Isi target kegiatan, hasil aktual lapangan, fakta, kendala, dan rencana tindak lanjut.'
+                                      : 'Bagian ini otomatis disusun sesuai template yang diatur oleh Admin.',
                                   cardBg: cardBg,
                                   borderCol: borderCol,
                                   primaryGreen: primaryGreen,
@@ -1215,7 +1361,72 @@ Future<void> showReportForm(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      if (existing == null &&
+                                      if (isMonitoringReport)
+                                        MonitoringReportFormSections(
+                                          activityNameController:
+                                              activityNameCtrl,
+                                          monitoringPeriodController:
+                                              monitoringPeriodCtrl,
+                                          officerNameController:
+                                              officerNameCtrl,
+                                          targetValueController:
+                                              targetValueCtrl,
+                                          targetPeriodController:
+                                              targetPeriodCtrl,
+                                          customUnitController: customUnitCtrl,
+                                          actualValueController:
+                                              actualValueCtrl,
+                                          fieldFactsController: fieldFactsCtrl,
+                                          obstaclesController: obstaclesCtrl,
+                                          failureCausesController:
+                                              failureCausesCtrl,
+                                          recommendationsController:
+                                              recommendationsCtrl,
+                                          followUpPlanController:
+                                              followUpPlanCtrl,
+                                          selectedUnit: selectedTargetUnit,
+                                          nextTargetDate: nextTargetDate,
+                                          onUnitChanged: (unit) {
+                                            setModalState(() {
+                                              selectedTargetUnit = unit;
+                                            });
+                                          },
+                                          onPickNextTargetDate:
+                                              pickNextTargetDate,
+                                          onClearNextTargetDate: () {
+                                            setModalState(() {
+                                              nextTargetDate = null;
+                                            });
+                                          },
+                                          onValuesChanged: () {
+                                            setModalState(() {});
+                                          },
+                                          fieldBuilder: ({
+                                            required TextEditingController
+                                            controller,
+                                            required String label,
+                                            required String hint,
+                                            IconData? icon,
+                                            int maxLines = 1,
+                                            TextInputType? keyboardType,
+                                            String? Function(String?)?
+                                            validator,
+                                            ValueChanged<String>? onChanged,
+                                          }) {
+                                            return _SpaciousLabeledField(
+                                              controller: controller,
+                                              label: label,
+                                              hint: hint,
+                                              icon:
+                                                  icon ??
+                                                  Icons.edit_note_outlined,
+                                              maxLines: maxLines,
+                                              keyboardType: keyboardType,
+                                              onChanged: onChanged,
+                                            );
+                                          },
+                                        )
+                                      else if (existing == null &&
                                           templateFields.isNotEmpty) ...[
                                         ...List.generate(templateFields.length, (
                                           index,
@@ -2512,7 +2723,11 @@ Future<void> showReportForm(
                                     onPressed: isSubmittingForm
                                         ? null
                                         : () async {
-                                            if (existing == null &&
+                                            if (isMonitoringReport) {
+                                              syncMonitoringToIsi(
+                                                formattedDateApi,
+                                              );
+                                            } else if (existing == null &&
                                                 templateFields.isNotEmpty) {
                                               syncTemplateFieldsToIsi();
                                             }
@@ -2557,6 +2772,10 @@ Future<void> showReportForm(
                                                 customActivityDate:
                                                     formattedDateApi,
                                                 status: 'Draft',
+                                                monitoringData:
+                                                    isMonitoringReport
+                                                    ? buildMonitoringPayloadMap()
+                                                    : null,
                                                 onReportSaved: onReportSaved,
                                                 closeOnSuccess: true,
                                                 photoBytes: pickedPhotoBytes,
@@ -2636,28 +2855,107 @@ Future<void> showReportForm(
                                     onPressed: isSubmittingForm
                                         ? null
                                         : () async {
-                                            if (existing == null &&
-                                                templateFields.isNotEmpty) {
-                                              syncTemplateFieldsToIsi();
-                                            }
-                                            if (judulCtrl.text.trim().isEmpty ||
-                                                lokasiCtrl.text
-                                                    .trim()
-                                                    .isEmpty ||
-                                                isiCtrl.text.trim().isEmpty) {
-                                              const msg =
-                                                  'Lengkapi judul, lokasi, dan isi laporan sebelum menyelesaikan laporan.';
-                                              setModalState(() {
-                                                inlineStatusMessage = msg;
-                                                inlineStatusIsError = true;
-                                              });
-                                              scrollFormToBottom();
-                                              showTopFrontNotification(
-                                                sheetContext,
-                                                message: msg,
-                                                isError: true,
+                                            if (isMonitoringReport) {
+                                              String? validationErr;
+                                              final parsedTarget =
+                                                  MonitoringCalculator.parseNumber(
+                                                    targetValueCtrl.text,
+                                                  );
+                                              final parsedActual =
+                                                  MonitoringCalculator.parseNumber(
+                                                    actualValueCtrl.text,
+                                                  );
+                                              if (judulCtrl.text.trim().isEmpty ||
+                                                  lokasiCtrl.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                validationErr =
+                                                    'Judul monitoring dan lokasi wajib diisi.';
+                                              } else if (activityNameCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  monitoringPeriodCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  officerNameCtrl.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                validationErr =
+                                                    'Nama kegiatan, periode monitoring, dan petugas pelaksana wajib diisi.';
+                                              } else if (parsedTarget == null ||
+                                                  parsedTarget <= 0 ||
+                                                  targetPeriodCtrl.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                validationErr =
+                                                    'Target kegiatan (> 0) dan periode target wajib diisi.';
+                                              } else if (selectedTargetUnit ==
+                                                      'Lainnya' &&
+                                                  customUnitCtrl.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                validationErr =
+                                                    'Masukkan satuan target kustom terlebih dahulu.';
+                                              } else if (parsedActual == null ||
+                                                  parsedActual < 0) {
+                                                validationErr =
+                                                    'Hasil aktual wajib diisi angka >= 0 secara manual.';
+                                              } else if (fieldFactsCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  obstaclesCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  recommendationsCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  followUpPlanCtrl.text
+                                                      .trim()
+                                                      .isEmpty) {
+                                                validationErr =
+                                                    'Lengkapi fakta lapangan, kendala, rekomendasi, dan rencana tindak lanjut.';
+                                              }
+                                              if (validationErr != null) {
+                                                setModalState(() {
+                                                  inlineStatusMessage =
+                                                      validationErr;
+                                                  inlineStatusIsError = true;
+                                                });
+                                                scrollFormToBottom();
+                                                showTopFrontNotification(
+                                                  sheetContext,
+                                                  message: validationErr,
+                                                  isError: true,
+                                                );
+                                                return;
+                                              }
+                                              syncMonitoringToIsi(
+                                                formattedDateApi,
                                               );
-                                              return;
+                                            } else {
+                                              if (existing == null &&
+                                                  templateFields.isNotEmpty) {
+                                                syncTemplateFieldsToIsi();
+                                              }
+                                              if (judulCtrl.text.trim().isEmpty ||
+                                                  lokasiCtrl.text
+                                                      .trim()
+                                                      .isEmpty ||
+                                                  isiCtrl.text.trim().isEmpty) {
+                                                const msg =
+                                                    'Lengkapi judul, lokasi, dan isi laporan sebelum menyelesaikan laporan.';
+                                                setModalState(() {
+                                                  inlineStatusMessage = msg;
+                                                  inlineStatusIsError = true;
+                                                });
+                                                scrollFormToBottom();
+                                                showTopFrontNotification(
+                                                  sheetContext,
+                                                  message: msg,
+                                                  isError: true,
+                                                );
+                                                return;
+                                              }
                                             }
                                             setModalState(() {
                                               isSubmittingForm = true;
@@ -2680,6 +2978,9 @@ Future<void> showReportForm(
                                               customActivityDate:
                                                   formattedDateApi,
                                               status: 'Selesai',
+                                              monitoringData: isMonitoringReport
+                                                  ? buildMonitoringPayloadMap()
+                                                  : null,
                                               onReportSaved: onReportSaved,
                                               closeOnSuccess: true,
                                               photoBytes: pickedPhotoBytes,
@@ -4992,8 +5293,20 @@ void showReportDetail(
                     value: currentStatus,
                   ),
                   const SizedBox(height: 8),
+                  if (MonitoringCalculator.isMonitoringReportType(
+                    laporan['jenis']?.toString(),
+                    laporan['report_type']?.toString(),
+                  )) ...[
+                    MonitoringSummaryCard(laporan: laporan),
+                    const SizedBox(height: 16),
+                  ],
                   Text(
-                    'Isi Laporan (Berdasarkan Template)',
+                    MonitoringCalculator.isMonitoringReportType(
+                          laporan['jenis']?.toString(),
+                          laporan['report_type']?.toString(),
+                        )
+                        ? 'Naskah Lengkap Monitoring'
+                        : 'Isi Laporan (Berdasarkan Template)',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -5492,6 +5805,7 @@ Future<void> _handleSubmit({
   String? existingPhotoUrl,
   Uint8List? documentBytes,
   String? documentFilename,
+  Map<String, dynamic>? monitoringData,
   void Function(double progress, String label)? onProgress,
   void Function(int reportId, bool photoPending, bool docPending)?
   onUploadRetryRequired,
@@ -5541,6 +5855,12 @@ Future<void> _handleSubmit({
       ? 'data:image/jpeg;base64,${base64Encode(photoBytes)}'
       : existingPhotoUrl;
 
+  final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+    jenisLaporan,
+    monitoringData?['report_type']?.toString() ??
+        existing?['report_type']?.toString(),
+  );
+
   final payload = <String, dynamic>{
     'title': title,
     'activity_date': activityDate,
@@ -5556,6 +5876,10 @@ Future<void> _handleSubmit({
         ? null
         : double.tryParse(lngCtrl.text.trim()),
     'status': apiStatus,
+    'report_type': isMonitoring ? 'monitoring' : 'standard',
+    if (monitoringData != null && monitoringData.isNotEmpty) ...monitoringData,
+    if (monitoringData != null && monitoringData.isNotEmpty)
+      'monitoring_data': monitoringData,
   };
 
   Future<void> syncToLocalMonitoringStorage(
@@ -5579,6 +5903,7 @@ Future<void> _handleSubmit({
         'id': recordId,
         'judul': title,
         'jenis': jenisLaporan,
+        'report_type': isMonitoring ? 'monitoring' : 'standard',
         'pelapor': currentUserName,
         'userName': currentUserName,
         'tanggal': LaporanDateUtils.formatApiDate(activityDate),
@@ -5592,6 +5917,9 @@ Future<void> _handleSubmit({
         'latitude': latCtrl.text.trim(),
         'longitude': lngCtrl.text.trim(),
         'status': status,
+        if (monitoringData != null && monitoringData.isNotEmpty) ...monitoringData,
+        if (monitoringData != null && monitoringData.isNotEmpty)
+          'monitoring_data': monitoringData,
         'localPhotoPath': photoDataUri ?? existing?['localPhotoPath'],
         'foto': effectivePhoto,
         'photo_base64': photoDataUri ?? existing?['photo_base64'] ?? '',

@@ -56,6 +56,23 @@ class SyncService {
         try {
           // 1. Jika laporan belum dibuat di server, kirim data laporan terlebih dahulu
           if (serverId == null) {
+            final Map<String, dynamic> extraMonitoring = <String, dynamic>{};
+            final rawMonData = report['monitoring_data'];
+            if (rawMonData is String && rawMonData.trim().isNotEmpty) {
+              try {
+                final decoded = jsonDecode(rawMonData);
+                if (decoded is Map) {
+                  for (final e in decoded.entries) {
+                    extraMonitoring[e.key.toString()] = e.value;
+                  }
+                }
+              } catch (_) {}
+            } else if (rawMonData is Map) {
+              for (final e in rawMonData.entries) {
+                extraMonitoring[e.key.toString()] = e.value;
+              }
+            }
+
             final payload = <String, dynamic>{
               'title': report['title'],
               'activity_date': report['activity_date'],
@@ -70,6 +87,9 @@ class SyncService {
                   : null,
               'category_id': report['category_id'],
               'status': report['status'] ?? 'draft',
+              'report_type': report['report_type'] ?? 'standard',
+              ...extraMonitoring,
+              if (extraMonitoring.isNotEmpty) 'monitoring_data': extraMonitoring,
             };
 
             final response = await LaporanService.submitReport(

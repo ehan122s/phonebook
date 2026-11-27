@@ -41,7 +41,7 @@ class OfflineDatabase {
 
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -96,6 +96,18 @@ class OfflineDatabase {
             );
           } catch (_) {}
         }
+        if (oldVersion < 6) {
+          try {
+            await db.execute(
+              "ALTER TABLE offline_reports ADD COLUMN report_type TEXT DEFAULT 'standard'",
+            );
+          } catch (_) {}
+          try {
+            await db.execute(
+              'ALTER TABLE offline_reports ADD COLUMN monitoring_data TEXT',
+            );
+          } catch (_) {}
+        }
       },
     );
   }
@@ -114,6 +126,8 @@ class OfflineDatabase {
         category_id INTEGER,
         status TEXT DEFAULT 'draft',
         jenis_laporan TEXT,
+        report_type TEXT DEFAULT 'standard',
+        monitoring_data TEXT,
         sync_status TEXT DEFAULT 'pending',
         server_id INTEGER,
         photo_path TEXT,
@@ -161,6 +175,8 @@ class OfflineDatabase {
       'category_id': data['category_id'],
       'status': data['status'] ?? 'draft',
       'jenis_laporan': data['jenis_laporan'],
+      'report_type': data['report_type'] ?? 'standard',
+      'monitoring_data': data['monitoring_data'],
       'sync_status': data['sync_status'] ?? 'pending',
       'server_id': data['server_id'],
       'photo_path': data['photo_path'],

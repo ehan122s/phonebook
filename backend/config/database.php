@@ -4,22 +4,31 @@ use Illuminate\Support\Str;
 use Pdo\Mysql;
 
 $buildScopedConnection = static function (string $prefix, string $defaultMysqlDb): array {
-    $driver = env("{$prefix}_CONNECTION", env('DB_CONNECTION', 'sqlite'));
+    $envFilled = static function (string $key, mixed $fallback = null): mixed {
+        $value = env($key);
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return $fallback;
+        }
+        return $value;
+    };
+
+    $defaultDriver = (string) $envFilled('DB_CONNECTION', 'sqlite');
+    $driver = (string) $envFilled("{$prefix}_CONNECTION", $defaultDriver);
 
     if ($driver === 'pgsql') {
         return [
             'driver' => 'pgsql',
-            'url' => env("{$prefix}_URL", env('DB_URL')),
-            'host' => env("{$prefix}_HOST", env('DB_HOST', '127.0.0.1')),
-            'port' => env("{$prefix}_PORT", env('DB_PORT', '5432')),
-            'database' => env("{$prefix}_DATABASE", env('DB_DATABASE', 'postgres')),
-            'username' => env("{$prefix}_USERNAME", env('DB_USERNAME', 'postgres')),
-            'password' => env("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
-            'charset' => env("{$prefix}_CHARSET", env('DB_CHARSET', 'utf8')),
+            'url' => $envFilled("{$prefix}_URL", $envFilled('DB_URL')),
+            'host' => $envFilled("{$prefix}_HOST", $envFilled('DB_HOST', '127.0.0.1')),
+            'port' => $envFilled("{$prefix}_PORT", $envFilled('DB_PORT', '5432')),
+            'database' => $envFilled("{$prefix}_DATABASE", $envFilled('DB_DATABASE', 'postgres')),
+            'username' => $envFilled("{$prefix}_USERNAME", $envFilled('DB_USERNAME', 'postgres')),
+            'password' => $envFilled("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
+            'charset' => $envFilled("{$prefix}_CHARSET", $envFilled('DB_CHARSET', 'utf8')),
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env("{$prefix}_SSLMODE", env('DB_SSLMODE', 'prefer')),
+            'sslmode' => $envFilled("{$prefix}_SSLMODE", $envFilled('DB_SSLMODE', 'prefer')),
             'options' => extension_loaded('pdo_pgsql') ? [
                 \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 10),
                 \PDO::ATTR_EMULATE_PREPARES => filter_var(env('DB_EMULATE_PREPARES', true), FILTER_VALIDATE_BOOLEAN),
@@ -31,8 +40,8 @@ $buildScopedConnection = static function (string $prefix, string $defaultMysqlDb
     if ($driver === 'sqlite') {
         return [
             'driver' => 'sqlite',
-            'url' => env("{$prefix}_URL", env('DB_URL')),
-            'database' => env("{$prefix}_DATABASE", env('DB_DATABASE', database_path('database.sqlite'))),
+            'url' => $envFilled("{$prefix}_URL", $envFilled('DB_URL')),
+            'database' => $envFilled("{$prefix}_DATABASE", $envFilled('DB_DATABASE', database_path('database.sqlite'))),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
             'busy_timeout' => null,
@@ -44,15 +53,15 @@ $buildScopedConnection = static function (string $prefix, string $defaultMysqlDb
 
     return [
         'driver' => $driver,
-        'url' => env("{$prefix}_URL", env('DB_URL')),
-        'host' => env("{$prefix}_HOST", env('DB_HOST', '127.0.0.1')),
-        'port' => env("{$prefix}_PORT", env('DB_PORT', '3306')),
-        'database' => env("{$prefix}_DATABASE", $defaultMysqlDb),
-        'username' => env("{$prefix}_USERNAME", env('DB_USERNAME', 'root')),
-        'password' => env("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
-        'unix_socket' => env("{$prefix}_SOCKET", env('DB_SOCKET', '')),
-        'charset' => env("{$prefix}_CHARSET", 'utf8mb4'),
-        'collation' => env("{$prefix}_COLLATION", 'utf8mb4_unicode_ci'),
+        'url' => $envFilled("{$prefix}_URL", $envFilled('DB_URL')),
+        'host' => $envFilled("{$prefix}_HOST", $envFilled('DB_HOST', '127.0.0.1')),
+        'port' => $envFilled("{$prefix}_PORT", $envFilled('DB_PORT', '3306')),
+        'database' => $envFilled("{$prefix}_DATABASE", $defaultMysqlDb),
+        'username' => $envFilled("{$prefix}_USERNAME", $envFilled('DB_USERNAME', 'root')),
+        'password' => $envFilled("{$prefix}_PASSWORD", env('DB_PASSWORD', '')),
+        'unix_socket' => $envFilled("{$prefix}_SOCKET", env('DB_SOCKET', '')),
+        'charset' => $envFilled("{$prefix}_CHARSET", 'utf8mb4'),
+        'collation' => $envFilled("{$prefix}_COLLATION", 'utf8mb4_unicode_ci'),
         'prefix' => '',
         'prefix_indexes' => true,
         'strict' => true,

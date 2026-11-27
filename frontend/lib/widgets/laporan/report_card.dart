@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../constants/laporan_constants.dart';
+import '../../services/monitoring_calculator.dart';
+import 'monitoring_report_widgets.dart';
 
 /// A card displaying a single report's summary in the history list.
 class ReportCard extends StatelessWidget {
@@ -28,6 +30,22 @@ class ReportCard extends StatelessWidget {
         (laporan['localPhotoPath'] != null && laporan['localPhotoPath'].toString().trim().isNotEmpty) ||
         (laporan['photos'] is List && (laporan['photos'] as List).isNotEmpty);
     final int fileCount = (laporan['files'] is List) ? (laporan['files'] as List).length : 0;
+
+    final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+      laporan['jenis']?.toString(),
+      laporan['report_type']?.toString(),
+    );
+    final monitoringMap = isMonitoring
+        ? MonitoringCalculator.extractMonitoringMap(laporan)
+        : const <String, dynamic>{};
+    final monitoringCalc = isMonitoring
+        ? MonitoringCalculator.calculate(
+            target: laporan['target_value'] ?? monitoringMap['target_value'],
+            actual: laporan['actual_value'] ?? monitoringMap['actual_value'],
+            unit: (laporan['target_unit'] ?? monitoringMap['target_unit'])
+                ?.toString(),
+          )
+        : null;
 
     final (Color statusColor, Color statusBg) = switch (status) {
       'Selesai' => (
@@ -183,6 +201,43 @@ class ReportCard extends StatelessWidget {
             text: laporan['lokasi'],
             iconSize: 17,
           ),
+
+          if (monitoringCalc != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF1F2D24)
+                    : const Color(0xFFF3F8F4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: LaporanColors.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Capaian: ${monitoringCalc.formattedPercentage} • Sisa: ${monitoringCalc.formattedRemaining}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? const Color(0xFFD1E7D6)
+                            : const Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  MonitoringStatusBadge(
+                    status: monitoringCalc.status,
+                    compact: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           if (hasPhoto) ...[
             const SizedBox(height: 8),

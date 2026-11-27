@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../constants/api_constants.dart';
 import '../constants/laporan_constants.dart';
 import 'device_file_storage_service.dart';
+import 'monitoring_calculator.dart';
 import 'offline_database.dart';
 
 /// Base URL for the Laravel API (mengacu ke [ApiConstants.baseUrl]).
@@ -261,11 +262,24 @@ class LaporanService {
 
       final reportLat = report['latitude']?.toString() ?? '';
       final reportLng = report['longitude']?.toString() ?? '';
+      final rawReportType = report['report_type']?.toString() ?? 'standard';
+      final rawCategoryName = report['category']?['name']?.toString();
+      final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+        rawCategoryName,
+        rawReportType,
+      );
+      final Map<String, dynamic> monitoringData =
+          MonitoringCalculator.extractMonitoringMap(
+            Map<String, dynamic>.from(report),
+          );
 
       return {
         'id': report['id'],
         'judul': report['title'] ?? 'Laporan tanpa judul',
-        'jenis': report['category']?['name'] ?? 'Laporan Kegiatan',
+        'jenis': isMonitoring
+            ? 'Laporan Monitoring'
+            : (rawCategoryName ?? 'Laporan Kegiatan'),
+        'report_type': isMonitoring ? 'monitoring' : rawReportType,
         'pelapor': report['user']?['name'],
         'tanggal': LaporanDateUtils.formatApiDate(activityDate),
         'tanggalApi': activityDate,
@@ -282,6 +296,23 @@ class LaporanService {
         'files': rawFiles,
         'status': LaporanDateUtils.displayStatus(rawStatus),
         'statusApi': rawStatus,
+        'activity_name': monitoringData['activity_name'],
+        'monitoring_period': monitoringData['monitoring_period'],
+        'officer_name': monitoringData['officer_name'],
+        'target_value': monitoringData['target_value'],
+        'target_unit': monitoringData['target_unit'],
+        'target_period': monitoringData['target_period'],
+        'actual_value': monitoringData['actual_value'],
+        'achievement_percentage': monitoringData['achievement_percentage'],
+        'remaining_target': monitoringData['remaining_target'],
+        'achievement_status': monitoringData['achievement_status'],
+        'field_facts': monitoringData['field_facts'],
+        'obstacles': monitoringData['obstacles'],
+        'failure_causes': monitoringData['failure_causes'],
+        'recommendations': monitoringData['recommendations'],
+        'follow_up_plan': monitoringData['follow_up_plan'],
+        'next_target_date': monitoringData['next_target_date'],
+        'monitoring_data': monitoringData,
       };
     }).toList();
 
@@ -645,6 +676,12 @@ class LaporanService {
       } catch (_) {}
     }
 
+    final monitoringMap = MonitoringCalculator.extractMonitoringMap(payload);
+    final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+      jenisLaporan,
+      payload['report_type']?.toString(),
+    );
+
     final data = <String, dynamic>{
       'title': payload['title'],
       'activity_date': payload['activity_date'],
@@ -656,6 +693,8 @@ class LaporanService {
       'category_id': payload['category_id'],
       'status': payload['status'] ?? 'draft',
       'jenis_laporan': jenisLaporan,
+      'report_type': isMonitoring ? 'monitoring' : (payload['report_type'] ?? 'standard'),
+      'monitoring_data': monitoringMap.isNotEmpty ? jsonEncode(monitoringMap) : null,
       'sync_status': 'pending',
       'photo_path': localPhotoPath ?? photoBase64,
       'photo_base64': photoBase64,

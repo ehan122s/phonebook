@@ -127,57 +127,87 @@ class ReportTemplateController extends Controller
             ],
             [
                 'name' => 'Laporan Monitoring',
-                'category' => 'Monitoring & Patroli',
+                'category' => 'Monitoring & Evaluasi',
                 'icon_key' => 'forest',
-                'description' => 'Template laporan hasil monitoring kawasan hutan, pemeriksaan patok batas, dan pengamanan hutan.',
-                'default_title' => 'Monitoring & Patroli Kawasan Hutan',
-                'require_photo' => true,
+                'description' => 'Laporan evaluasi target kegiatan vs hasil aktual di lapangan, persentase capaian otomatis, fakta lapangan, kendala, dan rencana tindak lanjut.',
+                'default_title' => 'Monitoring Capaian Kegiatan Lapangan',
+                'require_photo' => false,
                 'require_location' => true,
                 'fields_config' => [
                     [
-                        'id' => 'kawasan_titik',
-                        'label' => 'Kawasan / Titik Pantau Hutan',
+                        'id' => 'activity_name',
+                        'label' => 'Nama Kegiatan yang Dimonitor',
                         'type' => 'text',
-                        'placeholder' => 'Contoh: Kawasan Lindung Lereng Gunung Guntur',
-                        'description' => 'Nama kawasan atau titik pemeriksaan',
+                        'placeholder' => 'Contoh: Pembinaan Kelompok Tani Hutan / Monitoring Bibit',
+                        'description' => 'Nama program atau kegiatan lapangan yang dievaluasi',
                         'required' => true,
                         'options' => [],
                     ],
                     [
-                        'id' => 'kondisi_tegakan',
-                        'label' => 'Kondisi Tegakan & Patok Batas',
-                        'type' => 'textarea',
-                        'placeholder' => 'Contoh: Patok batas no. 45-50 aman, vegetasi tegakan utuh.',
-                        'description' => 'Kondisi kerapatan pohon dan batas wilayah',
+                        'id' => 'monitoring_period',
+                        'label' => 'Periode Monitoring',
+                        'type' => 'text',
+                        'placeholder' => 'Contoh: 2 bulan (Oktober - November 2026)',
+                        'description' => 'Rentang waktu pelaksanaan monitoring',
                         'required' => true,
                         'options' => [],
                     ],
                     [
-                        'id' => 'temuan_lapangan',
-                        'label' => 'Temuan Lapangan / Kerawanan',
+                        'id' => 'target_summary',
+                        'label' => 'Target Direncanakan & Satuan',
+                        'type' => 'text',
+                        'placeholder' => 'Contoh: 5 kelompok dalam 2 bulan',
+                        'description' => 'Target terukur beserta satuannya (kelompok, kegiatan, peserta, lokasi, dokumen, dll.)',
+                        'required' => true,
+                        'options' => [],
+                    ],
+                    [
+                        'id' => 'actual_summary',
+                        'label' => 'Hasil Aktual Dicapai',
+                        'type' => 'text',
+                        'placeholder' => 'Contoh: 3 kelompok berhasil dibina (60%, sisa 2 kelompok)',
+                        'description' => 'Capaian nyata berdasarkan input hasil aktual',
+                        'required' => true,
+                        'options' => [],
+                    ],
+                    [
+                        'id' => 'field_facts',
+                        'label' => 'Fakta & Kondisi Lapangan',
                         'type' => 'textarea',
-                        'placeholder' => 'Contoh: Tidak ditemukan tanda perambahan atau kebakaran hutan.',
-                        'description' => 'Catatan potensi gangguan keamanan hutan',
+                        'placeholder' => 'Uraikan fakta nyata yang ditemukan di lapangan...',
+                        'description' => 'Temuan objektif di lokasi kegiatan',
+                        'required' => true,
+                        'options' => [],
+                    ],
+                    [
+                        'id' => 'obstacles',
+                        'label' => 'Kendala & Penyebab Belum Tercapai',
+                        'type' => 'textarea',
+                        'placeholder' => 'Jelaskan hambatan teknis atau non-teknis di lapangan...',
+                        'description' => 'Kendala dan faktor penyebab apabila target belum tercapai',
                         'required' => false,
                         'options' => [],
                     ],
                     [
-                        'id' => 'rekomendasi_tindakan',
-                        'label' => 'Rekomendasi Tindakan',
+                        'id' => 'recommendations',
+                        'label' => 'Rekomendasi & Rencana Tindak Lanjut',
                         'type' => 'textarea',
-                        'placeholder' => 'Contoh: Patroli berkala perlu dilanjutkan bersama KTH setempat.',
-                        'description' => 'Saran penanganan operasional berikutnya',
+                        'placeholder' => 'Saran perbaikan, tindak lanjut, dan target penyelesaian berikutnya...',
+                        'description' => 'Langkah penyelesaian sisa target berikutnya',
                         'required' => true,
                         'options' => [],
                     ],
                 ],
                 'placeholders' => [
-                    'Kawasan / Titik Pantau Hutan',
-                    'Kondisi Tegakan & Patok Batas',
-                    'Temuan Lapangan / Kerawanan',
-                    'Rekomendasi Tindakan',
+                    'Nama Kegiatan yang Dimonitor',
+                    'Periode Monitoring',
+                    'Target Direncanakan & Satuan',
+                    'Hasil Aktual Dicapai',
+                    'Fakta & Kondisi Lapangan',
+                    'Kendala & Penyebab Belum Tercapai',
+                    'Rekomendasi & Rencana Tindak Lanjut',
                 ],
-                'template_body' => "LAPORAN MONITORING KAWASAN HUTAN\nCabang Dinas Kehutanan Wilayah V\n\n1. Kawasan / Titik Pantau    : {{Kawasan / Titik Pantau Hutan}}\n2. Kondisi Tegakan & Patok   : {{Kondisi Tegakan & Patok Batas}}\n3. Temuan Lapangan           : {{Temuan Lapangan / Kerawanan}}\n4. Rekomendasi Tindakan      :\n{{Rekomendasi Tindakan}}",
+                'template_body' => "LAPORAN MONITORING KEGIATAN\nCabang Dinas Kehutanan Wilayah V\n\n1. Nama Kegiatan          : {{Nama Kegiatan yang Dimonitor}}\n2. Periode Monitoring     : {{Periode Monitoring}}\n3. Target Direncanakan    : {{Target Direncanakan & Satuan}}\n4. Hasil Aktual           : {{Hasil Aktual Dicapai}}\n5. Fakta Lapangan         :\n{{Fakta & Kondisi Lapangan}}\n6. Kendala & Penyebab     :\n{{Kendala & Penyebab Belum Tercapai}}\n7. Rekomendasi & Tindak Lanjut:\n{{Rekomendasi & Rencana Tindak Lanjut}}",
                 'is_active' => true,
             ],
             [
@@ -278,7 +308,7 @@ class ReportTemplateController extends Controller
      */
     public function index()
     {
-        $templates = Cache::remember('report_templates_active_v2', 300, function () {
+        $templates = Cache::remember('report_templates_active_v3', 300, function () {
             $count = ReportTemplate::query()->count();
             if ($count === 0) {
                 foreach (self::getDefaultTemplates() as $tpl) {
@@ -375,7 +405,7 @@ class ReportTemplateController extends Controller
             'uploaded_by' => $user ? $user->id : null,
         ]);
 
-        Cache::forget('report_templates_active_v2');
+        Cache::forget('report_templates_active_v3');
 
         return response()->json([
             'success' => true,
@@ -475,7 +505,7 @@ class ReportTemplateController extends Controller
 
         $template->save();
 
-        Cache::forget('report_templates_active_v2');
+        Cache::forget('report_templates_active_v3');
 
         return response()->json([
             'success' => true,
@@ -503,7 +533,7 @@ class ReportTemplateController extends Controller
 
         $template->update(['is_active' => false]);
 
-        Cache::forget('report_templates_active_v2');
+        Cache::forget('report_templates_active_v3');
 
         return response()->json([
             'success' => true,

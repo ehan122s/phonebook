@@ -26,6 +26,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/api_constants.dart';
 import '../../constants/laporan_constants.dart';
 import '../../services/device_file_storage_service.dart';
+import '../../services/monitoring_calculator.dart';
 import '../../services/offline_database.dart';
 
 /// Manager untuk mengelola penyimpanan, ekstraksi file contoh, & format Template Laporan.
@@ -91,27 +92,29 @@ class ReportTemplateManager {
       {
         'id': 'tpl_monitoring',
         'title': 'Laporan Monitoring',
-        'category': 'Monitoring & Patroli',
+        'category': 'Monitoring & Evaluasi',
         'iconKey': 'forest',
         'description':
-            'Template laporan hasil monitoring kawasan hutan, pemeriksaan patok batas, dan pengamanan hutan.',
-        'defaultTitle': 'Monitoring & Patroli Kawasan Hutan',
-        'requirePhoto': true,
+            'Laporan monitoring berbasis perbandingan target kegiatan, hasil aktual lapangan, persentase capaian, sisa target, kendala, serta rencana tindak lanjut.',
+        'defaultTitle': 'Laporan Monitoring Kegiatan',
+        'requirePhoto': false,
         'requireLocation': true,
         'sampleFileName': '',
         'fields': <String>[
-          'Kawasan / Titik Pantau Hutan',
-          'Kondisi Tegakan & Patok Batas',
-          'Temuan Lapangan / Kerawanan',
-          'Rekomendasi Tindakan',
+          'Nama Kegiatan yang Dimonitor',
+          'Periode Monitoring',
+          'Target Kegiatan & Satuan',
+          'Hasil Aktual & Fakta Lapangan',
+          'Kendala, Rekomendasi & Tindak Lanjut',
         ],
         'templateBody':
-            'LAPORAN MONITORING KAWASAN HUTAN\n'
+            'LAPORAN MONITORING KEGIATAN\n'
             'Cabang Dinas Kehutanan Wilayah V\n\n'
-            '1. Kawasan / Titik Pantau    : {{Kawasan / Titik Pantau Hutan}}\n'
-            '2. Kondisi Tegakan & Patok   : {{Kondisi Tegakan & Patok Batas}}\n'
-            '3. Temuan Lapangan           : {{Temuan Lapangan / Kerawanan}}\n'
-            '4. Rekomendasi Tindakan      :\n{{Rekomendasi Tindakan}}',
+            '1. Kegiatan yang Dimonitor : {{Nama Kegiatan yang Dimonitor}}\n'
+            '2. Periode Monitoring      : {{Periode Monitoring}}\n'
+            '3. Target Kegiatan         : {{Target Kegiatan & Satuan}}\n'
+            '4. Hasil Aktual & Fakta    : {{Hasil Aktual & Fakta Lapangan}}\n'
+            '5. Kendala & Tindak Lanjut :\n{{Kendala, Rekomendasi & Tindak Lanjut}}',
         'updatedBy': 'Administrator',
       },
       {
@@ -1674,26 +1677,43 @@ class ReportDocumentExporter {
         ? '$lat, $lng'
         : 'Terlampir pada sistem';
     final rawIsiCandidate = (laporan['isi'] ?? '').toString().trim();
-    final isiRaw = ReportTemplateManager.isCorruptedBinaryText(rawIsiCandidate)
-        ? ReportTemplateManager.sanitizeReportIsi(
-            rawIsi: '',
-            jenis: (laporan['jenis'] ?? 'Laporan Penyuluhan').toString(),
-            judul: (laporan['judul'] ?? 'Kegiatan Lapangan').toString(),
-            lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
-          )
-        : rawIsiCandidate;
+    final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+      laporan['jenis']?.toString(),
+      laporan['report_type']?.toString(),
+    );
+    final Map<String, dynamic> monitoringMap = isMonitoring
+        ? MonitoringCalculator.extractMonitoringMap(laporan)
+        : const <String, dynamic>{};
+    final bool hasStructuredMonitoring =
+        isMonitoring &&
+        (monitoringMap['activity_name'] != null ||
+            monitoringMap['target_value'] != null ||
+            monitoringMap['actual_value'] != null);
+
+    final isiRaw = hasStructuredMonitoring
+        ? MonitoringCalculator.buildFormattedMonitoringBody({
+            ...laporan,
+            ...monitoringMap,
+            'title': judul,
+            'location': lokasi,
+            'activity_date': tanggal,
+          })
+        : (ReportTemplateManager.isCorruptedBinaryText(rawIsiCandidate)
+              ? ReportTemplateManager.sanitizeReportIsi(
+                  rawIsi: '',
+                  jenis: (laporan['jenis'] ?? 'Laporan Penyuluhan').toString(),
+                  judul: (laporan['judul'] ?? 'Kegiatan Lapangan').toString(),
+                  lokasi: (laporan['lokasi'] ?? 'Kawasan Hutan Garut').toString(),
+                )
+              : rawIsiCandidate);
 
     final bool hasAttachedPhoto = photoToUse != null;
-    final int totalPages = hasAttachedPhoto ? 2 : 1;
 
-    final content = StringBuffer();
+    // Susun Halaman 1 (Header + Metadata) dan aliran baris isi laporan (mendukung halaman lanjutan).
+    final page1Header = StringBuffer();
 
-    // Garis Atas Kop Surat
-    content.writeln('0.14 0.36 0.23 rg');
-    content.writeln('50 792 495 3 re f');
-    content.writeln('0 0 0 rg');
-
-    void drawText(
+    void writeTextTo(
+      StringBuffer target,
       String text,
       double x,
       double y, {
@@ -1702,26 +1722,34 @@ class ReportDocumentExporter {
     }) {
       final fontKey = bold ? '/F2' : '/F1';
       final escaped = _escapePdfLiteral(_cleanPdfText(text));
-      content.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
+      target.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
     }
 
+    // Garis Atas Kop Surat
+    page1Header.writeln('0.14 0.36 0.23 rg');
+    page1Header.writeln('50 792 495 3 re f');
+    page1Header.writeln('0 0 0 rg');
+
     // Header Kop Instansi
-    drawText(
+    writeTextTo(
+      page1Header,
       'PEMERINTAH DAERAH PROVINSI JAWA BARAT',
       155,
       772,
       bold: true,
       fontSize: 12,
     );
-    drawText('DINAS KEHUTANAN', 238, 756, bold: true, fontSize: 13);
-    drawText(
+    writeTextTo(page1Header, 'DINAS KEHUTANAN', 238, 756, bold: true, fontSize: 13);
+    writeTextTo(
+      page1Header,
       'CABANG DINAS KEHUTANAN WILAYAH V GARUT',
       150,
       740,
       bold: true,
       fontSize: 12,
     );
-    drawText(
+    writeTextTo(
+      page1Header,
       'Dokumen Laporan Resmi Kegiatan Penyuluhan & Pengelolaan Kehutanan',
       128,
       725,
@@ -1729,53 +1757,62 @@ class ReportDocumentExporter {
     );
 
     // Garis pembatas kop
-    content.writeln('0.14 0.36 0.23 rg');
-    content.writeln('50 714 495 1.5 re f');
-    content.writeln('0 0 0 rg');
+    page1Header.writeln('0.14 0.36 0.23 rg');
+    page1Header.writeln('50 714 495 1.5 re f');
+    page1Header.writeln('0 0 0 rg');
 
     // Judul Dokumen
-    drawText(jenis.toUpperCase(), 50, 690, bold: true, fontSize: 13);
-    drawText(judul, 50, 673, bold: true, fontSize: 11);
+    writeTextTo(page1Header, jenis.toUpperCase(), 50, 690, bold: true, fontSize: 13);
+    writeTextTo(page1Header, judul, 50, 673, bold: true, fontSize: 11);
 
     // Kotak Metadata Laporan
     final double metaBoxHeight = hasAttachedPhoto ? 104 : 92;
     final double metaBoxY = hasAttachedPhoto ? 556 : 568;
-    content.writeln('0.95 0.97 0.95 rg');
-    content.writeln('50 $metaBoxY 495 $metaBoxHeight re f');
-    content.writeln('0 0 0 rg');
+    page1Header.writeln('0.95 0.97 0.95 rg');
+    page1Header.writeln('50 $metaBoxY 495 $metaBoxHeight re f');
+    page1Header.writeln('0 0 0 rg');
 
-    drawText('Nama Pegawai / Penyuluh', 62, 642, bold: true, fontSize: 10);
-    drawText(':  $pelapor', 205, 642, fontSize: 10);
+    writeTextTo(page1Header, 'Nama Pegawai / Penyuluh', 62, 642, bold: true, fontSize: 10);
+    writeTextTo(page1Header, ':  $pelapor', 205, 642, fontSize: 10);
 
-    drawText('Jenis Laporan', 62, 626, bold: true, fontSize: 10);
-    drawText(':  $jenis', 205, 626, fontSize: 10);
+    writeTextTo(page1Header, 'Jenis Laporan', 62, 626, bold: true, fontSize: 10);
+    writeTextTo(page1Header, ':  $jenis', 205, 626, fontSize: 10);
 
-    drawText('Tanggal Laporan', 62, 610, bold: true, fontSize: 10);
-    drawText(':  $tanggal', 205, 610, fontSize: 10);
+    writeTextTo(page1Header, 'Tanggal Laporan', 62, 610, bold: true, fontSize: 10);
+    writeTextTo(page1Header, ':  $tanggal', 205, 610, fontSize: 10);
 
-    drawText('Lokasi Kegiatan', 62, 594, bold: true, fontSize: 10);
-    drawText(':  $lokasi', 205, 594, fontSize: 10);
+    writeTextTo(page1Header, 'Lokasi Kegiatan', 62, 594, bold: true, fontSize: 10);
+    writeTextTo(page1Header, ':  $lokasi', 205, 594, fontSize: 10);
 
-    drawText('Titik Koordinat', 62, 578, bold: true, fontSize: 10);
-    drawText(':  $koordinat  (Status: $status)', 150, 578, fontSize: 10);
+    writeTextTo(page1Header, 'Titik Koordinat', 62, 578, bold: true, fontSize: 10);
+    writeTextTo(page1Header, ':  $koordinat  (Status: $status)', 150, 578, fontSize: 10);
 
     if (hasAttachedPhoto) {
-      drawText('Foto Dokumentasi', 62, 562, bold: true, fontSize: 10);
-      drawText(':  Terlampir Resmi pada Halaman 2 Dokumen', 205, 562, fontSize: 10);
+      writeTextTo(page1Header, 'Foto Dokumentasi', 62, 562, bold: true, fontSize: 10);
+      writeTextTo(
+        page1Header,
+        ':  Terlampir Resmi pada Halaman Lampiran Dokumen',
+        205,
+        562,
+        fontSize: 10,
+      );
     }
 
     // Bagian Isi Laporan
     final double sectionTitleY = hasAttachedPhoto ? 532 : 544;
-    drawText(
-      'URAIAN & HASIL KEGIATAN LAPANGAN:',
+    writeTextTo(
+      page1Header,
+      isMonitoring
+          ? 'RINGKASAN & EVALUASI LAPORAN MONITORING:'
+          : 'URAIAN & HASIL KEGIATAN LAPANGAN:',
       50,
       sectionTitleY,
       bold: true,
       fontSize: 11,
     );
-    content.writeln('0.80 0.85 0.80 rg');
-    content.writeln('50 ${sectionTitleY - 7} 495 0.8 re f');
-    content.writeln('0 0 0 rg');
+    page1Header.writeln('0.80 0.85 0.80 rg');
+    page1Header.writeln('50 ${sectionTitleY - 7} 495 0.8 re f');
+    page1Header.writeln('0 0 0 rg');
 
     final bodyLines = _wrapTextLines(
       isiRaw.isNotEmpty
@@ -1784,59 +1821,107 @@ class ReportDocumentExporter {
       maxCharsPerLine: 78,
     );
 
+    final double lineStep = isMonitoring ? 13.5 : 15.0;
+    final List<StringBuffer> textPageBuffers = <StringBuffer>[page1Header];
+
+    // Kapasitas Halaman 1 jika hanya 1 halaman teks vs multi halaman
+    final int page1MaxAboveSign = ((sectionTitleY - 24 - 165) / lineStep).floor() + 1;
+    final bool needsOverflowPages = bodyLines.length > page1MaxAboveSign;
+
+    int lineCursor = 0;
     double currentY = sectionTitleY - 24;
-    for (final line in bodyLines) {
-      if (currentY < 165) break;
+    final double page1MinY = needsOverflowPages ? 68 : 165;
+    while (lineCursor < bodyLines.length && currentY >= page1MinY) {
+      final line = bodyLines[lineCursor++];
       final isSectionLine =
           RegExp(r'^[0-9]+\.').hasMatch(line) ||
           (line == line.toUpperCase() && line.length > 5);
-      drawText(
+      writeTextTo(
+        textPageBuffers.first,
         _cleanPdfText(line),
         50,
         currentY,
         bold: isSectionLine,
-        fontSize: 10,
+        fontSize: isMonitoring ? 9 : 10,
       );
-      currentY -= 15;
+      currentY -= lineStep;
     }
 
-    // Blok Tanda Tangan
-    content.writeln('0.80 0.85 0.80 rg');
-    content.writeln('50 145 495 0.8 re f');
-    content.writeln('0 0 0 rg');
+    while (lineCursor < bodyLines.length) {
+      final contBuf = StringBuffer();
+      contBuf.writeln('0.14 0.36 0.23 rg');
+      contBuf.writeln('50 792 495 2 re f');
+      contBuf.writeln('0 0 0 rg');
+      writeTextTo(
+        contBuf,
+        'LANJUTAN: ${jenis.toUpperCase()} - $judul',
+        50,
+        772,
+        bold: true,
+        fontSize: 10,
+      );
+      contBuf.writeln('0.80 0.85 0.80 rg');
+      contBuf.writeln('50 762 495 0.8 re f');
+      contBuf.writeln('0 0 0 rg');
 
-    drawText('Garut, $tanggal', 360, 125, fontSize: 10);
-    drawText(
+      double contY = 742;
+      final remainingAfterThis = bodyLines.length - lineCursor;
+      final maxFitWithSign = ((742 - 165) / lineStep).floor() + 1;
+      final double minYForThisPage =
+          remainingAfterThis <= maxFitWithSign ? 165 : 68;
+      while (lineCursor < bodyLines.length && contY >= minYForThisPage) {
+        final line = bodyLines[lineCursor++];
+        final isSectionLine =
+            RegExp(r'^[0-9]+\.').hasMatch(line) ||
+            (line == line.toUpperCase() && line.length > 5);
+        writeTextTo(
+          contBuf,
+          _cleanPdfText(line),
+          50,
+          contY,
+          bold: isSectionLine,
+          fontSize: isMonitoring ? 9 : 10,
+        );
+        contY -= lineStep;
+      }
+      textPageBuffers.add(contBuf);
+    }
+
+    final int photoPageCount = hasAttachedPhoto ? 1 : 0;
+    final int totalPages = textPageBuffers.length + photoPageCount;
+
+    // Blok Tanda Tangan diletakkan pada halaman teks terakhir
+    final lastTextBuf = textPageBuffers.last;
+    lastTextBuf.writeln('0.80 0.85 0.80 rg');
+    lastTextBuf.writeln('50 145 495 0.8 re f');
+    lastTextBuf.writeln('0 0 0 rg');
+
+    writeTextTo(lastTextBuf, 'Garut, $tanggal', 360, 125, fontSize: 10);
+    writeTextTo(
+      lastTextBuf,
       'Penyuluh / Petugas Pelaksana,',
       360,
       111,
       bold: true,
       fontSize: 10,
     );
-    drawText(pelapor, 360, 62, bold: true, fontSize: 10);
+    writeTextTo(lastTextBuf, pelapor, 360, 62, bold: true, fontSize: 10);
 
-    final String page1Footer = hasAttachedPhoto
-        ? 'Aplikasi Phonebook CDK Wilayah V  •  Halaman 1 dari $totalPages'
-        : 'Dicetak otomatis melalui Aplikasi Phonebook CDK Wilayah V';
-    drawText(
-      page1Footer,
-      50,
-      42,
-      fontSize: 8,
-    );
-    if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
-      drawText(
-        'Waktu Unduh: $waktuUnduh',
-        290,
-        42,
-        fontSize: 8,
-      );
+    for (int pageIdx = 0; pageIdx < textPageBuffers.length; pageIdx++) {
+      final buf = textPageBuffers[pageIdx];
+      final String footerText = totalPages > 1
+          ? 'Aplikasi Phonebook CDK Wilayah V  •  Halaman ${pageIdx + 1} dari $totalPages'
+          : 'Dicetak otomatis melalui Aplikasi Phonebook CDK Wilayah V';
+      writeTextTo(buf, footerText, 50, 42, fontSize: 8);
+      if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
+        writeTextTo(buf, 'Waktu Unduh: $waktuUnduh', 290, 42, fontSize: 8);
+      }
     }
 
-    // Pembuatan Halaman 2 (Lampiran Foto) jika foto tersedia
-    final page2Content = StringBuffer();
+    // Pembuatan Halaman Lampiran Foto jika foto tersedia
+    final pagePhotoBuffer = StringBuffer();
     if (hasAttachedPhoto) {
-      void drawPage2Text(
+      void drawPhotoPageText(
         String text,
         double x,
         double y, {
@@ -1845,31 +1930,31 @@ class ReportDocumentExporter {
       }) {
         final fontKey = bold ? '/F2' : '/F1';
         final escaped = _escapePdfLiteral(_cleanPdfText(text));
-        page2Content.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
+        pagePhotoBuffer.writeln('BT $fontKey $fontSize Tf $x $y Td ($escaped) Tj ET');
       }
 
       // Garis Atas Hijau Kop Surat
-      page2Content.writeln('0.14 0.36 0.23 rg');
-      page2Content.writeln('50 792 495 3 re f');
-      page2Content.writeln('0 0 0 rg');
+      pagePhotoBuffer.writeln('0.14 0.36 0.23 rg');
+      pagePhotoBuffer.writeln('50 792 495 3 re f');
+      pagePhotoBuffer.writeln('0 0 0 rg');
 
-      // Header Kop Instansi Halaman 2
-      drawPage2Text(
+      // Header Kop Instansi Halaman Foto
+      drawPhotoPageText(
         'PEMERINTAH DAERAH PROVINSI JAWA BARAT',
         155,
         772,
         bold: true,
         fontSize: 12,
       );
-      drawPage2Text('DINAS KEHUTANAN', 238, 756, bold: true, fontSize: 13);
-      drawPage2Text(
+      drawPhotoPageText('DINAS KEHUTANAN', 238, 756, bold: true, fontSize: 13);
+      drawPhotoPageText(
         'CABANG DINAS KEHUTANAN WILAYAH V GARUT',
         150,
         740,
         bold: true,
         fontSize: 12,
       );
-      drawPage2Text(
+      drawPhotoPageText(
         'LAMPIRAN DOKUMENTASI FOTO KEGIATAN LAPANGAN',
         135,
         724,
@@ -1878,26 +1963,26 @@ class ReportDocumentExporter {
       );
 
       // Garis pembatas kop
-      page2Content.writeln('0.14 0.36 0.23 rg');
-      page2Content.writeln('50 714 495 1.5 re f');
-      page2Content.writeln('0 0 0 rg');
+      pagePhotoBuffer.writeln('0.14 0.36 0.23 rg');
+      pagePhotoBuffer.writeln('50 714 495 1.5 re f');
+      pagePhotoBuffer.writeln('0 0 0 rg');
 
-      // Kotak Metadata Halaman 2
-      page2Content.writeln('0.95 0.97 0.95 rg');
-      page2Content.writeln('50 638 495 68 re f');
-      page2Content.writeln('0 0 0 rg');
+      // Kotak Metadata Halaman Foto
+      pagePhotoBuffer.writeln('0.95 0.97 0.95 rg');
+      pagePhotoBuffer.writeln('50 638 495 68 re f');
+      pagePhotoBuffer.writeln('0 0 0 rg');
 
-      drawPage2Text('Judul Laporan', 62, 688, bold: true, fontSize: 10);
-      drawPage2Text(':  $judul', 180, 688, fontSize: 10);
+      drawPhotoPageText('Judul Laporan', 62, 688, bold: true, fontSize: 10);
+      drawPhotoPageText(':  $judul', 180, 688, fontSize: 10);
 
-      drawPage2Text('Pelapor / Petugas', 62, 672, bold: true, fontSize: 10);
-      drawPage2Text(':  $pelapor   ($jenis)', 180, 672, fontSize: 10);
+      drawPhotoPageText('Pelapor / Petugas', 62, 672, bold: true, fontSize: 10);
+      drawPhotoPageText(':  $pelapor   ($jenis)', 180, 672, fontSize: 10);
 
-      drawPage2Text('Waktu Pelaksanaan', 62, 656, bold: true, fontSize: 10);
-      drawPage2Text(':  $tanggal   (Status: $status)', 180, 656, fontSize: 10);
+      drawPhotoPageText('Waktu Pelaksanaan', 62, 656, bold: true, fontSize: 10);
+      drawPhotoPageText(':  $tanggal   (Status: $status)', 180, 656, fontSize: 10);
 
-      drawPage2Text('Lokasi & Koordinat', 62, 642, bold: true, fontSize: 10);
-      drawPage2Text(':  $lokasi  [$koordinat]', 180, 642, fontSize: 10);
+      drawPhotoPageText('Lokasi & Koordinat', 62, 642, bold: true, fontSize: 10);
+      drawPhotoPageText(':  $lokasi  [$koordinat]', 180, 642, fontSize: 10);
 
       // Hitung posisi dan ukuran gambar agar aspect ratio foto selalu presisi
       const double maxPhotoW = 475;
@@ -1917,33 +2002,33 @@ class ReportDocumentExporter {
       final double drawY = 225 + (395 - drawH) / 2;
 
       // Bingkai Latar dan Garis Tepi Foto
-      page2Content.writeln('0.92 0.94 0.92 rg');
-      page2Content.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re f');
-      page2Content.writeln('0.75 0.82 0.75 RG');
-      page2Content.writeln('1.2 w');
-      page2Content.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re S');
-      page2Content.writeln('0 0 0 rg');
+      pagePhotoBuffer.writeln('0.92 0.94 0.92 rg');
+      pagePhotoBuffer.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re f');
+      pagePhotoBuffer.writeln('0.75 0.82 0.75 RG');
+      pagePhotoBuffer.writeln('1.2 w');
+      pagePhotoBuffer.writeln('${(drawX - 3).toStringAsFixed(1)} ${(drawY - 3).toStringAsFixed(1)} ${(drawW + 6).toStringAsFixed(1)} ${(drawH + 6).toStringAsFixed(1)} re S');
+      pagePhotoBuffer.writeln('0 0 0 rg');
 
       // Gambar Image XObject
-      page2Content.writeln('q ${drawW.toStringAsFixed(1)} 0 0 ${drawH.toStringAsFixed(1)} ${drawX.toStringAsFixed(1)} ${drawY.toStringAsFixed(1)} cm /Im1 Do Q');
+      pagePhotoBuffer.writeln('q ${drawW.toStringAsFixed(1)} 0 0 ${drawH.toStringAsFixed(1)} ${drawX.toStringAsFixed(1)} ${drawY.toStringAsFixed(1)} cm /Im1 Do Q');
 
       // Keterangan di bawah foto
       final double captionY = drawY - 20;
-      drawPage2Text(
+      drawPhotoPageText(
         'Dokumentasi Resmi Kegiatan: $judul',
         50,
         captionY,
         bold: true,
         fontSize: 10,
       );
-      drawPage2Text(
+      drawPhotoPageText(
         'Lokasi: $lokasi | Titik Koordinat: $koordinat',
         50,
         captionY - 14,
         fontSize: 9,
       );
       if (waktuUnduh != null && waktuUnduh.isNotEmpty) {
-        drawPage2Text(
+        drawPhotoPageText(
           'Waktu Diunduh & Dicetak: $waktuUnduh',
           50,
           captionY - 28,
@@ -1952,31 +2037,35 @@ class ReportDocumentExporter {
       }
 
       // Garis Pemisah Footer
-      page2Content.writeln('0.80 0.85 0.80 rg');
-      page2Content.writeln('50 135 495 0.8 re f');
-      page2Content.writeln('0 0 0 rg');
+      pagePhotoBuffer.writeln('0.80 0.85 0.80 rg');
+      pagePhotoBuffer.writeln('50 135 495 0.8 re f');
+      pagePhotoBuffer.writeln('0 0 0 rg');
 
-      // Tanda Tangan Ringkas di Halaman 2
-      drawPage2Text('Garut, $tanggal', 360, 115, fontSize: 10);
-      drawPage2Text(
+      // Tanda Tangan Ringkas di Halaman Lampiran Foto
+      drawPhotoPageText('Garut, $tanggal', 360, 115, fontSize: 10);
+      drawPhotoPageText(
         'Petugas Pelaksana,',
         360,
         101,
         bold: true,
         fontSize: 10,
       );
-      drawPage2Text(pelapor, 360, 56, bold: true, fontSize: 10);
+      drawPhotoPageText(pelapor, 360, 56, bold: true, fontSize: 10);
 
-      drawPage2Text(
-        'Aplikasi Phonebook CDK Wilayah V  •  Halaman 2 dari 2 (Lampiran Foto Dokumentasi)',
+      drawPhotoPageText(
+        'Aplikasi Phonebook CDK Wilayah V  •  Halaman $totalPages dari $totalPages (Lampiran Foto Dokumentasi)',
         50,
         42,
         fontSize: 8,
       );
     }
 
-    final stream1Bytes = latin1.encode(content.toString());
-    final stream2Bytes = hasAttachedPhoto ? latin1.encode(page2Content.toString()) : null;
+    final textStreamBytesList = textPageBuffers
+        .map((buf) => latin1.encode(buf.toString()))
+        .toList();
+    final photoStreamBytes = hasAttachedPhoto
+        ? latin1.encode(pagePhotoBuffer.toString())
+        : null;
 
     final pdfBuffer = BytesBuilder();
     final offsets = <int>[0];
@@ -1987,63 +2076,71 @@ class ReportDocumentExporter {
 
     writeAscii('%PDF-1.4\n');
 
+    final List<int> kidPageObjIds = <int>[
+      for (int i = 0; i < textStreamBytesList.length; i++) 5 + (i * 2),
+      if (hasAttachedPhoto) 5 + (textStreamBytesList.length * 2),
+    ];
+
     // 1 0 obj: Catalog
     offsets.add(pdfBuffer.length);
     writeAscii('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
 
     // 2 0 obj: Pages
     offsets.add(pdfBuffer.length);
-    if (hasAttachedPhoto) {
-      writeAscii('2 0 obj\n<< /Type /Pages /Kids [3 0 R 7 0 R] /Count 2 >>\nendobj\n');
-    } else {
-      writeAscii('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
-    }
+    final kidsStr = kidPageObjIds.map((id) => '$id 0 R').join(' ');
+    writeAscii('2 0 obj\n<< /Type /Pages /Kids [$kidsStr] /Count $totalPages >>\nendobj\n');
 
-    // 3 0 obj: Page 1
+    // 3 0 obj: Font F1
     offsets.add(pdfBuffer.length);
     writeAscii(
-      '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
-      '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> '
-      '/Contents 6 0 R >>\nendobj\n',
+      '3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
     );
 
-    // 4 0 obj: Font F1
+    // 4 0 obj: Font F2
     offsets.add(pdfBuffer.length);
     writeAscii(
-      '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
+      '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
     );
 
-    // 5 0 obj: Font F2
-    offsets.add(pdfBuffer.length);
-    writeAscii(
-      '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
-    );
+    // Text pages (pairs of Page + Contents Stream starting at obj 5)
+    for (int i = 0; i < textStreamBytesList.length; i++) {
+      final pageObjId = 5 + (i * 2);
+      final streamObjId = pageObjId + 1;
+      final streamBytes = textStreamBytesList[i];
 
-    // 6 0 obj: Page 1 Contents Stream
-    offsets.add(pdfBuffer.length);
-    writeAscii('6 0 obj\n<< /Length ${stream1Bytes.length} >>\nstream\n');
-    pdfBuffer.add(stream1Bytes);
-    writeAscii('\nendstream\nendobj\n');
-
-    if (hasAttachedPhoto && stream2Bytes != null) {
-      // 7 0 obj: Page 2
       offsets.add(pdfBuffer.length);
       writeAscii(
-        '7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
-        '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> /XObject << /Im1 9 0 R >> >> '
-        '/Contents 8 0 R >>\nendobj\n',
+        '$pageObjId 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+        '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> '
+        '/Contents $streamObjId 0 R >>\nendobj\n',
       );
 
-      // 8 0 obj: Page 2 Contents Stream
       offsets.add(pdfBuffer.length);
-      writeAscii('8 0 obj\n<< /Length ${stream2Bytes.length} >>\nstream\n');
-      pdfBuffer.add(stream2Bytes);
+      writeAscii('$streamObjId 0 obj\n<< /Length ${streamBytes.length} >>\nstream\n');
+      pdfBuffer.add(streamBytes);
       writeAscii('\nendstream\nendobj\n');
+    }
 
-      // 9 0 obj: Image XObject
+    if (hasAttachedPhoto && photoStreamBytes != null) {
+      final photoPageObjId = 5 + (textStreamBytesList.length * 2);
+      final photoStreamObjId = photoPageObjId + 1;
+      final imageObjId = photoPageObjId + 2;
+
       offsets.add(pdfBuffer.length);
       writeAscii(
-        '9 0 obj\n<< /Type /XObject /Subtype /Image '
+        '$photoPageObjId 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+        '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Im1 $imageObjId 0 R >> >> '
+        '/Contents $photoStreamObjId 0 R >>\nendobj\n',
+      );
+
+      offsets.add(pdfBuffer.length);
+      writeAscii('$photoStreamObjId 0 obj\n<< /Length ${photoStreamBytes.length} >>\nstream\n');
+      pdfBuffer.add(photoStreamBytes);
+      writeAscii('\nendstream\nendobj\n');
+
+      offsets.add(pdfBuffer.length);
+      writeAscii(
+        '$imageObjId 0 obj\n<< /Type /XObject /Subtype /Image '
         '/Width ${photoToUse.width} /Height ${photoToUse.height} '
         '/ColorSpace /DeviceRGB /BitsPerComponent 8 '
         '/Filter /DCTDecode /Length ${photoToUse.jpegBytes.length} >>\nstream\n',
@@ -2052,7 +2149,7 @@ class ReportDocumentExporter {
       writeAscii('\nendstream\nendobj\n');
     }
 
-    final int objectCount = hasAttachedPhoto ? 9 : 6;
+    final int objectCount = offsets.length - 1;
     final xrefOffset = pdfBuffer.length;
     writeAscii('xref\n0 ${objectCount + 1}\n0000000000 65535 f \n');
     for (int idx = 1; idx <= objectCount; idx++) {
@@ -2097,15 +2194,66 @@ class ReportDocumentExporter {
     final lat = (laporan['latitude'] ?? '').toString();
     final lng = (laporan['longitude'] ?? '').toString();
     final rawWordIsi = (laporan['isi'] ?? '').toString().trim();
-    final cleanWordIsi = ReportTemplateManager.isCorruptedBinaryText(rawWordIsi)
-        ? ReportTemplateManager.sanitizeReportIsi(
-            rawIsi: '',
-            jenis: jenis,
-            judul: judul,
-            lokasi: lokasi,
-          )
-        : rawWordIsi;
+    final bool isMonitoring = MonitoringCalculator.isMonitoringReportType(
+      laporan['jenis']?.toString(),
+      laporan['report_type']?.toString(),
+    );
+    final Map<String, dynamic> monitoringMap = isMonitoring
+        ? MonitoringCalculator.extractMonitoringMap(laporan)
+        : const <String, dynamic>{};
+    final bool hasStructuredMonitoring =
+        isMonitoring &&
+        (monitoringMap['activity_name'] != null ||
+            monitoringMap['target_value'] != null ||
+            monitoringMap['actual_value'] != null);
+
+    final cleanWordIsi = hasStructuredMonitoring
+        ? MonitoringCalculator.buildFormattedMonitoringBody({
+            ...laporan,
+            ...monitoringMap,
+            'title': judul,
+            'location': lokasi,
+            'activity_date': tanggal,
+          })
+        : (ReportTemplateManager.isCorruptedBinaryText(rawWordIsi)
+              ? ReportTemplateManager.sanitizeReportIsi(
+                  rawIsi: '',
+                  jenis: jenis,
+                  judul: judul,
+                  lokasi: lokasi,
+                )
+              : rawWordIsi);
     final isi = cleanWordIsi.replaceAll('\n', '<br/>');
+
+    String monitoringHtmlSection = '';
+    if (isMonitoring) {
+      String pickMon(String key, [String fallback = '-']) {
+        final v = laporan[key] ?? monitoringMap[key];
+        return (v != null && v.toString().trim().isNotEmpty)
+            ? v.toString().trim()
+            : fallback;
+      }
+
+      final monCalc = MonitoringCalculator.calculate(
+        target: laporan['target_value'] ?? monitoringMap['target_value'],
+        actual: laporan['actual_value'] ?? monitoringMap['actual_value'],
+        unit: pickMon('target_unit', 'satuan'),
+      );
+      monitoringHtmlSection = '''
+  <div class="section-title">RINGKASAN TARGET &amp; CAPAIAN MONITORING:</div>
+  <table class="meta">
+    <tr><td width="32%"><b>Kegiatan yang Dimonitor</b></td><td>${pickMon('activity_name', judul)}</td></tr>
+    <tr><td><b>Periode Monitoring</b></td><td>${pickMon('monitoring_period')}</td></tr>
+    <tr><td><b>Petugas / Pelaksana</b></td><td>${pickMon('officer_name', pelapor)}</td></tr>
+    <tr><td><b>Periode Target</b></td><td>${pickMon('target_period')}</td></tr>
+    <tr><td><b>Target Direncanakan</b></td><td>${monCalc.formattedTarget}</td></tr>
+    <tr><td><b>Hasil Aktual</b></td><td>${monCalc.formattedActual}</td></tr>
+    <tr><td><b>Persentase Capaian</b></td><td><b>${monCalc.formattedPercentage}</b></td></tr>
+    <tr><td><b>Sisa Target</b></td><td>${monCalc.formattedRemaining}</td></tr>
+    <tr><td><b>Status Pencapaian</b></td><td><b>${monCalc.status}</b></td></tr>
+  </table>
+''';
+    }
 
     String photoHtmlSection = '';
     if (uniquePhotos.isNotEmpty) {
@@ -2167,7 +2315,8 @@ class ReportDocumentExporter {
     <tr><td><b>Lampiran Foto</b></td><td>${photo != null ? 'Tersedia (Terlampir pada bagian bawah naskah)' : 'Tidak terlampir'}</td></tr>
     ${waktuUnduh != null && waktuUnduh.isNotEmpty ? '<tr><td><b>Waktu Cetak/Unduh</b></td><td>$waktuUnduh</td></tr>' : ''}
   </table>
-  <div class="section-title">URAIAN &amp; HASIL KEGIATAN:</div>
+  $monitoringHtmlSection
+  <div class="section-title">${isMonitoring ? 'EVALUASI &amp; TINDAK LANJUT MONITORING (12 BAGIAN):' : 'URAIAN &amp; HASIL KEGIATAN:'}</div>
   <div class="content-box">$isi</div>
   $photoHtmlSection
   <div class="sign">

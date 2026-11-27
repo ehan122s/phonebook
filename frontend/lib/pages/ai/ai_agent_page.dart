@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/ai_agent_service.dart';
 
@@ -201,6 +203,126 @@ class _AiAgentPageState extends State<AiAgentPage> {
       }
     }).toSet();
     return labels.join(' • ');
+  }
+
+  Future<void> _handleMarkdownLink(String? href) async {
+    if (href == null || href.trim().isEmpty) return;
+    final uri = Uri.tryParse(href.trim());
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Widget _buildAiMarkdownBody({
+    required BuildContext context,
+    required AiChatMessage msg,
+    required bool isDark,
+    required Color borderColor,
+    required Color contentColor,
+    required Color textSecondary,
+  }) {
+    final accentColor = isDark ? const Color(0xFF81C784) : kPrimary;
+    final strongColor = msg.isError
+        ? contentColor
+        : (isDark ? Colors.white : const Color(0xFF132219));
+    final headingColor = msg.isError ? contentColor : accentColor;
+    final baseTextStyle = TextStyle(
+      fontSize: 14.5,
+      height: 1.5,
+      color: contentColor,
+    );
+
+    final styleSheet = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+      p: baseTextStyle,
+      pPadding: EdgeInsets.zero,
+      strong: baseTextStyle.copyWith(
+        fontWeight: FontWeight.w700,
+        color: strongColor,
+      ),
+      em: baseTextStyle.copyWith(fontStyle: FontStyle.italic),
+      h1: TextStyle(
+        fontSize: 17.5,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h2: TextStyle(
+        fontSize: 16.5,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h3: TextStyle(
+        fontSize: 15.5,
+        height: 1.4,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h4: TextStyle(
+        fontSize: 14.5,
+        height: 1.4,
+        fontWeight: FontWeight.w700,
+        color: headingColor,
+      ),
+      h1Padding: const EdgeInsets.only(top: 4, bottom: 2),
+      h2Padding: const EdgeInsets.only(top: 4, bottom: 2),
+      h3Padding: const EdgeInsets.only(top: 2, bottom: 2),
+      h4Padding: const EdgeInsets.only(top: 2, bottom: 2),
+      blockSpacing: 8,
+      listIndent: 18,
+      listBullet: baseTextStyle.copyWith(
+        fontWeight: FontWeight.w600,
+        color: msg.isError ? contentColor : accentColor,
+      ),
+      listBulletPadding: const EdgeInsets.only(right: 6),
+      a: baseTextStyle.copyWith(
+        color: accentColor,
+        decoration: TextDecoration.underline,
+        fontWeight: FontWeight.w600,
+      ),
+      code: TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 13,
+        color: isDark ? const Color(0xFFA5D6A7) : const Color(0xFF1B4D2E),
+        backgroundColor:
+            isDark ? const Color(0xFF131B16) : const Color(0xFFEEF3EF),
+      ),
+      codeblockPadding: const EdgeInsets.all(10),
+      codeblockDecoration: BoxDecoration(
+        color: isDark ? const Color(0xFF131B16) : const Color(0xFFF3F6F3),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+      ),
+      blockquote: TextStyle(
+        fontSize: 14,
+        height: 1.45,
+        fontStyle: FontStyle.italic,
+        color: textSecondary,
+      ),
+      blockquotePadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 8,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: isDark ? const Color(0xFF16201A) : const Color(0xFFF1F6F2),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: accentColor, width: 3)),
+      ),
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(top: BorderSide(color: borderColor)),
+      ),
+    );
+
+    return MarkdownBody(
+      data: msg.content,
+      selectable: true,
+      shrinkWrap: true,
+      fitContent: true,
+      softLineBreak: true,
+      styleSheet: styleSheet,
+      onTapLink: (_, href, _) => _handleMarkdownLink(href),
+    );
   }
 
   @override
@@ -504,13 +626,13 @@ class _AiAgentPageState extends State<AiAgentPage> {
                 ),
               )
             else
-              SelectableText(
-                msg.content,
-                style: TextStyle(
-                  fontSize: 14.5,
-                  height: 1.48,
-                  color: contentColor,
-                ),
+              _buildAiMarkdownBody(
+                context: context,
+                msg: msg,
+                isDark: isDark,
+                borderColor: borderColor,
+                contentColor: contentColor,
+                textSecondary: textSecondary,
               ),
             if (msg.isError && _lastFailedPrompt != null) ...[
               const SizedBox(height: 10),
