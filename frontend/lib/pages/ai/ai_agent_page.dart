@@ -297,20 +297,56 @@ class _AiAgentPageState extends State<AiAgentPage> {
           return 'Data Laporan';
         case 'get_report_detail':
           return 'Detail Laporan';
-        case 'get_user_schedules':
-          return 'Data Jadwal';
-        case 'get_materials':
-          return 'Data Materi';
-        case 'get_categories':
-          return 'Kategori';
-        case 'get_app_features_guide':
-          return 'Panduan Phonebook';
         case 'create_report':
           return 'Simpan Laporan';
-        case 'create_material':
-          return 'Simpan Materi';
+        case 'update_report':
+          return 'Edit Laporan';
+        case 'delete_report':
+          return 'Hapus Laporan';
+        case 'get_report_templates':
+          return 'Template Laporan';
+        case 'get_user_schedules':
+          return 'Data Jadwal';
         case 'create_schedule':
           return 'Simpan Jadwal';
+        case 'update_schedule':
+          return 'Edit Jadwal';
+        case 'delete_schedule':
+          return 'Hapus Jadwal';
+        case 'get_materials':
+          return 'Data Materi';
+        case 'create_material':
+          return 'Simpan Materi';
+        case 'update_material':
+          return 'Edit Materi';
+        case 'delete_material':
+          return 'Hapus Materi';
+        case 'get_categories':
+          return 'Kategori';
+        case 'create_category':
+          return 'Tambah Kategori';
+        case 'update_category':
+          return 'Edit Kategori';
+        case 'delete_category':
+          return 'Hapus Kategori';
+        case 'get_notifications':
+          return 'Notifikasi';
+        case 'mark_notification_read':
+          return 'Baca Notifikasi';
+        case 'delete_notification':
+          return 'Hapus Notifikasi';
+        case 'get_my_profile':
+          return 'Profil Saya';
+        case 'update_my_profile':
+          return 'Edit Profil';
+        case 'get_bug_reports':
+          return 'Tiket Kendala';
+        case 'create_bug_report':
+          return 'Kirim Kendala';
+        case 'get_app_update_info':
+          return 'Info Update';
+        case 'get_app_features_guide':
+          return 'Panduan Phonebook';
         default:
           return t;
       }

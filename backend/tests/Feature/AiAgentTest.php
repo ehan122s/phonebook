@@ -238,4 +238,95 @@ class AiAgentTest extends TestCase
         $this->assertTrue($createdSchedule['ok']);
         $this->assertDatabaseHas('schedules', ['title' => 'Jadwal AI Test', 'user_id' => $this->user1->id]);
     }
+
+    public function test_ai_tools_can_edit_and_delete_with_ownership_and_confirmation(): void
+    {
+        $toolService = app(\App\Services\AiAgentToolService::class);
+
+        $report = Report::create([
+            'user_id' => $this->user1->id,
+            'title' => 'Laporan Awal',
+            'activity_date' => '2026-11-27',
+            'location' => 'Garut',
+            'description' => 'Awal',
+            'status' => 'draft',
+        ]);
+
+        $schedule = Schedule::create([
+            'user_id' => $this->user1->id,
+            'title' => 'Rapat Tim',
+            'date' => '2026-11-27',
+            'start_time' => '17:21',
+            'end_time' => '18:21',
+            'reminder_enabled' => true,
+            'reminder_minutes' => 10,
+        ]);
+
+        // User2 tidak boleh mengedit atau menghapus laporan/jadwal milik User1
+        $blockedEdit = $toolService->executeTool('update_report', [
+            'report_id' => $report->id,
+            'title' => 'Dibajak',
+            'confirmed' => true,
+        ], $this->user2);
+        $this->assertFalse($blockedEdit['ok']);
+
+        $blockedDelete = $toolService->executeTool('delete_schedule', [
+            'schedule_id' => $schedule->id,
+            'confirmed' => true,
+        ], $this->user2);
+        $this->assertFalse($blockedDelete['ok']);
+
+        // User1 edit laporan & tandai jadwal selesai setelah konfirmasi
+        $updatedReport = $toolService->executeTool('update_report', [
+            'report_id' => $report->id,
+            'title' => 'Laporan Revisi',
+            'status' => 'terkirim',
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($updatedReport['ok']);
+        $this->assertDatabaseHas('reports', ['id' => $report->id, 'title' => 'Laporan Revisi', 'status' => 'terkirim']);
+
+        $updatedSchedule = $toolService->executeTool('update_schedule', [
+            'schedule_id' => $schedule->id,
+            'is_completed' => true,
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($updatedSchedule['ok']);
+        $this->assertTrue($updatedSchedule['schedule']['selesai']);
+
+        // User1 hapus laporan & jadwal dengan confirmed=true
+        $deletedReport = $toolService->executeTool('delete_report', [
+            'report_id' => $report->id,
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($deletedReport['ok']);
+        $this->assertDatabaseMissing('reports', ['id' => $report->id]);
+
+        $deletedSchedule = $toolService->executeTool('delete_schedule', [
+            'schedule_id' => $schedule->id,
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($deletedSchedule['ok']);
+        $this->assertDatabaseMissing('schedules', ['id' => $schedule->id]);
+
+        // Profil pengguna
+        $profileRes = $toolService->executeTool('update_my_profile', [
+            'wilayah' => 'CDK Wilayah V Garut Selatan',
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($profileRes['ok']);
+        $this->assertEquals('CDK Wilayah V Garut Selatan', $profileRes['profile']['wilayah']);
+    }
+
+    public function test_pgsql_connection_resolver_prepares_booleans_as_sql_boolean_literals(): void
+    {
+        $resolver = \Illuminate\Database\Connection::getResolver('pgsql');
+        $this->assertNotNull($resolver);
+
+        $pdo = new \PDO('sqlite::memory:');
+        $pgsqlConn = $resolver($pdo, 'postgres', '', ['driver' => 'pgsql']);
+        $prepared = $pgsqlConn->prepareBindings([1, 'Rapat Tim', true, false, 10]);
+
+        $this->assertSame([1, 'Rapat Tim', 'true', 'false', 10], $prepared);
+    }
 }
