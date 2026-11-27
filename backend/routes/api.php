@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\BugReportController;
 use App\Http\Controllers\Api\DiscordInteractionController;
 use App\Http\Controllers\Api\ReportTemplateController;
 use App\Http\Controllers\Api\AppUpdateController;
+use App\Http\Controllers\Api\AiAgentController;
 
 Route::get('/test', function () {
     return response()->json([
@@ -198,4 +199,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user/profile', [AuthController::class, 'updateProfile']);
     Route::post('/user/change-password', [AuthController::class, 'changePassword']);
     Route::post('/logout', [AuthController::class, 'logout']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| AI Agent (Groq API Assistant)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'throttle:20,1'])->group(function () {
+    Route::post('/ai/chat', [AiAgentController::class, 'chat']);
 });
