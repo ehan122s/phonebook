@@ -90,7 +90,7 @@ class AiAgentTest extends TestCase
             'user_id' => $this->user1->id,
             'title' => 'Monitoring Hutan',
             'date' => '2026-11-28',
-            'time' => '09:00',
+            'start_time' => '09:00',
             'location' => 'Papandayan',
         ]);
 
@@ -177,5 +177,65 @@ class AiAgentTest extends TestCase
         $res->assertStatus(429)
             ->assertJson(['success' => false]);
         $this->assertStringNotContainsString('gsk_fake_test_secret_key_never_leak', $res->getContent());
+    }
+
+    public function test_ai_tools_can_read_schedules_and_create_report_material_schedule_with_confirmation(): void
+    {
+        Schedule::create([
+            'user_id' => $this->user1->id,
+            'title' => 'Patroli Hutan',
+            'date' => '2026-11-29',
+            'start_time' => '08:30',
+            'location' => 'Garut',
+        ]);
+
+        $toolService = app(\App\Services\AiAgentToolService::class);
+
+        // 1. Pastikan get_user_schedules tidak error kolom 'time' dan mengembalikan start_time
+        $schedRes = $toolService->executeTool('get_user_schedules', ['limit' => 5], $this->user1);
+        $this->assertTrue($schedRes['ok']);
+        $this->assertEquals('08:30', $schedRes['schedules'][0]['jam_mulai_wib']);
+
+        // 2. Pastikan create_report meminta konfirmasi jika confirmed=false
+        $previewReport = $toolService->executeTool('create_report', [
+            'title' => 'Laporan AI Test',
+            'activity_date' => '2026-11-27',
+            'location' => 'Garut',
+            'description' => 'Uraian kegiatan',
+            'confirmed' => false,
+        ], $this->user1);
+        $this->assertFalse($previewReport['ok']);
+        $this->assertTrue($previewReport['needs_confirmation']);
+
+        // 3. Pastikan create_report, create_material, create_schedule berhasil saat confirmed=true
+        $createdReport = $toolService->executeTool('create_report', [
+            'title' => 'Laporan AI Test',
+            'activity_date' => '2026-11-27',
+            'location' => 'Garut',
+            'description' => 'Uraian kegiatan',
+            'status' => 'terkirim',
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($createdReport['ok']);
+        $this->assertDatabaseHas('reports', ['title' => 'Laporan AI Test', 'user_id' => $this->user1->id]);
+
+        $createdMaterial = $toolService->executeTool('create_material', [
+            'title' => 'Materi AI Test',
+            'category_name' => 'Penyuluhan',
+            'description' => 'Panduan penyuluhan lengkap',
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($createdMaterial['ok']);
+        $this->assertDatabaseHas('materials', ['title' => 'Materi AI Test', 'user_id' => $this->user1->id]);
+
+        $createdSchedule = $toolService->executeTool('create_schedule', [
+            'title' => 'Jadwal AI Test',
+            'date' => '2026-11-30',
+            'start_time' => '10:00',
+            'location' => 'Leles',
+            'confirmed' => true,
+        ], $this->user1);
+        $this->assertTrue($createdSchedule['ok']);
+        $this->assertDatabaseHas('schedules', ['title' => 'Jadwal AI Test', 'user_id' => $this->user1->id]);
     }
 }

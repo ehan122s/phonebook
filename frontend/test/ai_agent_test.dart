@@ -46,6 +46,7 @@ void main() {
       expect(find.text('Asisten AI Phonebook'), findsOneWidget);
       expect(find.text('Rangkum laporan terbaru saya'), findsOneWidget);
       expect(find.byType(TextField), findsOneWidget);
+      expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
       expect(find.byIcon(Icons.send_rounded), findsOneWidget);
     });
 

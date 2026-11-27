@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/ai_agent_service.dart';
@@ -17,10 +18,14 @@ class _AiAgentPageState extends State<AiAgentPage> {
 
   final TextEditingController _inputCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
+  final stt.SpeechToText _speech = stt.SpeechToText();
 
   List<AiChatMessage> _messages = [];
   bool _isLoadingHistory = true;
   bool _isThinking = false;
+  bool _isListening = false;
+  bool _speechAvailable = false;
+  String _baseTextBeforeSpeech = '';
   String? _lastFailedPrompt;
 
   static const List<String> _starterPrompts = [
@@ -39,9 +44,99 @@ class _AiAgentPageState extends State<AiAgentPage> {
 
   @override
   void dispose() {
+    if (_isListening) {
+      _speech.stop();
+    }
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleListening() async {
+    if (_isThinking) return;
+
+    if (_isListening) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _isListening = false);
+      }
+      return;
+    }
+
+    try {
+      if (!_speechAvailable) {
+        _speechAvailable = await _speech.initialize(
+          onStatus: (status) {
+            if (!mounted) return;
+            if (status == 'done' || status == 'notListening') {
+              setState(() => _isListening = false);
+            }
+          },
+          onError: (error) {
+            if (!mounted) return;
+            setState(() => _isListening = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Pengenalan suara terhenti: ${error.errorMsg}',
+                ),
+              ),
+            );
+          },
+        );
+      }
+
+      if (!_speechAvailable) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mikrofon atau layanan suara tidak tersedia / izin ditolak di perangkat ini.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      _baseTextBeforeSpeech = _inputCtrl.text.trim();
+      setState(() => _isListening = true);
+
+      await _speech.listen(
+        listenOptions: stt.SpeechListenOptions(
+          localeId: 'id_ID',
+          partialResults: true,
+          cancelOnError: true,
+        ),
+        onResult: (result) {
+          if (!mounted) return;
+          final spoken = result.recognizedWords.trim();
+          final combined = _baseTextBeforeSpeech.isEmpty
+              ? spoken
+              : (spoken.isEmpty
+                  ? _baseTextBeforeSpeech
+                  : '$_baseTextBeforeSpeech $spoken');
+          _inputCtrl.value = TextEditingValue(
+            text: combined,
+            selection: TextSelection.collapsed(offset: combined.length),
+          );
+          if (result.finalResult) {
+            setState(() => _isListening = false);
+          }
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isListening = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Fitur mikrofon tidak didukung pada perangkat ini. Silakan ketik pesan secara manual.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _loadChatHistory() async {
@@ -67,6 +162,14 @@ class _AiAgentPageState extends State<AiAgentPage> {
   }
 
   Future<void> _sendMessage([String? overrideText]) async {
+    if (_isListening) {
+      try {
+        await _speech.stop();
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _isListening = false);
+      }
+    }
     final text = (overrideText ?? _inputCtrl.text).trim();
     if (text.isEmpty || _isThinking) return;
 
@@ -196,8 +299,18 @@ class _AiAgentPageState extends State<AiAgentPage> {
           return 'Detail Laporan';
         case 'get_user_schedules':
           return 'Data Jadwal';
+        case 'get_materials':
+          return 'Data Materi';
+        case 'get_categories':
+          return 'Kategori';
         case 'get_app_features_guide':
           return 'Panduan Phonebook';
+        case 'create_report':
+          return 'Simpan Laporan';
+        case 'create_material':
+          return 'Simpan Materi';
+        case 'create_schedule':
+          return 'Simpan Jadwal';
         default:
           return t;
       }
@@ -717,59 +830,139 @@ class _AiAgentPageState extends State<AiAgentPage> {
         color: surfaceColor,
         border: Border(top: BorderSide(color: borderColor)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _inputCtrl,
-              enabled: !_isThinking,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendMessage(),
-              style: TextStyle(fontSize: 15, color: textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Tulis pertanyaan atau tugas untuk AI...',
-                hintStyle: TextStyle(fontSize: 14.5, color: textSecondary),
-                filled: true,
-                fillColor:
-                    isDark ? const Color(0xFF141D17) : const Color(0xFFF3F6F3),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: borderColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: borderColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: const BorderSide(color: kPrimary, width: 1.5),
+          if (_isListening)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: isDark ? 0.22 : 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.red.withValues(alpha: 0.35),
                 ),
               ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.graphic_eq_rounded,
+                    size: 18,
+                    color: Colors.red,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Mendengarkan suara Anda... Bicara sekarang.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFFFFB4B4) : Colors.red.shade800,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _toggleListening,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Selesai',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? const Color(0xFFFFB4B4) : Colors.red.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          SizedBox(
-            width: 50,
-            height: 50,
-            child: FilledButton(
-              onPressed: _isThinking ? null : () => _sendMessage(),
-              style: FilledButton.styleFrom(
-                backgroundColor: kPrimary,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _inputCtrl,
+                  enabled: !_isThinking,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendMessage(),
+                  style: TextStyle(fontSize: 15, color: textPrimary),
+                  decoration: InputDecoration(
+                    hintText: _isListening
+                        ? 'Mendengarkan...'
+                        : 'Ketik atau tekan mic untuk bicara...',
+                    hintStyle: TextStyle(fontSize: 14.5, color: textSecondary),
+                    filled: true,
+                    fillColor: isDark
+                        ? const Color(0xFF141D17)
+                        : const Color(0xFFF3F6F3),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: const BorderSide(color: kPrimary, width: 1.5),
+                    ),
+                  ),
                 ),
               ),
-              child: const Icon(Icons.send_rounded, size: 22),
-            ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton.filled(
+                  onPressed: _isThinking ? null : _toggleListening,
+                  tooltip: _isListening ? 'Hentikan Mikrofon' : 'Bicara dengan AI',
+                  style: IconButton.styleFrom(
+                    backgroundColor: _isListening
+                        ? Colors.red.shade600
+                        : (isDark
+                            ? const Color(0xFF233329)
+                            : const Color(0xFFE8F2E8)),
+                    foregroundColor: _isListening
+                        ? Colors.white
+                        : (isDark ? const Color(0xFF81C784) : kPrimary),
+                  ),
+                  icon: Icon(
+                    _isListening ? Icons.stop_rounded : Icons.mic_none_rounded,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 50,
+                height: 50,
+                child: FilledButton(
+                  onPressed: _isThinking ? null : () => _sendMessage(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kPrimary,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                  ),
+                  child: const Icon(Icons.send_rounded, size: 22),
+                ),
+              ),
+            ],
           ),
         ],
       ),
